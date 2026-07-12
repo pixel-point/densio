@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "ignorePatterns": [
+    ".agents/**",
+    ".turbo/**",
+    "**/.turbo/**",
+    ".wrangler/**",
+    "coverage/**",
+    "dist/**",
+    "node_modules/**",
+    "repos/**",
+    "skills-lock.json"
+  ],
+  "rules": {
+    "eslint/max-lines": [
+      "error",
+      {
+        "max": 1000,
+        "skipBlankLines": false,
+        "skipComments": false
+      }
+    ],
+    "eslint/max-lines-per-function": [
+      "error",
+      {
+        "max": 100,
+        "skipBlankLines": false,
+        "skipComments": false
+      }
+    ]
+  }
+}

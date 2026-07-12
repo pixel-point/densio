@@ -1,0 +1,15 @@
+{
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
+  "files.exclude": {
+    "repos/**": true
+  },
+  "files.watcherExclude": {
+    "repos/**": true
+  },
+  "javascript.preferences.autoImportFileExcludePatterns": ["repos/**"],
+  "search.exclude": {
+    "repos/**": true
+  },
+  "typescript.preferences.autoImportFileExcludePatterns": ["repos/**"]
+}

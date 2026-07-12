@@ -1,0 +1,4 @@
+interface:
+  display_name: "FFmpeg API"
+  short_description: "Agent-first video optimization through the ffmpeg-api CLI"
+  default_prompt: "Use $ffmpeg-api to optimize, inspect, or extract media with resumable jobs and JSON output."

@@ -1,0 +1,1 @@
+ALTER TABLE `jobs` ADD `cancel_requested_at` integer;

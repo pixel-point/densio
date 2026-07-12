@@ -1,0 +1,20 @@
+{
+  "name": "@ffmpeg-api/cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "ffmpeg-api": "dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --banner:js=\"#!/usr/bin/env node\" --outfile=dist/index.js",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsgo --noEmit --project tsconfig.json --pretty false"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.0-beta.93",
+    "@ffmpeg-api/shared": "workspace:*",
+    "effect": "4.0.0-beta.93"
+  }
+}

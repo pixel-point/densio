@@ -1,0 +1,26 @@
+{
+  "name": "@ffmpeg-api/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "admin": "tsx src/admin.ts",
+    "build": "esbuild src/server.ts src/admin.ts --bundle --platform=node --format=esm --outdir=dist",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsgo --noEmit --project tsconfig.json --pretty false"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.0-beta.93",
+    "@ffmpeg-api/shared": "workspace:*",
+    "@hono/node-server": "^1.19.6",
+    "archiver": "^8.0.0",
+    "drizzle-orm": "1.0.0-rc.4",
+    "effect": "4.0.0-beta.93",
+    "hono": "^4.8.0",
+    "resend": "^6.17.2",
+    "stripe": "^22.3.1"
+  }
+}

@@ -1,0 +1,60 @@
+name: ffmpeg-api
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ffmpeg-api:${IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: ${ENV_FILE:-.env}
+        required: true
+    environment:
+      DATABASE_PATH: /app/data/database.sqlite
+      DRIZZLE_MIGRATIONS_PATH: /app/drizzle
+      FFMPEG_PATH: /opt/ffmpeg/bin/ffmpeg
+      FFPROBE_PATH: /opt/ffmpeg/bin/ffprobe
+      HOST: 0.0.0.0
+      MEDIA_ROOT: /app/data/media
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+    ports:
+      - 127.0.0.1:${HOST_PORT:-3000}:${PORT:-3000}
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /opt/ffmpeg
+        target: /opt/ffmpeg
+        read_only: true
+        bind:
+          create_host_path: false
+    user: ${APP_UID:-1000}:${APP_GID:-1000}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 2m
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:'+process.env.PORT+'/ready').then((response)=>{if(!response.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 10m
