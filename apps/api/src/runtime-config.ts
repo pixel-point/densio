@@ -19,8 +19,8 @@ export const validateProductionConfig = (config: AppConfig) => {
     ],
     ["RESEND_API_KEY", validPrefixedSecret(config.resendApiKey, "re_")],
     ["STRIPE_BASIC_PRICE_ID", validPrefixedSecret(config.stripeBasicPriceId, "price_")],
-    ["STRIPE_PREMIUM_PRICE_ID", validPrefixedSecret(config.stripePremiumPriceId, "price_")],
     ["STRIPE_PRO_PRICE_ID", validPrefixedSecret(config.stripeProPriceId, "price_")],
+    ["STRIPE_SCALE_PRICE_ID", validPrefixedSecret(config.stripeScalePriceId, "price_")],
     ["STRIPE_SECRET_KEY", validPrefixedSecret(config.stripeSecretKey, "sk_")],
     ["STRIPE_WEBHOOK_SECRET", validPrefixedSecret(config.stripeWebhookSecret, "whsec_")],
   ] as const;

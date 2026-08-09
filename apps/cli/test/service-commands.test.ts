@@ -87,7 +87,7 @@ describe("service commands", () => {
       ),
     ).toBe(0);
     expect(JSON.parse(capabilityCapture.stdout()).data.server.maxConcurrentMediaProcesses).toBe(3);
-    for (const command of [["subscribe", "basic"], ["portal"]]) {
+    for (const command of [["subscribe", "scale"], ["portal"]]) {
       const capture = await makeCliCapture();
       await writeCredentials(capture.dependencies.credentialsPath, {
         accessToken: "access",
@@ -103,7 +103,18 @@ describe("service commands", () => {
       ).toBe(0);
       expect(JSON.parse(capture.stdout()).data.url).toBe("https://billing.example/session");
     }
-    expect(checkoutBodies).toEqual([{ plan: "basic" }]);
+    expect(checkoutBodies).toEqual([{ plan: "scale" }]);
     await server.close();
+  });
+
+  it("lists Scale in invalid billing command guidance", async () => {
+    const capture = await makeCliCapture();
+
+    expect(
+      await runCli(["--json", "billing", "subscribe", "enterprise"], capture.dependencies),
+    ).toBe(2);
+    expect(JSON.parse(capture.stderr()).detail).toBe(
+      "billing requires subscribe basic|pro|scale or portal.",
+    );
   });
 });

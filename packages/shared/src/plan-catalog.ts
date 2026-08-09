@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import type { Plan } from "./common-contracts.ts";
 
-export const PAID_PLANS = ["basic", "pro", "premium"] as const;
+export const PAID_PLANS = ["basic", "pro", "scale"] as const;
 export const PaidPlanSchema = Schema.Literals(PAID_PLANS);
 export type PaidPlan = typeof PaidPlanSchema.Type;
 
@@ -19,7 +19,7 @@ export const PLAN_CATALOG = Object.freeze({
     queuePriority: 0,
     rank: 0,
   }),
-  premium: Object.freeze({
+  scale: Object.freeze({
     maxUploadBytes: 10_000_000_000,
     monthlyCredits: 7_500,
     queuePriority: 30,

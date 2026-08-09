@@ -260,7 +260,7 @@ const createHarness = async (): Promise<Harness> => {
     now: () => NOW,
     priceIds: {
       basic: "price_basic",
-      premium: "price_premium",
+      scale: "price_scale",
       pro: "price_pro",
     },
   };

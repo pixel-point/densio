@@ -10,7 +10,7 @@ const validEnvironment = {
   PUBLIC_BASE_URL: "https://media.acme.test",
   RESEND_API_KEY: "re_live_realistic",
   STRIPE_BASIC_PRICE_ID: "price_basic_realistic",
-  STRIPE_PREMIUM_PRICE_ID: "price_premium_realistic",
+  STRIPE_SCALE_PRICE_ID: "price_scale_realistic",
   STRIPE_PRO_PRICE_ID: "price_pro_realistic",
   STRIPE_SECRET_KEY: "sk_live_realistic",
   STRIPE_WEBHOOK_SECRET: "whsec_realistic",
@@ -56,9 +56,9 @@ it("requires a non-placeholder 32-byte outbox encryption key", () => {
 it("requires every paid plan price", () => {
   expect(() =>
     validateProductionConfig(
-      loadConfig({ ...validEnvironment, STRIPE_BASIC_PRICE_ID: "", STRIPE_PREMIUM_PRICE_ID: "" }),
+      loadConfig({ ...validEnvironment, STRIPE_BASIC_PRICE_ID: "", STRIPE_SCALE_PRICE_ID: "" }),
     ),
-  ).toThrow(/STRIPE_BASIC_PRICE_ID.*STRIPE_PREMIUM_PRICE_ID/);
+  ).toThrow(/STRIPE_BASIC_PRICE_ID.*STRIPE_SCALE_PRICE_ID/);
 });
 
 it("requires a distinct Stripe price ID for each paid plan", () => {

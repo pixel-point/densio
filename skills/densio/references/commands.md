@@ -84,7 +84,7 @@ Idempotency keys are non-empty and at most 200 characters. Reuse a key only for 
 ```sh
 densio --json billing subscribe basic
 densio --json billing subscribe pro
-densio --json billing subscribe premium
+densio --json billing subscribe scale
 densio --json billing portal
 densio --json artifacts download 'SIGNED_URL' --output ./video.webm --sha256 HEX
 # Add --force only when replacing an existing destination is intentional.

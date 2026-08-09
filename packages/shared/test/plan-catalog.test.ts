@@ -5,11 +5,11 @@ import { PAID_PLANS, PLAN_CATALOG, PLAN_NAMES, PaidPlanSchema, PlanSchema } from
 
 describe("plan catalog", () => {
   it("defines the four monthly credit plans", () => {
-    expect(PLAN_NAMES).toEqual(["free", "basic", "pro", "premium"]);
+    expect(PLAN_NAMES).toEqual(["free", "basic", "pro", "scale"]);
     expect(PLAN_CATALOG).toEqual({
       basic: { maxUploadBytes: 10_000_000_000, monthlyCredits: 750, queuePriority: 10, rank: 1 },
       free: { maxUploadBytes: 1_000_000_000, monthlyCredits: 30, queuePriority: 0, rank: 0 },
-      premium: {
+      scale: {
         maxUploadBytes: 10_000_000_000,
         monthlyCredits: 7_500,
         queuePriority: 30,
@@ -29,7 +29,7 @@ describe("plan catalog", () => {
     const decodePaidPlan = Schema.decodeUnknownSync(PaidPlanSchema);
 
     expect(PLAN_NAMES.map((plan) => decodePlan(plan))).toEqual(PLAN_NAMES);
-    expect(PAID_PLANS.map((plan) => decodePaidPlan(plan))).toEqual(["basic", "pro", "premium"]);
+    expect(PAID_PLANS.map((plan) => decodePaidPlan(plan))).toEqual(["basic", "pro", "scale"]);
     expect(() => decodePaidPlan("free")).toThrow();
   });
 });

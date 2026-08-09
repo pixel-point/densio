@@ -28,12 +28,12 @@ request is evaluated by a shell.
 Plans use automatic monthly credits. Every plan supports VP9, H.265, and AV1,
 with the same 30-minute input-duration safety ceiling:
 
-| Plan    | Monthly credits | Maximum upload | Queue priority |
-| ------- | --------------: | -------------: | -------------- |
-| Free    |              30 |           1 GB | Standard       |
-| Basic   |             750 |          10 GB | Paid           |
-| Pro     |           5,000 |          10 GB | Paid           |
-| Premium |           7,500 |          10 GB | Paid           |
+| Plan  | Monthly credits | Maximum upload | Queue priority |
+| ----- | --------------: | -------------: | -------------- |
+| Free  |              30 |           1 GB | Standard       |
+| Basic |             750 |          10 GB | Paid           |
+| Pro   |           5,000 |          10 GB | Paid           |
+| Scale |           7,500 |          10 GB | Paid           |
 
 Each created media job reserves 0.05 credits automatically. After FFprobe
 inspects a compression source, the reservation is adjusted before FFmpeg starts:
@@ -201,9 +201,9 @@ justify changing them.
 
 ## Stripe subscriptions
 
-Create recurring Stripe Prices for Basic, Pro, and Premium, then set their IDs
+Create recurring Stripe Prices for Basic, Pro, and Scale, then set their IDs
 as `STRIPE_BASIC_PRICE_ID`, `STRIPE_PRO_PRICE_ID`, and
-`STRIPE_PREMIUM_PRICE_ID`. Configure the Customer Portal in Stripe, then
+`STRIPE_SCALE_PRICE_ID`. Configure the Customer Portal in Stripe, then
 register an HTTPS webhook at:
 
 ```text
@@ -229,7 +229,7 @@ stripe listen \
 
 Use the printed `whsec_...` only in the local `.env`. The CLI commands
 `billing subscribe basic`, `billing subscribe pro`,
-`billing subscribe premium`, and `billing portal` return hosted Stripe URLs;
+`billing subscribe scale`, and `billing portal` return hosted Stripe URLs;
 the API never handles card data. Stripe webhooks maintain the local subscription
 mirror. Creating or processing a media job reads that local state and never
 calls Stripe, so billing does not interrupt compression.

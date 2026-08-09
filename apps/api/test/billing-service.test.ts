@@ -24,7 +24,7 @@ const BILLING_CONFIG: BillingConfig = {
   portalReturnUrl: "https://app.example/settings/billing",
   priceIds: {
     basic: "price_basic",
-    premium: "price_premium",
+    scale: "price_scale",
     pro: "price_pro",
   },
   webhookSecret: "whsec_fixture",
@@ -72,14 +72,14 @@ it("builds subscription Checkout params for new and known Stripe customers", asy
     .values({ createdAt: NOW, customerId: "cus_existing", userId: "user-1" })
     .run();
   await Effect.runPromise(
-    service.createCheckout({ config: BILLING_CONFIG, plan: "premium", userId: "user-1" }),
+    service.createCheckout({ config: BILLING_CONFIG, plan: "scale", userId: "user-1" }),
   );
 
   expect(fixture.checkoutRequests[1]).toEqual({
     cancel_url: BILLING_CONFIG.checkoutCancelUrl,
     client_reference_id: "user-1",
     customer: "cus_existing",
-    line_items: [{ price: "price_premium", quantity: 1 }],
+    line_items: [{ price: "price_scale", quantity: 1 }],
     metadata: { userId: "user-1" },
     mode: "subscription",
     subscription_data: { metadata: { userId: "user-1" } },
@@ -139,7 +139,7 @@ it("processes subscription webhooks idempotently and supports update and delete"
   });
   expect(database.db.select().from(stripeSubscriptions).get()).toMatchObject({
     currentPeriodEnd: 1_900_000_000_000,
-    priceId: "price_premium",
+    priceId: "price_scale",
     status: "active",
   });
 
@@ -233,7 +233,7 @@ const subscriptionState = (status: "active" | "canceled" | "past_due") => ({
   cancelAtPeriodEnd: false,
   currentPeriodEnd: 1_900_000_000_000,
   customerId: "cus_agent",
-  priceId: "price_premium",
+  priceId: "price_scale",
   status,
   subscriptionId: "sub_agent",
   userId: "user-1",

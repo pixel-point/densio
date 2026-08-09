@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,6 +37,30 @@ describe("database", () => {
       expect.arrayContaining(["artifacts", "auth_challenges", "jobs", "sessions", "users"]),
     );
 
+    database.close();
+  });
+
+  it("rewrites persisted highest-tier job snapshots to scale", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "densio-scale-migration-"));
+    temporaryDirectories.push(directory);
+    const database = openDatabase(join(directory, "database.sqlite"));
+    const migrationUrl = new URL(
+      "../drizzle/20260809205000_scale-plan/migration.sql",
+      import.meta.url,
+    );
+    const migrationSql = existsSync(migrationUrl) ? readFileSync(migrationUrl, "utf8") : "";
+
+    database.sqlite.exec(
+      "create table jobs (id text primary key, plan text not null, queue_priority integer not null)",
+    );
+    database.sqlite
+      .prepare("insert into jobs (id, plan, queue_priority) values (?, ?, ?)")
+      .run("job-1", "retired-tier", 30);
+    database.sqlite.exec(migrationSql);
+
+    expect(database.sqlite.prepare("select plan from jobs where id = ?").get("job-1")).toEqual({
+      plan: "scale",
+    });
     database.close();
   });
 });

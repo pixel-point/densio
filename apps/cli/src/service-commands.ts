@@ -45,7 +45,7 @@ export const runBillingCommand = async (
   const validPortal = command === "portal" && plan === undefined;
   const validSubscription = command === "subscribe" && paidPlan !== undefined && extra.length === 0;
   if (!validPortal && !validSubscription) {
-    throw new CliUsageError("billing requires subscribe basic|pro|premium or portal.");
+    throw new CliUsageError("billing requires subscribe basic|pro|scale or portal.");
   }
   const headers = await authorizationHeaders(runtime);
   const path = command === "subscribe" ? "/v1/billing/checkout" : "/v1/billing/portal";

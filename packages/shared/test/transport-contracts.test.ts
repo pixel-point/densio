@@ -89,7 +89,7 @@ describe("billing responses", () => {
     const decode = Schema.decodeUnknownSync(CheckoutPlanRequestSchema);
 
     expect(decode({ plan: "basic" })).toEqual({ plan: "basic" });
-    expect(decode({ plan: "premium" })).toEqual({ plan: "premium" });
+    expect(decode({ plan: "scale" })).toEqual({ plan: "scale" });
     expect(() => decode({ plan: "free" })).toThrow();
   });
 });

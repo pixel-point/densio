@@ -56,7 +56,7 @@ const BILLING_CONFIG: BillingConfig = {
   portalReturnUrl: "https://app.example/settings/billing",
   priceIds: {
     basic: "price_basic",
-    premium: "price_premium",
+    scale: "price_scale",
     pro: "price_pro",
   },
   webhookSecret: "whsec_route_fixture",
@@ -279,7 +279,7 @@ it("verifies the raw Stripe webhook body and exposes Stripe billing status", asy
           cancelAtPeriodEnd: false,
           currentPeriodEnd: 1_900_000_000_000,
           customerId: "cus_agent",
-          priceId: "price_premium",
+          priceId: "price_scale",
           status: "active" as const,
           subscriptionId: "sub_agent",
           userId: null,
@@ -321,7 +321,7 @@ it("verifies the raw Stripe webhook body and exposes Stripe billing status", asy
       used: 0,
     },
     entitlementSource: "stripe",
-    plan: "premium",
+    plan: "scale",
     renewsAt: "2030-03-17T17:46:40.000Z",
     subscriptionStatus: "active",
   });
@@ -482,7 +482,7 @@ const subscriptionEventFixture = (userId: string) => ({
         data: [
           {
             current_period_end: 1_900_000_000,
-            price: { id: "price_premium" },
+            price: { id: "price_scale" },
           },
         ],
       },

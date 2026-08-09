@@ -19,7 +19,7 @@ import {
 const NOW = 1_800_000_000_000;
 const PRICE_IDS = {
   basic: "price_basic",
-  premium: "price_premium",
+  scale: "price_scale",
   pro: "price_pro",
 } as const;
 const databases: Array<Database> = [];
@@ -98,11 +98,11 @@ it("reports whether Pro access comes from Stripe, admin, both, or neither", asyn
   insertActiveSubscription(database);
   await expect(
     Effect.runPromise(service.getEntitlement({ now: NOW, priceIds: PRICE_IDS, userId: "user-1" })),
-  ).resolves.toMatchObject({ entitlements: { plan: "premium" }, source: "both" });
+  ).resolves.toMatchObject({ entitlements: { plan: "scale" }, source: "both" });
   await Effect.runPromise(service.revokePro({ now: NOW + 1, userId: "user-1" }));
   await expect(
     Effect.runPromise(service.getEntitlement({ now: NOW, priceIds: PRICE_IDS, userId: "user-1" })),
-  ).resolves.toMatchObject({ entitlements: { plan: "premium" }, source: "stripe" });
+  ).resolves.toMatchObject({ entitlements: { plan: "scale" }, source: "stripe" });
 
   database.db
     .update(stripeSubscriptions)
@@ -122,7 +122,7 @@ it("selects the highest active Stripe plan when several subscriptions exist", as
   database.db
     .insert(stripeSubscriptions)
     .values([
-      subscriptionValue("sub-premium", "price_premium", "active", NOW),
+      subscriptionValue("sub-scale", "price_scale", "active", NOW),
       subscriptionValue("sub-basic", "price_basic", "active", NOW + 1),
       subscriptionValue("sub-canceled", "price_pro", "canceled", NOW + 2),
     ])
@@ -132,7 +132,7 @@ it("selects the highest active Stripe plan when several subscriptions exist", as
   await expect(
     Effect.runPromise(service.getEntitlement({ now: NOW, priceIds: PRICE_IDS, userId: "user-1" })),
   ).resolves.toMatchObject({
-    entitlements: { plan: "premium" },
+    entitlements: { plan: "scale" },
     source: "stripe",
     subscriptionStatus: "active",
   });
@@ -209,7 +209,7 @@ const insertActiveSubscription = (database: Database) => {
     .values({
       cancelAtPeriodEnd: false,
       customerId: "cus_agent",
-      priceId: "price_premium",
+      priceId: "price_scale",
       status: "active",
       subscriptionId: "sub_agent",
       updatedAt: NOW,

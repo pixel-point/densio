@@ -13,7 +13,7 @@ describe("configuration", () => {
       },
       audioSilenceThresholdDb: -50,
       billing: {
-        priceIds: { basic: "", premium: "", pro: "" },
+        priceIds: { basic: "", scale: "", pro: "" },
       },
       databasePath: "./data/database.sqlite",
       email: { maxAttempts: 5, pollIntervalMs: 1_000 },

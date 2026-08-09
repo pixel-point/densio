@@ -28,13 +28,13 @@ const planEntitlements = (plan: Plan): Entitlements =>
 export const FREE_ENTITLEMENTS = planEntitlements("free");
 export const BASIC_ENTITLEMENTS = planEntitlements("basic");
 export const PRO_ENTITLEMENTS = planEntitlements("pro");
-export const PREMIUM_ENTITLEMENTS = planEntitlements("premium");
+export const SCALE_ENTITLEMENTS = planEntitlements("scale");
 
 export const PLAN_ENTITLEMENTS = Object.freeze({
   basic: BASIC_ENTITLEMENTS,
   free: FREE_ENTITLEMENTS,
-  premium: PREMIUM_ENTITLEMENTS,
   pro: PRO_ENTITLEMENTS,
+  scale: SCALE_ENTITLEMENTS,
 });
 
 export interface EntitlementSource {

@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   BASIC_ENTITLEMENTS,
   FREE_ENTITLEMENTS,
-  PREMIUM_ENTITLEMENTS,
   PRO_ENTITLEMENTS,
+  SCALE_ENTITLEMENTS,
   resolveEntitlements,
 } from "../src/auth/entitlements.ts";
 
@@ -39,7 +39,7 @@ describe("resolveEntitlements", () => {
     expect(
       resolveEntitlements({
         adminGrant: false,
-        stripePlan: "premium",
+        stripePlan: "scale",
         stripeSubscriptionStatus,
       }),
     ).toEqual(FREE_ENTITLEMENTS);
@@ -49,20 +49,20 @@ describe("resolveEntitlements", () => {
     expect(
       resolveEntitlements({
         adminGrant: true,
-        stripePlan: "premium",
+        stripePlan: "scale",
         stripeSubscriptionStatus: "canceled",
       }),
     ).toEqual(PRO_ENTITLEMENTS);
   });
 
-  it("keeps Stripe Pro access when no admin grant exists", () => {
+  it("keeps Stripe Scale access when no admin grant exists", () => {
     const entitlements = resolveEntitlements({
       adminGrant: false,
-      stripePlan: "premium",
+      stripePlan: "scale",
       stripeSubscriptionStatus: "active",
     });
 
-    expect(entitlements).toEqual(PREMIUM_ENTITLEMENTS);
+    expect(entitlements).toEqual(SCALE_ENTITLEMENTS);
     expect(entitlements.maxVideoDurationSeconds).toBe(1_800);
     expect(entitlements.allowedCodecs).toContain("av1");
   });
@@ -72,6 +72,6 @@ describe("resolveEntitlements", () => {
     expect(FREE_ENTITLEMENTS.allowedCodecs).toContain("av1");
     expect(BASIC_ENTITLEMENTS.allowedCodecs).toEqual(FREE_ENTITLEMENTS.allowedCodecs);
     expect(PRO_ENTITLEMENTS.allowedCodecs).toEqual(FREE_ENTITLEMENTS.allowedCodecs);
-    expect(PREMIUM_ENTITLEMENTS.allowedCodecs).toEqual(FREE_ENTITLEMENTS.allowedCodecs);
+    expect(SCALE_ENTITLEMENTS.allowedCodecs).toEqual(FREE_ENTITLEMENTS.allowedCodecs);
   });
 });

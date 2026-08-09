@@ -164,7 +164,7 @@ export const jobs = sqliteTable(
         "expired",
       ],
     }).notNull(),
-    plan: text("plan", { enum: ["free", "basic", "pro", "premium"] }).notNull(),
+    plan: text("plan", { enum: ["free", "basic", "pro", "scale"] }).notNull(),
     queuePriority: integer("queue_priority").notNull().default(0),
     sourceFilename: text("source_filename").notNull(),
     declaredBytes: integer("declared_bytes").notNull(),
