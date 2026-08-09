@@ -15,6 +15,7 @@ Commands:
 
 Agent behavior:
   --json emits one success document on stdout; problems use stderr.
+  Waiting media commands report the resumable job ID on stderr immediately.
   Media commands wait by default. Use --no-wait for a resumable job ID.
 
 Global options:
