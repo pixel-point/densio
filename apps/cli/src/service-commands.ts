@@ -3,7 +3,7 @@ import {
   CapabilitiesSchema,
   PAID_PLANS,
   successEnvelope,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Schema } from "effect";
 
 import { authorizationHeaders } from "./authentication.ts";

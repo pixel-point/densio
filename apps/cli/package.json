@@ -1,20 +1,46 @@
 {
-  "name": "@ffmpeg-api/cli",
+  "name": "densio",
   "version": "0.1.0",
-  "private": true,
-  "bin": {
-    "ffmpeg-api": "dist/index.js"
+  "description": "Agent-first video optimization through the Densio API",
+  "keywords": [
+    "cli",
+    "compression",
+    "ffmpeg",
+    "video"
+  ],
+  "homepage": "https://github.com/pixel-point/densio#readme",
+  "bugs": {
+    "url": "https://github.com/pixel-point/densio/issues"
   },
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pixel-point/densio.git",
+    "directory": "apps/cli"
+  },
+  "bin": {
+    "densio": "dist/index.js"
+  },
+  "files": [
+    "dist/index.js"
+  ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --banner:js=\"#!/usr/bin/env node\" --outfile=dist/index.js",
+    "prepack": "pnpm build",
     "start": "tsx src/index.ts",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit --project tsconfig.json --pretty false"
   },
-  "dependencies": {
+  "devDependencies": {
+    "@densio/shared": "workspace:*",
     "@effect/platform-node": "4.0.0-beta.93",
-    "@ffmpeg-api/shared": "workspace:*",
     "effect": "4.0.0-beta.93"
+  },
+  "engines": {
+    "node": ">=22.18"
   }
 }

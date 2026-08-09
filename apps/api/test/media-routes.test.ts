@@ -12,7 +12,7 @@ import {
   type Capabilities,
   type Plan,
   successEnvelope,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Effect, Schema } from "effect";
 import { Hono } from "hono";
 import { afterEach, expect, it } from "vitest";
@@ -238,7 +238,7 @@ interface Harness {
 }
 
 const createHarness = async (): Promise<Harness> => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-media-routes-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-media-routes-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);

@@ -1,11 +1,11 @@
-import type { ImageFormat } from "@ffmpeg-api/shared";
+import type { ImageFormat } from "@densio/shared";
 
 import { assertCommandPath, createCommandPlan } from "./command-plan.ts";
 import { formatNumber } from "./compression-plan.ts";
 import { MediaPlanError } from "./media-plan-error.ts";
 import { buildVideoFilters, type TransformOptions, type VideoDimensions } from "./video-filter.ts";
 
-export type { ImageFormat } from "@ffmpeg-api/shared";
+export type { ImageFormat } from "@densio/shared";
 
 export interface ImageExtractionPlanOptions {
   readonly executable?: string;

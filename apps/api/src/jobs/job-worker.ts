@@ -1,4 +1,4 @@
-import { PLAN_CATALOG } from "@ffmpeg-api/shared";
+import { PLAN_CATALOG } from "@densio/shared";
 import { Clock, Context, Deferred, Effect, Fiber, Ref, Schema, type Scope } from "effect";
 
 import { creditsFromUnits, monthlyCreditUnits } from "../billing/credit-units.ts";
@@ -42,12 +42,12 @@ export class JobProcessor extends Context.Service<
     analyze(job: Job): Effect.Effect<JobAnalysis, JobProcessorError>;
     process(job: Job, analysis: Schema.Json): Effect.Effect<Schema.Json, JobProcessorError>;
   }
->()("ffmpeg-api/jobs/JobProcessor") {}
+>()("densio/jobs/JobProcessor") {}
 
 export class JobCleanup extends Context.Service<
   JobCleanup,
   { cleanup(job: Job): Effect.Effect<void> }
->()("ffmpeg-api/jobs/JobCleanup") {}
+>()("densio/jobs/JobCleanup") {}
 
 export interface JobWorkerOptions {
   readonly concurrency: number;

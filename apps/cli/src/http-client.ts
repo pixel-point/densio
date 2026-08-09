@@ -1,4 +1,4 @@
-import { ProblemDetailsSchema } from "@ffmpeg-api/shared";
+import { ProblemDetailsSchema } from "@densio/shared";
 import { Effect, Schema } from "effect";
 
 import { CliProblemError, invalidResponseError, networkError } from "./cli-errors.ts";

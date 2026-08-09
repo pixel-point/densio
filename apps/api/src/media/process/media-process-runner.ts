@@ -44,7 +44,7 @@ export class MediaProcessRunner extends Context.Service<
   {
     run(command: MediaProcessCommand): Effect.Effect<MediaProcessResult, MediaProcessError>;
   }
->()("ffmpeg-api/media/MediaProcessRunner") {
+>()("densio/media/MediaProcessRunner") {
   static readonly layer = (options: MediaProcessRunnerOptions) =>
     Layer.effect(
       MediaProcessRunner,

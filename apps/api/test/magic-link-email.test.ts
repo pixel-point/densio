@@ -10,7 +10,7 @@ describe("renderMagicLinkEmail", () => {
       verificationUrl,
     });
 
-    expect(email.subject).toBe("Confirm your ffmpeg-api CLI login");
+    expect(email.subject).toBe("Confirm your Densio CLI login");
     expect(email.text).toContain(verificationUrl);
     expect(email.text).toContain("15 minutes");
     expect(email.html).toContain(`href="${verificationUrl}"`);

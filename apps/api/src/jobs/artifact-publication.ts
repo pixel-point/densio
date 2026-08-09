@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ArtifactMetadata } from "@ffmpeg-api/shared";
+import type { ArtifactMetadata } from "@densio/shared";
 import { Clock, Effect, Schema } from "effect";
 
 import type { Database } from "../database/database.ts";

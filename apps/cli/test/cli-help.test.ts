@@ -12,6 +12,9 @@ describe("CLI help", () => {
     const exitCode = await runCli(["--help"], capture.dependencies);
 
     expect(exitCode).toBe(0);
+    expect(capture.stdout()).toContain("densio — agent-first video processing");
+    expect(capture.stdout()).toContain("DENSIO_API_URL");
+    expect(capture.stdout()).not.toContain(["ffmpeg", "api"].join("-"));
     expect(capture.stdout()).toContain("auth login|status|logout");
     expect(capture.stdout()).toContain("compress <video>");
     expect(capture.stdout()).toContain("extract-images <video>");
@@ -64,7 +67,7 @@ describe("CLI help", () => {
 
     const exitCode = await runCli(["--json", "capabilities"], {
       ...capture.dependencies,
-      environment: { FFMPEG_API_URL: "file:///tmp/api" },
+      environment: { DENSIO_API_URL: "file:///tmp/api" },
     });
 
     expect(exitCode).toBe(2);

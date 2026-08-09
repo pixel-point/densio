@@ -72,7 +72,7 @@ it("serves readiness without exposing internal failure details", async () => {
 });
 
 const createTestDatabase = async () => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-readiness-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-readiness-"));
   temporaryDirectories.push(root);
   const database = openDatabase(join(root, "database.sqlite"));
   databases.push(database);

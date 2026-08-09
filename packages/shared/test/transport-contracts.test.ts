@@ -110,7 +110,7 @@ describe("transport envelopes", () => {
 
   it("accepts RFC 9457 problem details with stable recovery metadata", () => {
     const problem = {
-      type: "https://ffmpeg-api.example/problems/credits-exhausted",
+      type: "https://densio.example/problems/credits-exhausted",
       title: "Credits exhausted",
       status: 402,
       detail: "All 30 monthly credits are used or reserved.",

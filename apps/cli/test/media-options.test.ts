@@ -108,7 +108,7 @@ describe("media option commands", () => {
     });
     expect(JSON.parse(capture.stdout()).data).toMatchObject({
       jobId: "job-resume",
-      resumeCommand: "ffmpeg-api jobs wait job-resume",
+      resumeCommand: "densio jobs wait job-resume",
     });
   });
 });

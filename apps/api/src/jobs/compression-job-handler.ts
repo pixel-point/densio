@@ -2,7 +2,7 @@ import {
   CompressionOptionsSchema,
   DEFAULT_COMPRESSION_CODECS,
   type CompressionOptions,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Effect, Schema } from "effect";
 
 import { compressionCreditUnits } from "../billing/compression-credit-cost.ts";

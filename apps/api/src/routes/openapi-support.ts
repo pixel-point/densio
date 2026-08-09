@@ -1,4 +1,4 @@
-import { ProblemDetailsSchema, successEnvelope } from "@ffmpeg-api/shared";
+import { ProblemDetailsSchema, successEnvelope } from "@densio/shared";
 import { Schema } from "effect";
 import type { OpenAPIV3_1 } from "openapi-types";
 

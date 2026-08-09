@@ -1,11 +1,11 @@
-import { MEDIA_CODEC_POLICY, type AudioMode, type MediaCodec } from "@ffmpeg-api/shared";
+import { MEDIA_CODEC_POLICY, type AudioMode, type MediaCodec } from "@densio/shared";
 
 import { assertCommandPath, createCommandPlan } from "./command-plan.ts";
 import { MEDIA_CODEC_EXECUTION_POLICY } from "./codec-execution-policy.ts";
 import { MediaPlanError } from "./media-plan-error.ts";
 import { buildVideoFilters, type TransformOptions, type VideoDimensions } from "./video-filter.ts";
 
-export type { AudioMode, MediaCodec } from "@ffmpeg-api/shared";
+export type { AudioMode, MediaCodec } from "@densio/shared";
 export type AudioAnalysis = "absent" | "silent" | "audible";
 
 interface SegmentOptions {

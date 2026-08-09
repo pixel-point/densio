@@ -1,4 +1,4 @@
-import type { MediaCodec } from "@ffmpeg-api/shared";
+import type { MediaCodec } from "@densio/shared";
 
 interface CodecExecutionPolicy {
   readonly audioEncoder: "aac" | "libopus";

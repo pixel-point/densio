@@ -1,11 +1,6 @@
 import { stat } from "node:fs/promises";
 
-import type {
-  AudioMode,
-  ComparisonPosition,
-  MediaCodec,
-  TransformOptions,
-} from "@ffmpeg-api/shared";
+import type { AudioMode, ComparisonPosition, MediaCodec, TransformOptions } from "@densio/shared";
 import { Effect, Schema } from "effect";
 
 import type { JobStoragePaths } from "../../storage/workspace.ts";

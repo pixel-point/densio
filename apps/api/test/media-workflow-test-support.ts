@@ -15,7 +15,7 @@ const fixtureSource = fileURLToPath(
 export const temporaryWorkflowRoots: Array<string> = [];
 
 export const makeWorkflowTestContext = async (mode: string) => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-workflow-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-workflow-"));
   temporaryWorkflowRoots.push(root);
   const executable = join(root, mode);
   await copyFile(fixtureSource, executable);

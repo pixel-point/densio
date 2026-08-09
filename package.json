@@ -1,5 +1,5 @@
 {
-  "name": "ffmpeg-api",
+  "name": "@densio/workspace",
   "version": "0.1.0",
   "private": true,
   "workspaces": [
@@ -10,7 +10,7 @@
   "scripts": {
     "build": "turbo run build",
     "check": "turbo run typecheck test && pnpm lint && pnpm format:check",
-    "dev": "turbo run dev --filter=@ffmpeg-api/api",
+    "dev": "turbo run dev --filter=@densio/api",
     "format": "oxfmt --disable-nested-config --write .",
     "format:check": "oxfmt --check --disable-nested-config .",
     "lint": "oxlint --disable-nested-config .",

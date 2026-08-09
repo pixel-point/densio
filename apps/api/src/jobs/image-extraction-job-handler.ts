@@ -1,4 +1,4 @@
-import { ExtractImagesOptionsSchema, type ExtractImagesOptions } from "@ffmpeg-api/shared";
+import { ExtractImagesOptionsSchema, type ExtractImagesOptions } from "@densio/shared";
 import { Effect, Schema } from "effect";
 
 import { validateMediaEntitlements } from "../media/inspection/media-entitlement-check.ts";

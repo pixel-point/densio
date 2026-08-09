@@ -68,7 +68,7 @@ it("renders and sends a magic link before marking the email sent", async () => {
   expect(deliveries).toEqual([
     expect.objectContaining({
       from: "Media API <login@example.com>",
-      subject: "Confirm your ffmpeg-api CLI login",
+      subject: "Confirm your Densio CLI login",
       to: "agent@example.com",
     }),
   ]);
@@ -135,7 +135,7 @@ const workerConfig = {
 };
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-email-outbox-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-email-outbox-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);

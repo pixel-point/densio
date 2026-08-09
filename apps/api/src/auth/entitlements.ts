@@ -4,7 +4,7 @@ import {
   type MediaCodec,
   type Plan,
   type SubscriptionStatus,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 
 export type StripeSubscriptionStatus = SubscriptionStatus;
 

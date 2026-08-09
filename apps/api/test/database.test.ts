@@ -18,7 +18,7 @@ afterEach(async () => {
 
 describe("database", () => {
   it("opens a migrated SQLite database with production safety pragmas", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-database-"));
+    const directory = await mkdtemp(join(tmpdir(), "densio-database-"));
     temporaryDirectories.push(directory);
 
     const database = openDatabase(join(directory, "database.sqlite"));

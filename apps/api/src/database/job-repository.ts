@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { PLAN_CATALOG } from "@ffmpeg-api/shared";
+import { PLAN_CATALOG } from "@densio/shared";
 
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 

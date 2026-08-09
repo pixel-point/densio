@@ -6,7 +6,7 @@ import { join } from "node:path";
 export const temporaryCliDirectories: Array<string> = [];
 
 export const makeCliCapture = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-cli-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-cli-"));
   temporaryCliDirectories.push(directory);
   const stdout: Array<string> = [];
   const stderr: Array<string> = [];

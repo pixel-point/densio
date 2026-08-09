@@ -1,6 +1,6 @@
 import { Context, Effect } from "effect";
 import type Stripe from "stripe";
-import type { PaidPlan } from "@ffmpeg-api/shared";
+import type { PaidPlan } from "@densio/shared";
 
 import type { Database } from "../database/database.ts";
 import {
@@ -75,7 +75,7 @@ export interface BillingServiceDefinition {
 }
 
 export class BillingService extends Context.Service<BillingService, BillingServiceDefinition>()(
-  "ffmpeg-api/billing/BillingService",
+  "densio/billing/BillingService",
 ) {}
 
 type StripeGatewayService = StripeGateway["Service"];

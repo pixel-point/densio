@@ -59,7 +59,7 @@ it("returns agent-readable errors for invalid usage and missing accounts", async
 });
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-admin-command-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-admin-command-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);

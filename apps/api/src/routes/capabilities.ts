@@ -1,9 +1,4 @@
-import {
-  CapabilitiesSchema,
-  type Capabilities,
-  type Plan,
-  successEnvelope,
-} from "@ffmpeg-api/shared";
+import { CapabilitiesSchema, type Capabilities, type Plan, successEnvelope } from "@densio/shared";
 import { Effect, Schema } from "effect";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";

@@ -7,7 +7,7 @@ import {
   type JobStatus,
   type JobWorkflow,
   type Plan,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Effect, Predicate, Schema } from "effect";
 
 import type { Database } from "../database/database.ts";

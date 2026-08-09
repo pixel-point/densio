@@ -91,7 +91,7 @@ export interface AuthServiceDefinition {
 }
 
 export class AuthService extends Context.Service<AuthService, AuthServiceDefinition>()(
-  "ffmpeg-api/auth/AuthService",
+  "densio/auth/AuthService",
 ) {}
 
 export const makeAuthService = (database: Database, sealMagicLink: MagicLinkSealer) => {

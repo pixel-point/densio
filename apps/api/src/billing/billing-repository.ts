@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { PAID_PLANS, PLAN_CATALOG, type PaidPlan } from "@ffmpeg-api/shared";
+import { PAID_PLANS, PLAN_CATALOG, type PaidPlan } from "@densio/shared";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 import { creditsFromUnits, monthlyCreditUnits } from "./credit-units.ts";

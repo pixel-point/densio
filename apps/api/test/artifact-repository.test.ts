@@ -116,7 +116,7 @@ it("refuses cleanup paths outside the configured media root and leaves them retr
 });
 
 const createTestContext = async () => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-artifacts-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-artifacts-"));
   temporaryDirectories.push(root);
   const database = openDatabase(join(root, "database.sqlite"));
   databases.push(database);

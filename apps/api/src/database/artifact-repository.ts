@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
-import type { ArtifactKind } from "@ffmpeg-api/shared";
+import type { ArtifactKind } from "@densio/shared";
 import { and, asc, eq, isNull, lte } from "drizzle-orm";
 import { Effect, Schema } from "effect";
 

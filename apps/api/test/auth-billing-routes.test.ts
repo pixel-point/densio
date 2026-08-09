@@ -12,7 +12,7 @@ import {
   LogoutResponseSchema,
   ProblemDetailsSchema,
   successEnvelope,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Effect, Schema } from "effect";
 import { Hono } from "hono";
 import Stripe from "stripe";
@@ -424,7 +424,7 @@ const readConfirmationUrl = (database: Database) => {
 };
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-route-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-route-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);

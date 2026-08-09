@@ -1,6 +1,6 @@
 import { rm } from "node:fs/promises";
 
-import type { JobWorkflow } from "@ffmpeg-api/shared";
+import type { JobWorkflow } from "@densio/shared";
 import { eq } from "drizzle-orm";
 import { Effect, Exit } from "effect";
 

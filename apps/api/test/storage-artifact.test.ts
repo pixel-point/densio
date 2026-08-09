@@ -24,7 +24,7 @@ import {
 const temporaryRoots: Array<string> = [];
 
 const makePaths = async () => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-artifact-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-artifact-"));
   temporaryRoots.push(root);
   const paths = await Effect.runPromise(makeJobStoragePaths(root, "job-artifact"));
   await Effect.runPromise(prepareJobWorkspace(paths, { includeArtifactDirectory: true }));

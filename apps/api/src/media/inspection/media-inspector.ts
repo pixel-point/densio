@@ -38,7 +38,7 @@ export class MediaInspector extends Context.Service<
       audioStreamIndexes: ReadonlyArray<number>,
     ): Effect.Effect<AudioClassification, InspectorError>;
   }
->()("ffmpeg-api/media/MediaInspector") {
+>()("densio/media/MediaInspector") {
   static readonly layer = (options: MediaInspectorOptions = {}) =>
     Layer.effect(
       MediaInspector,

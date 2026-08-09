@@ -36,7 +36,7 @@ it("retries terminal workspace deletion while preserving queued inputs", async (
 });
 
 const createTestContext = async () => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-terminal-cleanup-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-terminal-cleanup-"));
   temporaryDirectories.push(root);
   const database = openDatabase(join(root, "database.sqlite"));
   databases.push(database);

@@ -43,7 +43,7 @@ it("cleans expired artifacts at startup and stops promptly", async () => {
 });
 
 const createTestContext = async () => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-artifact-supervisor-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-artifact-supervisor-"));
   temporaryDirectories.push(root);
   const database = openDatabase(join(root, "database.sqlite"));
   databases.push(database);

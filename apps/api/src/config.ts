@@ -67,7 +67,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv) => {
     authRefreshTtlSeconds: environment.AUTH_REFRESH_TTL_SECONDS ?? "2592000",
     billingSessionTtlSeconds: environment.BILLING_SESSION_TTL_SECONDS ?? "1800",
     databasePath: environment.DATABASE_PATH ?? "./data/database.sqlite",
-    emailFrom: environment.EMAIL_FROM ?? "FFmpeg API <login@example.com>",
+    emailFrom: environment.EMAIL_FROM ?? "Densio <login@example.com>",
     emailLeaseSeconds: environment.EMAIL_LEASE_SECONDS ?? "30",
     emailMaxAttempts: environment.EMAIL_MAX_ATTEMPTS ?? "5",
     emailPollIntervalMs: environment.EMAIL_POLL_INTERVAL_MS ?? "1000",
@@ -94,7 +94,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv) => {
     stripeSecretKey: environment.STRIPE_SECRET_KEY ?? "",
     stripeWebhookSecret: environment.STRIPE_WEBHOOK_SECRET ?? "",
     uploadTtlSeconds: environment.UPLOAD_TTL_SECONDS ?? "3600",
-    workerId: environment.WORKER_ID ?? "ffmpeg-api-worker",
+    workerId: environment.WORKER_ID ?? "densio-worker",
   });
   if (config.jobHeartbeatSeconds >= config.jobLeaseSeconds) {
     throw new Error("JOB_HEARTBEAT_SECONDS must be less than JOB_LEASE_SECONDS");

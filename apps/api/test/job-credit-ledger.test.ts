@@ -261,7 +261,7 @@ it("retains a reservation across retry and releases it when attempts are exhaust
 });
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-credit-ledger-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-credit-ledger-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "test.sqlite"));
   migrateDatabase(database);

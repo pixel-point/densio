@@ -1,11 +1,11 @@
-name: ffmpeg-api
+name: densio
 
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ffmpeg-api:${IMAGE_TAG:-local}
+    image: densio:${IMAGE_TAG:-local}
     init: true
     restart: unless-stopped
     env_file:

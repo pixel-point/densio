@@ -10,7 +10,7 @@ import {
   type JobWorkflow,
   type QualityComparisonJobRequest,
   successEnvelope,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Effect, Schema } from "effect";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";

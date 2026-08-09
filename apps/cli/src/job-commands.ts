@@ -1,4 +1,4 @@
-import { JobStatusSchema, successEnvelope, type ProblemDetails } from "@ffmpeg-api/shared";
+import { JobStatusSchema, successEnvelope, type ProblemDetails } from "@densio/shared";
 import { Schema } from "effect";
 
 import { authorizationHeaders } from "./authentication.ts";
@@ -94,7 +94,7 @@ const timeoutProblem = (jobId: string): ProblemDetails => ({
   retryable: true,
   schemaVersion: 1,
   status: 504,
-  suggestedAction: `Resume with ffmpeg-api jobs wait ${jobId}.`,
+  suggestedAction: `Resume with densio jobs wait ${jobId}.`,
   title: "Wait timed out",
   type: "about:blank",
 });

@@ -1,4 +1,4 @@
-import type { ProblemDetails } from "@ffmpeg-api/shared";
+import type { ProblemDetails } from "@densio/shared";
 
 import { CLI_EXIT_CODES, exitCodeForProblem } from "./output.ts";
 
@@ -34,7 +34,7 @@ export class CliProblemError extends Error {
 export class CliUsageError extends CliProblemError {
   constructor(detail: string) {
     super(
-      localProblem("CLI_USAGE_ERROR", detail, "Run ffmpeg-api --help for command usage.", 400),
+      localProblem("CLI_USAGE_ERROR", detail, "Run densio --help for command usage.", 400),
       CLI_EXIT_CODES.usage,
     );
     this.name = "CliUsageError";
@@ -67,7 +67,7 @@ export const authenticationRequiredError = () =>
     localProblem(
       "AUTH_REQUIRED",
       "No CLI credentials are available.",
-      "Run ffmpeg-api auth login, then retry the command.",
+      "Run densio auth login, then retry the command.",
       401,
     ),
   );
@@ -77,7 +77,7 @@ export const credentialLockTimeoutError = () =>
     localProblem(
       "CLI_CREDENTIAL_LOCK_TIMEOUT",
       "Another CLI process is updating the credentials file.",
-      "Retry after the other ffmpeg-api command finishes.",
+      "Retry after the other densio command finishes.",
       503,
     ),
     CLI_EXIT_CODES.network,
@@ -88,7 +88,7 @@ export const loginInterruptedError = () =>
     localProblem(
       "CLI_INTERRUPTED",
       "Stopped waiting for email confirmation.",
-      "Run ffmpeg-api auth login again when ready.",
+      "Run densio auth login again when ready.",
       499,
     ),
     CLI_EXIT_CODES.interrupted,
@@ -99,7 +99,7 @@ export const authChallengeExpiredError = () =>
     localProblem(
       "AUTH_CHALLENGE_EXPIRED",
       "The email confirmation window expired.",
-      "Run ffmpeg-api auth login again to request a new link.",
+      "Run densio auth login again to request a new link.",
       410,
     ),
   );

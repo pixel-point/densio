@@ -41,12 +41,12 @@ importers:
 
   apps/api:
     dependencies:
+      '@densio/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@effect/platform-node':
         specifier: 4.0.0-beta.93
         version: 4.0.0-beta.93(effect@4.0.0-beta.93)(ioredis@5.11.1)
-      '@ffmpeg-api/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@hono/node-server':
         specifier: ^1.19.6
         version: 1.19.14(hono@4.12.27)
@@ -82,13 +82,13 @@ importers:
         version: 22.3.1(@types/node@25.9.4)
 
   apps/cli:
-    dependencies:
+    devDependencies:
+      '@densio/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@effect/platform-node':
         specifier: 4.0.0-beta.93
         version: 4.0.0-beta.93(effect@4.0.0-beta.93)(ioredis@5.11.1)
-      '@ffmpeg-api/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       effect:
         specifier: 4.0.0-beta.93
         version: 4.0.0-beta.93

@@ -17,7 +17,7 @@ describe("problem details", () => {
       detail: "Authenticate before submitting a job.",
       retryable: false,
       status: 401,
-      suggestedAction: "Run ffmpeg-api auth login.",
+      suggestedAction: "Run densio auth login.",
       title: "Authentication required",
     });
 
@@ -28,7 +28,7 @@ describe("problem details", () => {
       retryable: false,
       schemaVersion: 1,
       status: 401,
-      suggestedAction: "Run ffmpeg-api auth login.",
+      suggestedAction: "Run densio auth login.",
       title: "Authentication required",
       type: "about:blank",
     });
@@ -52,7 +52,7 @@ describe("problem details", () => {
       makeDescriptorProblem(descriptor, {
         detail: "Authenticate before submitting a job.",
         retryable: false,
-        suggestedAction: "Run ffmpeg-api auth login.",
+        suggestedAction: "Run densio auth login.",
       }),
     ).toMatchObject({ code: "AUTH_REQUIRED", status: 401, title: "Authentication required" });
     expect(descriptor.description).toBe("A valid bearer token is required.");

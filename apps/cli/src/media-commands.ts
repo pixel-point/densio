@@ -11,7 +11,7 @@ import {
   successEnvelope,
   type JobCreatedResponse,
   type SuccessEnvelope,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Schema } from "effect";
 
 import { authorizationHeaders } from "./authentication.ts";
@@ -108,7 +108,7 @@ const resumeEnvelope = (response: SuccessEnvelope<JobCreatedResponse>) => ({
   correlationId: response.correlationId,
   data: {
     jobId: response.data.jobId,
-    resumeCommand: `ffmpeg-api jobs wait ${response.data.jobId}`,
+    resumeCommand: `densio jobs wait ${response.data.jobId}`,
     statusUrl: response.data.statusUrl,
   },
   ok: true as const,

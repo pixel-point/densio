@@ -409,7 +409,7 @@ it("cancels only worker-owned active work and closes its attempt", async () => {
 });
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-repository-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-repository-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   migrateDatabase(database);

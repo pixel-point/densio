@@ -4,7 +4,7 @@ import {
   PLAN_CATALOG,
   type Capabilities,
   type Plan,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 
 import type { AppConfig } from "./config.ts";
 import type { MediaCapabilities } from "./media/inspection/media-capabilities.ts";

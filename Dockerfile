@@ -22,7 +22,7 @@ COPY apps/api/src apps/api/src
 COPY apps/api/drizzle apps/api/drizzle
 COPY packages/shared/src packages/shared/src
 
-RUN pnpm --filter @ffmpeg-api/api build
+RUN pnpm --filter @densio/api build
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 

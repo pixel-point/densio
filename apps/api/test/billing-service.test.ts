@@ -174,7 +174,7 @@ it("synchronizes current Stripe state when subscription webhooks arrive out of o
 });
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-billing-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-billing-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);

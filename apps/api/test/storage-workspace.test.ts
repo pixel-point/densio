@@ -18,7 +18,7 @@ import {
 const temporaryRoots: Array<string> = [];
 
 const makeTemporaryRoot = async () => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-storage-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-storage-"));
   temporaryRoots.push(root);
   return root;
 };

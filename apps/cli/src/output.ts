@@ -1,4 +1,4 @@
-import type { SuccessEnvelope } from "@ffmpeg-api/shared";
+import type { SuccessEnvelope } from "@densio/shared";
 
 export const CLI_EXIT_CODES = {
   success: 0,

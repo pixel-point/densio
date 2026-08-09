@@ -3,7 +3,7 @@ import {
   type AudioMode,
   type MediaCodec,
   type TransformOptions,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Effect } from "effect";
 
 import { buildCompressionPlan, type AudioAnalysis } from "../compression-plan.ts";

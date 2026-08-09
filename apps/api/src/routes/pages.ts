@@ -3,7 +3,7 @@ import { Hono } from "hono";
 export const pageRoutes = new Hono();
 
 pageRoutes.get("/billing/success", (context) =>
-  context.html(page("Checkout completed", "Return to the ffmpeg-api CLI and check capabilities.")),
+  context.html(page("Checkout completed", "Return to the Densio CLI and check capabilities.")),
 );
 
 pageRoutes.get("/billing/canceled", (context) =>
@@ -11,7 +11,7 @@ pageRoutes.get("/billing/canceled", (context) =>
 );
 
 pageRoutes.get("/billing", (context) =>
-  context.html(page("Billing session complete", "You can return to the ffmpeg-api CLI.")),
+  context.html(page("Billing session complete", "You can return to the Densio CLI.")),
 );
 
 const page = (heading: string, message: string) => `<!doctype html>

@@ -1,6 +1,6 @@
 import { Result, Schema } from "effect";
 
-import type { TransformOptions } from "@ffmpeg-api/shared";
+import type { TransformOptions } from "@densio/shared";
 
 import { CliUsageError } from "./cli-errors.ts";
 

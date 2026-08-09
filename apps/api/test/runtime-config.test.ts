@@ -6,7 +6,7 @@ import { validateProductionConfig } from "../src/runtime-config.ts";
 const validEnvironment = {
   AUTH_IP_HASH_SECRET: "a".repeat(64),
   AUTH_OUTBOX_ENCRYPTION_KEY: "0123456789abcdef".repeat(4),
-  EMAIL_FROM: "FFmpeg API <login@media.acme.test>",
+  EMAIL_FROM: "Densio <login@media.acme.test>",
   PUBLIC_BASE_URL: "https://media.acme.test",
   RESEND_API_KEY: "re_live_realistic",
   STRIPE_BASIC_PRICE_ID: "price_basic_realistic",

@@ -1,4 +1,4 @@
-import { SubscriptionStatusSchema } from "@ffmpeg-api/shared";
+import { SubscriptionStatusSchema } from "@densio/shared";
 import { Context, Effect, Schema } from "effect";
 import Stripe from "stripe";
 
@@ -76,7 +76,7 @@ export interface StripeGatewayDefinition {
 }
 
 export class StripeGateway extends Context.Service<StripeGateway, StripeGatewayDefinition>()(
-  "ffmpeg-api/billing/StripeGateway",
+  "densio/billing/StripeGateway",
 ) {}
 
 export const makeStripeGateway = (stripe: Stripe) =>

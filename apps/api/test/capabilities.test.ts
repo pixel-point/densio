@@ -1,4 +1,4 @@
-import { CapabilitiesSchema } from "@ffmpeg-api/shared";
+import { CapabilitiesSchema } from "@densio/shared";
 import { Schema } from "effect";
 import { expect, it } from "vitest";
 

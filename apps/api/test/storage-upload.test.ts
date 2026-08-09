@@ -12,7 +12,7 @@ const temporaryRoots: Array<string> = [];
 const encoder = new TextEncoder();
 
 const makeDestination = async () => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-upload-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-upload-"));
   temporaryRoots.push(root);
   return join(root, "source-video");
 };

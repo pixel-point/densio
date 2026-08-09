@@ -61,7 +61,7 @@ describe("job commands", () => {
     expect(exitCode).toBe(130);
     expect(JSON.parse(capture.stderr())).toMatchObject({
       code: "CLI_INTERRUPTED",
-      suggestedAction: "Resume with ffmpeg-api jobs wait job-1.",
+      suggestedAction: "Resume with densio jobs wait job-1.",
     });
   });
 

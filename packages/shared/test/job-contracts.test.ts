@@ -160,7 +160,7 @@ describe("job status", () => {
         state: "failed",
         progressPercent: 50,
         problem: {
-          type: "https://ffmpeg-api.example/problems/media-process-failed",
+          type: "https://densio.example/problems/media-process-failed",
           title: "Media processing failed",
           status: 422,
           detail: "FFmpeg could not encode the input.",

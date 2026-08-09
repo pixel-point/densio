@@ -1,4 +1,4 @@
-import type { ComparisonPosition } from "@ffmpeg-api/shared";
+import type { ComparisonPosition } from "@densio/shared";
 
 import { assertCommandPath, createCommandPlan, type CommandPlan } from "./command-plan.ts";
 import {
@@ -12,7 +12,7 @@ import {
 import { MediaPlanError } from "./media-plan-error.ts";
 import type { TransformOptions, VideoDimensions } from "./video-filter.ts";
 
-export type { ComparisonPosition } from "@ffmpeg-api/shared";
+export type { ComparisonPosition } from "@densio/shared";
 
 interface ComparisonOutputPaths {
   readonly preview: string;

@@ -1,4 +1,4 @@
-import type { MediaCodec } from "@ffmpeg-api/shared";
+import type { MediaCodec } from "@densio/shared";
 import { Effect } from "effect";
 
 import type { Entitlements } from "../../auth/entitlements.ts";

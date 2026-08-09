@@ -1,4 +1,4 @@
-import { AuthTokensSchema, successEnvelope } from "@ffmpeg-api/shared";
+import { AuthTokensSchema, successEnvelope } from "@densio/shared";
 import { Schema } from "effect";
 
 import { credentialApiOrigin, readCredentials, writeCredentials } from "./config.ts";

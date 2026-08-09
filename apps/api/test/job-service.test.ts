@@ -530,7 +530,7 @@ it("retries idempotent workspace cleanup for an already canceled job", async () 
 });
 
 const createTestContext = async () => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-job-service-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-job-service-"));
   temporaryDirectories.push(root);
   const database = openDatabase(join(root, "database.sqlite"));
   databases.push(database);

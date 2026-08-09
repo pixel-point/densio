@@ -1,4 +1,4 @@
-import type { JobStatus, SuccessEnvelope } from "@ffmpeg-api/shared";
+import type { JobStatus, SuccessEnvelope } from "@densio/shared";
 
 import type { CliProblemError } from "./cli-errors.ts";
 import { formatJsonProblem, formatJsonSuccess, formatProgress } from "./output.ts";

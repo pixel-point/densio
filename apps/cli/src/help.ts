@@ -1,7 +1,7 @@
-export const CLI_HELP = `ffmpeg-api — agent-first video processing
+export const CLI_HELP = `densio — agent-first video processing
 
 Usage:
-  ffmpeg-api [--api-url URL] [--json] <command>
+  densio [--api-url URL] [--json] <command>
 
 Commands:
   auth login|status|logout       Authenticate with a magic email link
@@ -18,7 +18,7 @@ Agent behavior:
   Media commands wait by default. Use --no-wait for a resumable job ID.
 
 Global options:
-  --api-url URL                 API base URL (or FFMPEG_API_URL)
+  --api-url URL                 API base URL (or DENSIO_API_URL)
   --credentials PATH           Override the owner-only credential file
   --json                       Stable schema-versioned machine output
 
@@ -54,8 +54,8 @@ Artifact download:
   --force                      Explicitly replace an existing output path
 
 Examples:
-  ffmpeg-api capabilities --json
-  ffmpeg-api compress input.mp4 --json
-  ffmpeg-api compare-quality input.mp4 --crf 28,34,40 --at 01:12.500 --json
-  ffmpeg-api jobs wait JOB_ID --json
+  densio capabilities --json
+  densio compress input.mp4 --json
+  densio compare-quality input.mp4 --crf 28,34,40 --at 01:12.500 --json
+  densio jobs wait JOB_ID --json
 `;

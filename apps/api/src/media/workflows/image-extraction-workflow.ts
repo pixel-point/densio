@@ -1,7 +1,7 @@
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { ImageFormat, TransformOptions } from "@ffmpeg-api/shared";
+import type { ImageFormat, TransformOptions } from "@densio/shared";
 import { Effect, Schema } from "effect";
 
 import type { JobStoragePaths } from "../../storage/workspace.ts";

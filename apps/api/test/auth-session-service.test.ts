@@ -230,7 +230,7 @@ const completeLogin = async () => {
 };
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-auth-session-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-auth-session-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);

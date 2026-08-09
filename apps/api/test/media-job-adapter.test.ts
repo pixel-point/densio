@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { JobResultSchema } from "@ffmpeg-api/shared";
+import { JobResultSchema } from "@densio/shared";
 import { eq } from "drizzle-orm";
 import { Effect, Schema } from "effect";
 import { TestClock } from "effect/testing";
@@ -314,7 +314,7 @@ const createContext = async (
   source: Schema.Json,
   plan: "free" | "pro" = "free",
 ): Promise<TestContext> => {
-  const root = await mkdtemp(join(tmpdir(), "ffmpeg-api-media-job-"));
+  const root = await mkdtemp(join(tmpdir(), "densio-media-job-"));
   temporaryRoots.push(root);
   const database = openDatabase(join(root, "database.sqlite"));
   migrateDatabase(database);

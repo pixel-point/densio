@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { AuthTokensSchema, HttpUrlSchema } from "@ffmpeg-api/shared";
+import { AuthTokensSchema, HttpUrlSchema } from "@densio/shared";
 import { Predicate, Schema } from "effect";
 
 import { CliUsageError } from "./cli-errors.ts";

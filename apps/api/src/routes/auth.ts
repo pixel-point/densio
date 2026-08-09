@@ -6,7 +6,7 @@ import {
   EmailAddressSchema,
   LogoutResponseSchema,
   successEnvelope,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Effect, Schema } from "effect";
 import { Hono, type Context as HonoContext } from "hono";
 import { describeRoute } from "hono-openapi";
@@ -207,7 +207,7 @@ const registerConfirmationRoute = (routes: Hono, dependencies: AuthRouteDependen
       context.html(`<!doctype html>
 <html lang="en">
   <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Login confirmed</title></head>
-  <body><main><h1>Login confirmed</h1><p>You can return to the ffmpeg-api CLI.</p></main></body>
+  <body><main><h1>Login confirmed</h1><p>You can return to the Densio CLI.</p></main></body>
 </html>`),
     );
   });

@@ -5,7 +5,7 @@ import {
   EmailAddressSchema,
   LogoutResponseSchema,
   successEnvelope,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Effect, Schema } from "effect";
 
 import { authorizationHeaders } from "./authentication.ts";

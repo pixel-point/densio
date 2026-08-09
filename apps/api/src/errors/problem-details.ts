@@ -1,4 +1,4 @@
-import type { ProblemDetails } from "@ffmpeg-api/shared";
+import type { ProblemDetails } from "@densio/shared";
 import { Schema } from "effect";
 
 export class ApiProblem extends Schema.TaggedErrorClass<ApiProblem>()("ApiProblem", {

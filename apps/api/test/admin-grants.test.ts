@@ -187,7 +187,7 @@ const unusedStripeGateway = StripeGateway.of({
 });
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-admin-grant-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-admin-grant-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);

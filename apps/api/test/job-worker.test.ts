@@ -482,7 +482,7 @@ const waitUntil = Effect.fn("test.waitUntil")(function* (predicate: () => boolea
 });
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-worker-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-worker-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   migrateDatabase(database);

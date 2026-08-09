@@ -1,8 +1,8 @@
-import type { CropOptions, ScaleOptions, TransformOptions } from "@ffmpeg-api/shared";
+import type { CropOptions, ScaleOptions, TransformOptions } from "@densio/shared";
 
 import { MediaPlanError } from "./media-plan-error.ts";
 
-export type { CropOptions, ScaleOptions, TransformOptions } from "@ffmpeg-api/shared";
+export type { CropOptions, ScaleOptions, TransformOptions } from "@densio/shared";
 
 export interface VideoDimensions {
   readonly width: number;

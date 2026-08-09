@@ -10,6 +10,7 @@ import {
   resolveApiUrl,
   writeCredentials,
 } from "../src/config.ts";
+import { makeCliRuntime } from "../src/runtime.ts";
 
 const temporaryDirectories: Array<string> = [];
 
@@ -22,6 +23,27 @@ afterEach(async () => {
 });
 
 describe("CLI configuration", () => {
+  it("uses only Densio environment variables and configuration paths", () => {
+    const runtime = makeCliRuntime(
+      { json: false },
+      {
+        environment: {
+          DENSIO_CREDENTIALS_PATH: "/tmp/densio-credentials.json",
+          DENSIO_API_URL: "https://densio.example",
+        },
+      },
+    );
+
+    expect(runtime.apiUrl).toBe("https://densio.example");
+    expect(runtime.credentialsPath).toBe("/tmp/densio-credentials.json");
+
+    const defaultRuntime = makeCliRuntime(
+      { json: false },
+      { environment: { XDG_CONFIG_HOME: "/tmp/config" } },
+    );
+    expect(defaultRuntime.credentialsPath).toBe("/tmp/config/densio/credentials.json");
+  });
+
   it("uses flag, environment, file, and default API URL precedence", () => {
     expect(
       resolveApiUrl({
@@ -41,7 +63,7 @@ describe("CLI configuration", () => {
   });
 
   it("writes and clears credentials with owner-only permissions", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-cli-config-"));
+    const directory = await mkdtemp(join(tmpdir(), "densio-cli-config-"));
     temporaryDirectories.push(directory);
     const path = join(directory, "nested", "credentials.json");
     const credentials = {

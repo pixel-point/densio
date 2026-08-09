@@ -40,15 +40,15 @@ export const makeCliRuntime = (
 
   return {
     apiUrl: resolveApiUrl({
-      ...(environment.FFMPEG_API_URL === undefined
+      ...(environment.DENSIO_API_URL === undefined
         ? {}
-        : { environmentApiUrl: environment.FFMPEG_API_URL }),
+        : { environmentApiUrl: environment.DENSIO_API_URL }),
       ...(argumentsInput.apiUrl === undefined ? {} : { flagApiUrl: argumentsInput.apiUrl }),
     }),
     credentialsPath:
       argumentsInput.credentialsPath ??
       dependencies.credentialsPath ??
-      environment.FFMPEG_API_CREDENTIALS_PATH ??
+      environment.DENSIO_CREDENTIALS_PATH ??
       defaultCredentialsPath(environment),
     fetch: dependencies.fetch ?? globalThis.fetch,
     json: argumentsInput.json,
@@ -64,10 +64,10 @@ export const makeCliRuntime = (
 
 const defaultCredentialsPath = (environment: NodeJS.ProcessEnv) => {
   if (environment.XDG_CONFIG_HOME !== undefined) {
-    return join(environment.XDG_CONFIG_HOME, "ffmpeg-api", "credentials.json");
+    return join(environment.XDG_CONFIG_HOME, "densio", "credentials.json");
   }
   if (process.platform === "win32" && environment.APPDATA !== undefined) {
-    return join(environment.APPDATA, "ffmpeg-api", "credentials.json");
+    return join(environment.APPDATA, "densio", "credentials.json");
   }
-  return join(homedir(), ".config", "ffmpeg-api", "credentials.json");
+  return join(homedir(), ".config", "densio", "credentials.json");
 };

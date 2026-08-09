@@ -59,7 +59,7 @@ it("drains due email and stops without waiting for the next poll", async () => {
 });
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-email-supervisor-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-email-supervisor-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);

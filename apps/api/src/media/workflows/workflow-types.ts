@@ -1,4 +1,4 @@
-import type { ArtifactKind, MediaCodec } from "@ffmpeg-api/shared";
+import type { ArtifactKind, MediaCodec } from "@densio/shared";
 
 export interface StagedWorkflowOutput {
   readonly artifactFilename: string;

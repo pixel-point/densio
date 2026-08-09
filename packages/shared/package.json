@@ -1,5 +1,5 @@
 {
-  "name": "@ffmpeg-api/shared",
+  "name": "@densio/shared",
   "version": "0.1.0",
   "private": true,
   "type": "module",

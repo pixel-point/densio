@@ -76,7 +76,7 @@ export const authRequiredProblem = () =>
   makeDescriptorProblem(authRequiredProblemDescriptor, {
     detail: "A valid access token is required.",
     retryable: false,
-    suggestedAction: "Run ffmpeg-api auth login, then retry the command.",
+    suggestedAction: "Run densio auth login, then retry the command.",
   });
 
 const authRateLimitProblem = () =>
@@ -91,7 +91,7 @@ const authChallengeProblem = (reason: "invalid" | "expired" | "already-used") =>
     return makeDescriptorProblem(authChallengeExpiredProblemDescriptor, {
       detail: "The login confirmation has expired.",
       retryable: false,
-      suggestedAction: "Start a new ffmpeg-api auth login.",
+      suggestedAction: "Start a new densio auth login.",
     });
   }
   if (reason === "already-used") {
@@ -104,7 +104,7 @@ const authChallengeProblem = (reason: "invalid" | "expired" | "already-used") =>
   return makeDescriptorProblem(authChallengeInvalidProblemDescriptor, {
     detail: "The login confirmation is invalid.",
     retryable: false,
-    suggestedAction: "Start a new ffmpeg-api auth login.",
+    suggestedAction: "Start a new densio auth login.",
   });
 };
 
@@ -112,5 +112,5 @@ const refreshReplayProblem = () =>
   makeDescriptorProblem(refreshReplayProblemDescriptor, {
     detail: "A rotated refresh token was reused, so its session was revoked.",
     retryable: false,
-    suggestedAction: "Run ffmpeg-api auth login again.",
+    suggestedAction: "Run densio auth login again.",
   });

@@ -2,7 +2,7 @@ import {
   CompareQualityOptionsSchema,
   CompressionOptionsSchema,
   ExtractImagesOptionsSchema,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 
 import {
   buildTransformOptions,

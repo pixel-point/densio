@@ -1,4 +1,4 @@
-import { JobResultSchema, type JobResult } from "@ffmpeg-api/shared";
+import { JobResultSchema, type JobResult } from "@densio/shared";
 import { Effect, Layer, Predicate, Schema } from "effect";
 
 import { PLAN_ENTITLEMENTS } from "../auth/entitlements.ts";

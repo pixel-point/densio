@@ -84,7 +84,7 @@ describe("media process runner", () => {
 });
 
 const createLogPath = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-process-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-process-"));
   temporaryDirectories.push(directory);
   return join(directory, "events.ndjson");
 };

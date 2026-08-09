@@ -2,7 +2,7 @@ import {
   CompareQualityOptionsSchema,
   type ArtifactMetadata,
   type CompareQualityOptions,
-} from "@ffmpeg-api/shared";
+} from "@densio/shared";
 import { Effect, Schema } from "effect";
 
 import { validateMediaEntitlements } from "../media/inspection/media-entitlement-check.ts";

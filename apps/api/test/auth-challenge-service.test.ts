@@ -255,7 +255,7 @@ it("polls pending before confirmation and issues one auth token pair", async () 
 });
 
 const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-auth-challenge-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-auth-challenge-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);

@@ -1,4 +1,4 @@
-# FFmpeg API
+# Densio
 
 An agent-first, self-hosted video-processing API and CLI. It turns a few typed
 workflows into durable FFmpeg jobs without exposing arbitrary command arguments:
@@ -78,7 +78,7 @@ local executables, or leave them as `ffmpeg` and `ffprobe` when both are on
 `PATH`. Run the CLI from source in another terminal:
 
 ```sh
-pnpm --filter @ffmpeg-api/cli start -- --api-url http://localhost:3000 --help
+pnpm --filter densio start -- --api-url http://localhost:3000 --help
 ```
 
 Useful repository checks:
@@ -249,9 +249,9 @@ docker compose exec -e USER=operator@example.com api node dist/admin.js pro revo
 For development, use:
 
 ```sh
-pnpm --filter @ffmpeg-api/api admin -- pro grant user@example.com
-pnpm --filter @ffmpeg-api/api admin -- pro list
-pnpm --filter @ffmpeg-api/api admin -- pro revoke user@example.com
+pnpm --filter @densio/api admin -- pro grant user@example.com
+pnpm --filter @densio/api admin -- pro list
+pnpm --filter @densio/api admin -- pro revoke user@example.com
 ```
 
 An admin grant and an eligible Stripe subscription are independent. Revoking a
@@ -259,34 +259,46 @@ grant never cancels or downgrades an active paid subscription.
 
 ## CLI overview
 
-Build and run the executable with:
+Run the published CLI without installing it globally:
 
 ```sh
-pnpm --filter @ffmpeg-api/cli build
+npx densio --help
+npx densio --api-url https://video.example.com capabilities --json
+```
+
+`--api-url` takes precedence over `DENSIO_API_URL`. Credentials default to
+`~/.config/densio/credentials.json` on Unix-like systems and can be overridden
+with `DENSIO_CREDENTIALS_PATH`. The rename to Densio is intentionally breaking;
+no previous command, environment-variable, or credential-path aliases are read.
+
+Build and run the workspace executable with:
+
+```sh
+pnpm --filter densio build
 node apps/cli/dist/index.js --api-url https://video.example.com --help
 ```
 
 Typical use:
 
 ```sh
-ffmpeg-api --api-url https://video.example.com auth login user@example.com
-ffmpeg-api capabilities
-ffmpeg-api compress input.mp4
-ffmpeg-api compress input.mp4 --vp9-crf 42 --h265-crf 34 --width 1280
-ffmpeg-api extract-images input.mp4 --interval 1 --format jpeg
-ffmpeg-api compare-quality input.mp4 --codec vp9 --crf 32,36,40 --at 00:01:12.500
-ffmpeg-api compare-quality input.mp4 --codec h265 --crf 26,30,34 --frame 240 --duration 3
+densio --api-url https://video.example.com auth login user@example.com
+densio capabilities
+densio compress input.mp4
+densio compress input.mp4 --vp9-crf 42 --h265-crf 34 --width 1280
+densio extract-images input.mp4 --interval 1 --format jpeg
+densio compare-quality input.mp4 --codec vp9 --crf 32,36,40 --at 00:01:12.500
+densio compare-quality input.mp4 --codec h265 --crf 26,30,34 --frame 240 --duration 3
 ```
 
 Media commands upload and wait by default. `--no-wait` returns a resumable job ID;
-use `ffmpeg-api jobs wait <job-id>` later. Ctrl-C stops only the CLI wait and does
+use `densio jobs wait <job-id>` later. Ctrl-C stops only the CLI wait and does
 not cancel the server job. Cancellation is explicit:
 
 ```sh
-ffmpeg-api compress input.mp4 --no-wait --idempotency-key my-upload-001
-ffmpeg-api jobs get <job-id>
-ffmpeg-api jobs wait <job-id> --timeout 900
-ffmpeg-api jobs cancel <job-id>
+densio compress input.mp4 --no-wait --idempotency-key my-upload-001
+densio jobs get <job-id>
+densio jobs wait <job-id> --timeout 900
+densio jobs cancel <job-id>
 ```
 
 Agents should always use `--json`. It emits one schema-versioned success object
@@ -295,13 +307,34 @@ on stdout, problem details on stderr, and progress only on stderr. Inspect
 the server supports. Artifact downloads verify the advertised SHA-256 digest:
 
 ```sh
-ffmpeg-api artifacts download <signed-artifact-url> \
+densio artifacts download <signed-artifact-url> \
   --output ./result.webm \
   --sha256 <64-character-sha256>
 ```
 
 Downloads refuse to replace an existing output by default. Add `--force` only
 when replacing that path is intentional.
+
+## Publishing the CLI
+
+The public npm package is `densio` and is licensed under AGPL-3.0-only. Before
+the first release, rename the GitHub repository to `pixel-point/densio`, update
+the local `origin` URL manually, and confirm the npm account can publish the
+unscoped package name.
+
+Start from committed feature changes and a clean worktree:
+
+```sh
+./scripts/bump-cli-version.sh patch
+./scripts/publish-cli.sh --dry-run
+./scripts/publish-cli.sh
+git push
+```
+
+The bump script also accepts `minor`, `major`, or an exact stable `X.Y.Z`. It
+creates only `chore(cli): release vX.Y.Z`. The publication script verifies the
+repository and the packed executable before publishing. Neither script creates
+a Git tag or pushes Git state.
 
 ## Data lifecycle and retention
 

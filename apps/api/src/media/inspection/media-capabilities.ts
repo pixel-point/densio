@@ -1,4 +1,4 @@
-import { MEDIA_CODECS } from "@ffmpeg-api/shared";
+import { MEDIA_CODECS } from "@densio/shared";
 import { Effect } from "effect";
 
 import { MEDIA_CODEC_EXECUTION_POLICY } from "../codec-execution-policy.ts";

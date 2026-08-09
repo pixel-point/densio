@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 it("recovers a credential lock left by a terminated process", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-credential-lock-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-credential-lock-"));
   temporaryDirectories.push(directory);
   const credentialsPath = join(directory, "credentials.json");
   const lockDirectory = `${credentialsPath}.lock`;
@@ -44,7 +44,7 @@ it("recovers a credential lock left by a terminated process", async () => {
 });
 
 it("releases the credential lock when the protected action fails", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ffmpeg-api-credential-lock-"));
+  const directory = await mkdtemp(join(tmpdir(), "densio-credential-lock-"));
   temporaryDirectories.push(directory);
   const credentialsPath = join(directory, "credentials.json");
 

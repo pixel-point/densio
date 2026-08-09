@@ -1,16 +1,16 @@
 ---
-name: ffmpeg-api
-description: Use when a user wants to compress or optimize video for the web, extract timed screenshots, compare CRF quality and estimated sizes, manage an asynchronous ffmpeg-api job, or download a temporary ffmpeg-api artifact through the agent-first CLI.
+name: densio
+description: Use when a user wants to compress or optimize video for the web, extract timed screenshots, compare CRF quality and estimated sizes, manage an asynchronous Densio job, or download a temporary Densio artifact through the agent-first CLI.
 ---
 
-# FFmpeg API
+# Densio
 
-Use the `ffmpeg-api` CLI instead of constructing FFmpeg commands or calling the HTTP API directly. The server owns codec policy, inspection, audio decisions, queueing, and cleanup.
+Use the `densio` CLI instead of constructing FFmpeg commands or calling the HTTP API directly. The server owns codec policy, inspection, audio decisions, queueing, and cleanup.
 
 ## Start safely
 
-1. Run `ffmpeg-api --json capabilities` before choosing flags. Treat its plan, codec, CRF, duration, and upload limits as authoritative.
-2. If the command returns `AUTH_REQUIRED`, ask the user for their email and run `ffmpeg-api --json auth login EMAIL`. Tell them to open the link sent by email. The CLI polls until confirmation; never ask for, print, or copy login tokens.
+1. Run `densio --json capabilities` before choosing flags. Treat its plan, codec, CRF, duration, and upload limits as authoritative.
+2. If the command returns `AUTH_REQUIRED`, ask the user for their email and run `densio --json auth login EMAIL`. Tell them to open the link sent by email. The CLI polls until confirmation; never ask for, print, or copy login tokens.
 3. Keep stdout and stderr separate. With `--json`, stdout is exactly one schema-versioned success document. Progress is NDJSON on stderr.
 4. Read [references/commands.md](references/commands.md) before constructing media or transform flags.
 
@@ -25,7 +25,7 @@ Use the `ffmpeg-api` CLI instead of constructing FFmpeg commands or calling the 
 
 Media commands wait by default. Prefer this when the caller can remain connected.
 
-Use `--no-wait` for long-running or externally orchestrated work. Preserve `data.jobId` and `data.resumeCommand`, then resume with `ffmpeg-api --json jobs wait JOB_ID`. An interrupted wait does not cancel server work. Cancel only when the user explicitly requests it with `jobs cancel`.
+Use `--no-wait` for long-running or externally orchestrated work. Preserve `data.jobId` and `data.resumeCommand`, then resume with `densio --json jobs wait JOB_ID`. An interrupted wait does not cancel server work. Cancel only when the user explicitly requests it with `jobs cancel`.
 
 Supply one stable `--idempotency-key` when retrying creation after a network ambiguity. Reuse it only with the identical file and options. Never retry by creating several unkeyed jobs.
 
@@ -36,7 +36,7 @@ Job creation automatically reserves the 0.05-credit minimum. After trusted media
 - Compression: use each `data.result.artifacts[]` entry's `downloadUrl`, `sha256`, and `expiresAt`; also return `data.result.html` when useful. `data.result.commands` contains the exact executable, argv, and safely escaped display form used by the server.
 - Extraction: use `data.result.archive.downloadUrl` and its SHA-256.
 - Comparison: present each variant's CRF, preview/still URLs, and `estimatedFullVideoBytes`. Describe the estimate as coarse sample-bitrate extrapolation, not a guaranteed final size.
-- Download before `expiresAt`. Use `ffmpeg-api --json artifacts download SIGNED_URL --output PATH --sha256 HEX`; the CLI streams to a temporary file, verifies SHA-256, then renames atomically.
+- Download before `expiresAt`. Use `densio --json artifacts download SIGNED_URL --output PATH --sha256 HEX`; the CLI streams to a temporary file, verifies SHA-256, then renames atomically.
 
 Treat signed artifact URLs as temporary bearer secrets. Avoid copying them into long-lived logs or documents, and disclose that command arguments may be visible in shell history or process inspection. Source uploads and intermediates are deleted after terminal processing; outputs expire on the server.
 
