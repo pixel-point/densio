@@ -25,7 +25,7 @@ import {
   type ParsedMediaCommand,
 } from "./media-options.ts";
 import { decodeCliOptions } from "./command-options.ts";
-import { emitSuccess, formatJobStatus } from "./render.ts";
+import { emitStatusEvent, emitSuccess, formatJobStatus } from "./render.ts";
 import type { CliRuntime } from "./runtime.ts";
 
 const decodeJobCreated = Schema.decodeUnknownEffect(successEnvelope(JobCreatedResponseSchema));
@@ -75,6 +75,17 @@ export const runMediaCommand = async (
     emitSuccess(runtime, resumeEnvelope(response), `Job ${response.data.jobId} uploaded.\n`);
     return;
   }
+  const resumeCommand = `densio jobs wait ${response.data.jobId}`;
+  emitStatusEvent(
+    runtime,
+    {
+      jobId: response.data.jobId,
+      resumeCommand,
+      statusUrl: response.data.statusUrl,
+      type: "job-accepted",
+    },
+    `Job ${response.data.jobId} uploaded and queued. Waiting for completion; resume with ${resumeCommand}.\n`,
+  );
   const status = await waitForJob(
     runtime,
     response.data.jobId,

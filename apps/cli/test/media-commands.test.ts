@@ -96,7 +96,67 @@ describe("compression command", () => {
     expect(requests[1]?.body).toBe("video-bytes");
     expect(JSON.parse(capture.stdout()).data.state).toBe("succeeded");
     expect(capture.stdout().trim().split("\n")).toHaveLength(1);
-    expect(capture.stderr()).toContain('"type":"progress"');
+    const stderrEvents = capture
+      .stderr()
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(stderrEvents[0]).toEqual({
+      jobId: "job-1",
+      resumeCommand: "densio jobs wait job-1",
+      statusUrl: `${server.url}/v1/jobs/job-1`,
+      type: "job-accepted",
+    });
+    expect(stderrEvents).toContainEqual({
+      jobId: "job-1",
+      progressPercent: 25,
+      state: "processing",
+      type: "progress",
+    });
+  });
+
+  it("displays the resumable job ID before polling in human mode", async () => {
+    const capture = await makeCliCapture();
+    const sourcePath = join(capture.directory, "source.mp4");
+    await writeFile(sourcePath, "video-bytes");
+    const acknowledgement =
+      "Job job-1 uploaded and queued. Waiting for completion; " +
+      "resume with densio jobs wait job-1.\n";
+    let acknowledgedBeforePolling = false;
+    const server = await startCliServer(async (request, response) => {
+      if (request.url === "/v1/compress") {
+        sendEnvelope(response, jobCreated(server.url), 201);
+        return;
+      }
+      if (request.url === "/upload/job-1") {
+        await readRequestBody(request);
+        sendEnvelope(response, {
+          bytes: 11,
+          jobId: "job-1",
+          sha256: "b".repeat(64),
+          state: "queued",
+        });
+        return;
+      }
+      acknowledgedBeforePolling = capture.stderr() === acknowledgement;
+      sendEnvelope(response, succeededJob(server.url));
+    });
+    await writeCredentials(capture.dependencies.credentialsPath, {
+      accessToken: "access",
+      accessTokenExpiresAt: "2026-07-11T14:00:00.000Z",
+      apiUrl: server.url,
+      refreshToken: "refresh",
+    });
+
+    const exitCode = await runCli(
+      ["--api-url", server.url, "compress", sourcePath, "--codec", "vp9"],
+      capture.dependencies,
+    );
+    await server.close();
+
+    expect(exitCode).toBe(0);
+    expect(acknowledgedBeforePolling).toBe(true);
+    expect(capture.stderr()).toBe(acknowledgement);
   });
 });
 
