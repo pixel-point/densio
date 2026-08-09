@@ -13,6 +13,7 @@ import {
 } from "@ffmpeg-api/shared";
 import { Effect, Schema } from "effect";
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 
 import type { AuthService } from "../auth/auth-service.ts";
 import type { BillingService } from "../billing/billing-service.ts";
@@ -25,6 +26,15 @@ import {
   runRouteEffect,
   successEnvelopeInput,
 } from "./route-support.ts";
+import {
+  bearerSecurity,
+  binaryBody,
+  headerParameter,
+  jsonRequest,
+  pathParameter,
+  problemResponse,
+  successResponse,
+} from "./openapi-support.ts";
 
 const IdempotencyKeySchema = Schema.NonEmptyString.check(Schema.isMaxLength(200));
 const decodeIdempotencyKey = Schema.decodeUnknownEffect(IdempotencyKeySchema);
@@ -33,6 +43,68 @@ const decodeUploadedEnvelope = Schema.decodeUnknownSync(
   successEnvelope(UploadCompletedResponseSchema),
 );
 const decodeStatusEnvelope = Schema.decodeUnknownSync(successEnvelope(JobStatusSchema));
+const compressionDocumentation = jobCreationDocumentation(
+  "createCompressionJob",
+  "Create a compression job",
+  CompressionJobRequestSchema,
+);
+const extractionDocumentation = jobCreationDocumentation(
+  "createImageExtractionJob",
+  "Create an image extraction job",
+  ExtractImagesJobRequestSchema,
+);
+const comparisonDocumentation = jobCreationDocumentation(
+  "createQualityComparisonJob",
+  "Create a quality comparison job",
+  QualityComparisonJobRequestSchema,
+);
+const uploadDocumentation = describeRoute({
+  description: "Streams the source bytes for a job that is awaiting upload.",
+  operationId: "uploadJobSource",
+  parameters: [
+    pathParameter("id", "Job identifier."),
+    headerParameter("content-length", "Declared upload size in bytes."),
+  ],
+  requestBody: binaryBody,
+  responses: {
+    "200": successResponse(
+      "The source was stored and the job was queued.",
+      UploadCompletedResponseSchema,
+    ),
+    "400": problemResponse("The upload body is missing or invalid."),
+    "401": problemResponse("A valid bearer token is required."),
+    "404": problemResponse("The job does not exist for this user."),
+    "413": problemResponse("The upload exceeds the job or plan limit."),
+  },
+  security: bearerSecurity,
+  summary: "Upload source media",
+  tags: ["Media jobs"],
+});
+const statusDocumentation = describeRoute({
+  operationId: "getJobStatus",
+  parameters: [pathParameter("id", "Job identifier.")],
+  responses: {
+    "200": successResponse("The current job state and result, when available.", JobStatusSchema),
+    "401": problemResponse("A valid bearer token is required."),
+    "404": problemResponse("The job does not exist for this user."),
+  },
+  security: bearerSecurity,
+  summary: "Get job status",
+  tags: ["Media jobs"],
+});
+const cancellationDocumentation = describeRoute({
+  operationId: "cancelJob",
+  parameters: [pathParameter("id", "Job identifier.")],
+  responses: {
+    "200": successResponse("The updated job state.", JobStatusSchema),
+    "401": problemResponse("A valid bearer token is required."),
+    "404": problemResponse("The job does not exist for this user."),
+    "409": problemResponse("The job can no longer be canceled."),
+  },
+  security: bearerSecurity,
+  summary: "Cancel a job",
+  tags: ["Media jobs"],
+});
 
 type MediaJobRequest =
   | CompressionJobRequest
@@ -60,7 +132,7 @@ export const createMediaJobRoutes = (dependencies: MediaJobRouteDependencies) =>
 };
 
 const registerCompressionRoute = (routes: Hono, dependencies: MediaJobRouteDependencies) => {
-  routes.post("/v1/compress", async (context) => {
+  routes.post("/v1/compress", compressionDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = Effect.gen(function* () {
       const input = yield* decodeRequestJson(context.req.raw, CompressionJobRequestSchema);
@@ -73,7 +145,7 @@ const registerCompressionRoute = (routes: Hono, dependencies: MediaJobRouteDepen
 };
 
 const registerExtractionRoute = (routes: Hono, dependencies: MediaJobRouteDependencies) => {
-  routes.post("/v1/extract-images", async (context) => {
+  routes.post("/v1/extract-images", extractionDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = Effect.gen(function* () {
       const input = yield* decodeRequestJson(context.req.raw, ExtractImagesJobRequestSchema);
@@ -86,7 +158,7 @@ const registerExtractionRoute = (routes: Hono, dependencies: MediaJobRouteDepend
 };
 
 const registerComparisonRoute = (routes: Hono, dependencies: MediaJobRouteDependencies) => {
-  routes.post("/v1/compare-quality", async (context) => {
+  routes.post("/v1/compare-quality", comparisonDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = Effect.gen(function* () {
       const input = yield* decodeRequestJson(context.req.raw, QualityComparisonJobRequestSchema);
@@ -125,7 +197,7 @@ const createOwnedJob = Effect.fn("MediaRoutes.createJob")(function* (
 });
 
 const registerUploadRoute = (routes: Hono, dependencies: MediaJobRouteDependencies) => {
-  routes.put("/v1/jobs/:id/upload", async (context) => {
+  routes.put("/v1/jobs/:id/upload", uploadDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const now = dependencies.now();
     const program = Effect.gen(function* () {
@@ -146,7 +218,7 @@ const registerUploadRoute = (routes: Hono, dependencies: MediaJobRouteDependenci
 };
 
 const registerStatusRoute = (routes: Hono, dependencies: MediaJobRouteDependencies) => {
-  routes.get("/v1/jobs/:id", async (context) => {
+  routes.get("/v1/jobs/:id", statusDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const now = dependencies.now();
     const program = Effect.gen(function* () {
@@ -164,7 +236,7 @@ const registerStatusRoute = (routes: Hono, dependencies: MediaJobRouteDependenci
 };
 
 const registerCancellationRoute = (routes: Hono, dependencies: MediaJobRouteDependencies) => {
-  routes.post("/v1/jobs/:id/cancel", async (context) => {
+  routes.post("/v1/jobs/:id/cancel", cancellationDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const now = dependencies.now();
     const program = Effect.gen(function* () {
@@ -191,3 +263,32 @@ const optionalIdempotencyKey = Effect.fn("MediaRoutes.idempotencyKey")(
           Effect.mapError(() => invalidRequestProblem()),
         ),
 );
+
+function jobCreationDocumentation<S extends Schema.Top>(
+  operationId: string,
+  summary: string,
+  schema: S,
+) {
+  return describeRoute({
+    operationId,
+    parameters: [
+      headerParameter(
+        "idempotency-key",
+        "Optional retry key. Reusing it with different input returns a conflict.",
+      ),
+    ],
+    requestBody: jsonRequest(schema),
+    responses: {
+      "201": successResponse(
+        "The job was created and is awaiting upload.",
+        JobCreatedResponseSchema,
+      ),
+      "400": problemResponse("The request body or idempotency key is invalid."),
+      "401": problemResponse("A valid bearer token is required."),
+      "409": problemResponse("The idempotency key conflicts with another request."),
+    },
+    security: bearerSecurity,
+    summary,
+    tags: ["Media jobs"],
+  });
+}

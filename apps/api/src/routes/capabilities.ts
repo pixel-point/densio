@@ -6,6 +6,7 @@ import {
 } from "@ffmpeg-api/shared";
 import { Effect, Schema } from "effect";
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 
 import type { AuthService } from "../auth/auth-service.ts";
 import type { BillingService } from "../billing/billing-service.ts";
@@ -15,8 +16,21 @@ import {
   runRouteEffect,
   successEnvelopeInput,
 } from "./route-support.ts";
+import { optionalBearerSecurity, problemResponse, successResponse } from "./openapi-support.ts";
 
 const decodeCapabilitiesEnvelope = Schema.decodeUnknownSync(successEnvelope(CapabilitiesSchema));
+const capabilitiesDocumentation = describeRoute({
+  description:
+    "Returns free-plan capabilities anonymously and plan-specific capabilities for a valid bearer token.",
+  operationId: "getCapabilities",
+  responses: {
+    "200": successResponse("The effective API capabilities.", CapabilitiesSchema),
+    "401": problemResponse("The supplied bearer token is invalid."),
+  },
+  security: optionalBearerSecurity,
+  summary: "Get API capabilities",
+  tags: ["Capabilities"],
+});
 
 export interface CapabilityRouteDependencies {
   readonly authService: AuthService["Service"];
@@ -29,7 +43,7 @@ export interface CapabilityRouteDependencies {
 
 export const createCapabilitiesRoutes = (dependencies: CapabilityRouteDependencies) => {
   const routes = new Hono();
-  routes.get("/v1/capabilities", async (context) => {
+  routes.get("/v1/capabilities", capabilitiesDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = Effect.gen(function* () {
       const token = yield* optionalBearerToken(context.req.header("authorization"));

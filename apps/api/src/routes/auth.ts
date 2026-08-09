@@ -9,6 +9,7 @@ import {
 } from "@ffmpeg-api/shared";
 import { Effect, Schema } from "effect";
 import { Hono, type Context as HonoContext } from "hono";
+import { describeRoute } from "hono-openapi";
 
 import type { AuthConfig, AuthService } from "../auth/auth-service.ts";
 import type { BillingService } from "../billing/billing-service.ts";
@@ -20,6 +21,14 @@ import {
   runRouteEffect,
   successEnvelopeInput,
 } from "./route-support.ts";
+import {
+  bearerSecurity,
+  jsonRequest,
+  optionalBearerSecurity,
+  problemResponse,
+  queryParameter,
+  successResponse,
+} from "./openapi-support.ts";
 
 const LoginRequestSchema = Schema.Struct({ email: EmailAddressSchema });
 const PollRequestSchema = Schema.Struct({ pollToken: Schema.NonEmptyString });
@@ -29,6 +38,71 @@ const decodeAuthPollEnvelope = Schema.decodeUnknownSync(successEnvelope(AuthPoll
 const decodeAuthTokensEnvelope = Schema.decodeUnknownSync(successEnvelope(AuthTokensSchema));
 const decodeLogoutEnvelope = Schema.decodeUnknownSync(successEnvelope(LogoutResponseSchema));
 const decodeAuthStatusEnvelope = Schema.decodeUnknownSync(successEnvelope(AuthStatusSchema));
+const loginDocumentation = describeRoute({
+  operationId: "requestLogin",
+  requestBody: jsonRequest(LoginRequestSchema),
+  responses: {
+    "202": successResponse("A login challenge was created.", AuthStartResponseSchema),
+    "400": problemResponse("The email or JSON body is invalid."),
+    "429": problemResponse("The login rate limit was exceeded."),
+  },
+  summary: "Request a magic login link",
+  tags: ["Authentication"],
+});
+const confirmationDocumentation = describeRoute({
+  operationId: "confirmLogin",
+  parameters: [queryParameter("token", "Magic-link confirmation token.", true)],
+  responses: {
+    "200": {
+      content: { "text/html": { schema: { type: "string" } } },
+      description: "The login was confirmed in a browser page.",
+    },
+    "400": problemResponse("The confirmation token is invalid."),
+  },
+  summary: "Confirm a magic login link",
+  tags: ["Authentication"],
+});
+const pollDocumentation = describeRoute({
+  operationId: "pollLogin",
+  requestBody: jsonRequest(PollRequestSchema),
+  responses: {
+    "200": successResponse("The challenge is pending or confirmed.", AuthPollResponseSchema),
+    "400": problemResponse("The poll token or JSON body is invalid."),
+  },
+  summary: "Poll a login challenge",
+  tags: ["Authentication"],
+});
+const refreshDocumentation = describeRoute({
+  operationId: "refreshSession",
+  requestBody: jsonRequest(RefreshRequestSchema),
+  responses: {
+    "200": successResponse("The session tokens were rotated.", AuthTokensSchema),
+    "400": problemResponse("The refresh token or JSON body is invalid."),
+    "401": problemResponse("The refresh token is expired or revoked."),
+  },
+  summary: "Refresh an authenticated session",
+  tags: ["Authentication"],
+});
+const logoutDocumentation = describeRoute({
+  operationId: "logout",
+  responses: {
+    "200": successResponse("The session was revoked.", LogoutResponseSchema),
+    "401": problemResponse("A valid bearer token is required."),
+  },
+  security: bearerSecurity,
+  summary: "Log out the current session",
+  tags: ["Authentication"],
+});
+const authStatusDocumentation = describeRoute({
+  operationId: "getAuthStatus",
+  responses: {
+    "200": successResponse("The current authentication status.", AuthStatusSchema),
+    "401": problemResponse("The supplied bearer token is invalid."),
+  },
+  security: optionalBearerSecurity,
+  summary: "Get authentication status",
+  tags: ["Authentication"],
+});
 
 export interface AuthRouteDependencies {
   readonly authConfig: AuthConfig;
@@ -53,7 +127,7 @@ export const createAuthRoutes = (dependencies: AuthRouteDependencies) => {
 };
 
 const registerLoginRoute = (routes: Hono, dependencies: AuthRouteDependencies) => {
-  routes.post("/v1/auth/login", async (context) => {
+  routes.post("/v1/auth/login", loginDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = Effect.gen(function* () {
       const input = yield* decodeRequestJson(context.req.raw, LoginRequestSchema);
@@ -85,7 +159,7 @@ const registerLoginRoute = (routes: Hono, dependencies: AuthRouteDependencies) =
 };
 
 const registerConfirmationRoute = (routes: Hono, dependencies: AuthRouteDependencies) => {
-  routes.get("/v1/auth/confirm", async (context) => {
+  routes.get("/v1/auth/confirm", confirmationDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = dependencies.authService.confirm({
       confirmationToken: context.req.query("token"),
@@ -102,7 +176,7 @@ const registerConfirmationRoute = (routes: Hono, dependencies: AuthRouteDependen
 };
 
 const registerPollRoute = (routes: Hono, dependencies: AuthRouteDependencies) => {
-  routes.post("/v1/auth/poll", async (context) => {
+  routes.post("/v1/auth/poll", pollDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = Effect.gen(function* () {
       const input = yield* decodeRequestJson(context.req.raw, PollRequestSchema);
@@ -132,7 +206,7 @@ const registerPollRoute = (routes: Hono, dependencies: AuthRouteDependencies) =>
 };
 
 const registerRefreshRoute = (routes: Hono, dependencies: AuthRouteDependencies) => {
-  routes.post("/v1/auth/refresh", async (context) => {
+  routes.post("/v1/auth/refresh", refreshDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = Effect.gen(function* () {
       const input = yield* decodeRequestJson(context.req.raw, RefreshRequestSchema);
@@ -154,7 +228,7 @@ const registerRefreshRoute = (routes: Hono, dependencies: AuthRouteDependencies)
 };
 
 const registerLogoutRoute = (routes: Hono, dependencies: AuthRouteDependencies) => {
-  routes.post("/v1/auth/logout", async (context) => {
+  routes.post("/v1/auth/logout", logoutDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = Effect.gen(function* () {
       const accessToken = yield* requireBearerToken(context.req.header("authorization"));
@@ -171,7 +245,7 @@ const registerLogoutRoute = (routes: Hono, dependencies: AuthRouteDependencies) 
 };
 
 const registerStatusRoute = (routes: Hono, dependencies: AuthRouteDependencies) => {
-  routes.get("/v1/auth/status", async (context) => {
+  routes.get("/v1/auth/status", authStatusDocumentation, async (context) => {
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const program = Effect.gen(function* () {
       const token = yield* optionalBearerToken(context.req.header("authorization"));

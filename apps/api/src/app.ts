@@ -7,6 +7,7 @@ import {
   createCapabilitiesRoutes,
   type CapabilityRouteDependencies,
 } from "./routes/capabilities.ts";
+import { registerDocumentationRoutes } from "./routes/documentation.ts";
 import { createHealthRoutes } from "./routes/health.ts";
 import { createMediaJobRoutes, type MediaJobRouteDependencies } from "./routes/media-jobs.ts";
 import { pageRoutes } from "./routes/pages.ts";
@@ -25,10 +26,12 @@ export const createApp = (dependencies?: AppDependencies) => {
   app.use("*", async (context, next) => {
     await next();
     context.header("referrer-policy", "no-referrer");
-    context.header(
-      "content-security-policy",
-      "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
-    );
+    if (!context.res.headers.has("content-security-policy")) {
+      context.header(
+        "content-security-policy",
+        "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      );
+    }
     context.header("x-content-type-options", "nosniff");
     context.header("x-frame-options", "DENY");
   });
@@ -46,6 +49,8 @@ export const createApp = (dependencies?: AppDependencies) => {
     app.route("/", createArtifactRoutes(dependencies.artifacts));
     app.route("/", createCapabilitiesRoutes(dependencies.capabilities));
   }
+
+  registerDocumentationRoutes(app);
 
   return app;
 };
