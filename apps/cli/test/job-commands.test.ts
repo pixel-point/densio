@@ -94,15 +94,12 @@ describe("job commands", () => {
     const capture = await authenticatedCapture(server.url);
     const sleepDurations: Array<number> = [];
 
-    const exitCode = await runCli(
-      ["--json", "--api-url", server.url, "jobs", "wait", "job-1"],
-      {
-        ...capture.dependencies,
-        sleep: async (milliseconds) => {
-          sleepDurations.push(milliseconds);
-        },
+    const exitCode = await runCli(["--json", "--api-url", server.url, "jobs", "wait", "job-1"], {
+      ...capture.dependencies,
+      sleep: async (milliseconds) => {
+        sleepDurations.push(milliseconds);
       },
-    );
+    });
     await server.close();
 
     expect(exitCode).toBe(5);

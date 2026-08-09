@@ -114,7 +114,9 @@ describe("compression command", () => {
       type: "progress",
     });
   });
+});
 
+describe("compression command acknowledgement", () => {
   it("displays the resumable job ID before polling in human mode", async () => {
     const capture = await makeCliCapture();
     const sourcePath = join(capture.directory, "source.mp4");
