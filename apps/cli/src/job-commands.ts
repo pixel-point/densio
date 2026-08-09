@@ -32,7 +32,7 @@ export const waitForJob = async (
       if (response.data.state === "expired") {
         throw new CliProblemError(terminalProblem("expired", jobId));
       }
-      return { delayMilliseconds: 1_000, kind: "pending" };
+      return { delayMilliseconds: 10_000, kind: "pending" };
     },
     initialDelayMilliseconds: 0,
     interruptedError: () => interruptedJobError(jobId),

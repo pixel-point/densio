@@ -21,6 +21,23 @@ const activeJob = {
   workflow: "compress",
 } as const;
 
+const canceledJob = {
+  ...activeJob,
+  problem: {
+    code: "JOB_CANCELED",
+    correlationId: "server-correlation",
+    detail: "Canceled for the test.",
+    jobId: "job-1",
+    retryable: false,
+    schemaVersion: 1,
+    status: 409,
+    suggestedAction: "Create another job.",
+    title: "Canceled",
+    type: "about:blank",
+  },
+  state: "canceled",
+} as const;
+
 describe("job commands", () => {
   it("gets and cancels a durable job by ID", async () => {
     const methods: Array<string | undefined> = [];
@@ -68,6 +85,31 @@ describe("job commands", () => {
     });
   });
 
+  it("waits ten seconds before polling an active job again", async () => {
+    let requests = 0;
+    const server = await startCliServer((_request, response) => {
+      requests += 1;
+      sendEnvelope(response, requests === 1 ? activeJob : canceledJob);
+    });
+    const capture = await authenticatedCapture(server.url);
+    const sleepDurations: Array<number> = [];
+
+    const exitCode = await runCli(
+      ["--json", "--api-url", server.url, "jobs", "wait", "job-1"],
+      {
+        ...capture.dependencies,
+        sleep: async (milliseconds) => {
+          sleepDurations.push(milliseconds);
+        },
+      },
+    );
+    await server.close();
+
+    expect(exitCode).toBe(5);
+    expect(requests).toBe(2);
+    expect(sleepDurations).toEqual([0, 10_000]);
+  });
+
   it("retries a transient polling disconnect before handling terminal state", async () => {
     let requests = 0;
     const server = await startCliServer((request, response) => {
@@ -76,22 +118,7 @@ describe("job commands", () => {
         request.socket.destroy();
         return;
       }
-      sendEnvelope(response, {
-        ...activeJob,
-        problem: {
-          code: "JOB_CANCELED",
-          correlationId: "server-correlation",
-          detail: "Canceled for the test.",
-          jobId: "job-1",
-          retryable: false,
-          schemaVersion: 1,
-          status: 409,
-          suggestedAction: "Create another job.",
-          title: "Canceled",
-          type: "about:blank",
-        },
-        state: "canceled",
-      });
+      sendEnvelope(response, canceledJob);
     });
     const capture = await authenticatedCapture(server.url);
 
