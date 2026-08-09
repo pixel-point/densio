@@ -11,6 +11,7 @@ import { registerDocumentationRoutes } from "./routes/documentation.ts";
 import { createHealthRoutes } from "./routes/health.ts";
 import { createMediaJobRoutes, type MediaJobRouteDependencies } from "./routes/media-jobs.ts";
 import { pageRoutes } from "./routes/pages.ts";
+import { createSkillRoutes, type SkillRouteDependencies } from "./routes/skill.ts";
 
 export interface AppDependencies {
   readonly artifacts: ArtifactRouteDependencies;
@@ -19,6 +20,7 @@ export interface AppDependencies {
   readonly capabilities: CapabilityRouteDependencies;
   readonly mediaJobs: MediaJobRouteDependencies;
   readonly readiness: Parameters<typeof createHealthRoutes>[0];
+  readonly skill: SkillRouteDependencies;
 }
 
 export const createApp = (dependencies?: AppDependencies) => {
@@ -48,6 +50,7 @@ export const createApp = (dependencies?: AppDependencies) => {
     app.route("/", createMediaJobRoutes(dependencies.mediaJobs));
     app.route("/", createArtifactRoutes(dependencies.artifacts));
     app.route("/", createCapabilitiesRoutes(dependencies.capabilities));
+    app.route("/", createSkillRoutes(dependencies.skill));
   }
 
   registerDocumentationRoutes(app);

@@ -8,6 +8,7 @@ import { runMediaCommand } from "./media-commands.ts";
 import { emitProblem } from "./render.ts";
 import { makeCliRuntime, type CliDependencies } from "./runtime.ts";
 import { runBillingCommand, runCapabilitiesCommand } from "./service-commands.ts";
+import { runSkillCommand } from "./skill-command.ts";
 
 type CommandHandler = (
   argumentsInput: ReadonlyArray<string>,
@@ -29,6 +30,7 @@ const commandHandlers = new Map<string, CommandHandler>([
     (argumentsInput, runtime) => runMediaCommand("extract-images", argumentsInput, runtime),
   ],
   ["jobs", runJobsCommand],
+  ["skill", runSkillCommand],
 ]);
 
 export const runCli = async (argv: ReadonlyArray<string>, dependencies: CliDependencies = {}) => {

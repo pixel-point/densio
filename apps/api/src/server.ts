@@ -27,6 +27,7 @@ import { MediaInspector } from "./media/inspection/media-inspector.ts";
 import type { MediaCapabilities } from "./media/inspection/media-capabilities.ts";
 import { MediaProcessRunner } from "./media/process/media-process-runner.ts";
 import { checkReadiness } from "./services/readiness.ts";
+import { densioSkillBundle } from "./skill-bundle.ts";
 import { validateProductionConfig } from "./runtime-config.ts";
 import { createApp, type AppDependencies } from "./app.ts";
 
@@ -180,6 +181,7 @@ const applicationDependencies = (
         ffmpegVersion: mediaCapabilities.ffmpegVersion,
         ffprobeVersion: mediaCapabilities.ffprobeVersion,
       }),
+    skill: { bundle: densioSkillBundle, createCorrelationId: common.createCorrelationId },
   };
 };
 

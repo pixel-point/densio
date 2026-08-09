@@ -17,3 +17,7 @@
 !packages/shared/package.json
 !packages/shared/src/
 !packages/shared/src/**
+
+!skills/
+!skills/densio/
+!skills/densio/**

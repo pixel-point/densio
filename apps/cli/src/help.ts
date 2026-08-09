@@ -12,6 +12,7 @@ Commands:
   jobs get|wait|cancel           Inspect, resume, or cancel asynchronous jobs
   artifacts download            Download and SHA-256 verify an artifact
   billing subscribe PLAN|portal Open Stripe Checkout or Customer Portal
+  skill                          Retrieve the current Densio skill bundle
 
 Agent behavior:
   --json emits one success document on stdout; problems use stderr.
@@ -56,6 +57,7 @@ Artifact download:
 
 Examples:
   densio capabilities --json
+  densio skill --json
   densio compress input.mp4 --json
   densio compare-quality input.mp4 --crf 28,34,40 --at 01:12.500 --json
   densio jobs wait JOB_ID --json

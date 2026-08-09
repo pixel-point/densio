@@ -24,6 +24,8 @@ describe("CLI help", () => {
     expect(capture.stdout()).toContain("artifacts download");
     expect(capture.stdout()).toContain("billing subscribe PLAN|portal");
     expect(capture.stdout()).toContain("capabilities");
+    expect(capture.stdout()).toContain("skill");
+    expect(capture.stdout()).toContain("densio skill --json");
     expect(capture.stderr()).toBe("");
   });
 

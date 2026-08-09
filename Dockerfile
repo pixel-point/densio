@@ -21,6 +21,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 COPY apps/api/src apps/api/src
 COPY apps/api/drizzle apps/api/drizzle
 COPY packages/shared/src packages/shared/src
+COPY skills/densio skills/densio
 
 RUN pnpm --filter @densio/api build
 

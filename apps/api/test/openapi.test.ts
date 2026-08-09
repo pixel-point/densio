@@ -11,6 +11,7 @@ import { createCapabilitiesRoutes } from "../src/routes/capabilities.ts";
 import { registerDocumentationRoutes } from "../src/routes/documentation.ts";
 import { createHealthRoutes } from "../src/routes/health.ts";
 import { createMediaJobRoutes } from "../src/routes/media-jobs.ts";
+import { createSkillRoutes } from "../src/routes/skill.ts";
 
 it("serves the generated OpenAPI document", async () => {
   const response = await createApp().request("/openapi.json");
@@ -48,7 +49,7 @@ it("documents every registered API operation", async () => {
   const document = (await response.json()) as OpenAPIV3_1.Document;
 
   expect(documentedOperations(document)).toEqual(runtimeApiOperations(app));
-  expect(documentedOperations(document)).toHaveLength(20);
+  expect(documentedOperations(document)).toHaveLength(21);
 });
 
 it("documents the exact response status set for every operation", async () => {
@@ -63,6 +64,7 @@ it("documents the exact response status set for every operation", async () => {
     "GET /v1/billing/status": ["200", "401", "404", "500"],
     "GET /v1/capabilities": ["200", "401", "404", "500"],
     "GET /v1/jobs/{id}": ["200", "401", "404", "500"],
+    "GET /v1/skill": ["200"],
     "POST /v1/auth/login": ["202", "400", "413", "429", "500"],
     "POST /v1/auth/logout": ["200", "401", "500"],
     "POST /v1/auth/poll": ["200", "400", "409", "410", "413", "500"],
@@ -143,6 +145,17 @@ const createContractApp = () => {
   app.route("/", createMediaJobRoutes(undefined as never));
   app.route("/", createArtifactRoutes(undefined as never));
   app.route("/", createCapabilitiesRoutes(undefined as never));
+  app.route(
+    "/",
+    createSkillRoutes({
+      bundle: {
+        entrypoint: "SKILL.md",
+        files: [{ content: "# Densio\n", path: "SKILL.md", sha256: "a".repeat(64) }],
+        skillVersion: `sha256:${"b".repeat(64)}`,
+      },
+      createCorrelationId: () => "openapi-skill",
+    }),
+  );
   registerDocumentationRoutes(app);
   return app;
 };

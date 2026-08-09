@@ -164,3 +164,6 @@ export type {
 
 export { successEnvelope } from "./transport-envelope.ts";
 export type { SuccessEnvelope } from "./transport-envelope.ts";
+
+export { SkillBundleSchema, SkillFileSchema } from "./skill-contracts.ts";
+export type { SkillBundle, SkillFile } from "./skill-contracts.ts";

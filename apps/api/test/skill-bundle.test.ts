@@ -1,0 +1,41 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+
+import { expect, it } from "vitest";
+
+import { buildSkillBundle, densioSkillBundle } from "../src/skill-bundle.ts";
+
+const skillDirectory = new URL("../../../skills/densio/", import.meta.url);
+
+it("embeds the canonical repository skill and references byte-for-byte", async () => {
+  const expectedEntries = await Promise.all(
+    ["SKILL.md", "references/commands.md", "references/errors.md"].map(
+      async (path) => [path, await readFile(new URL(path, skillDirectory), "utf8")] as const,
+    ),
+  );
+  const expected = Object.fromEntries(expectedEntries);
+  const files = Object.fromEntries(
+    densioSkillBundle.files.map(({ content, path }) => [path, content]),
+  );
+
+  expect(densioSkillBundle.entrypoint).toBe("SKILL.md");
+  expect(files).toEqual(expected);
+  expect(densioSkillBundle.files.map(({ sha256 }) => sha256)).toEqual(
+    expectedEntries.map(([, content]) => createHash("sha256").update(content).digest("hex")),
+  );
+});
+
+it("derives the bundle version from ordered paths and contents", () => {
+  const first = buildSkillBundle([{ content: "one", path: "SKILL.md" }]);
+  const same = buildSkillBundle([{ content: "one", path: "SKILL.md" }]);
+  const changed = buildSkillBundle([{ content: "two", path: "SKILL.md" }]);
+
+  expect(first.skillVersion).toBe(same.skillVersion);
+  expect(first.skillVersion).not.toBe(changed.skillVersion);
+});
+
+it("includes the canonical skill in the Docker build context", async () => {
+  const dockerIgnore = await readFile(new URL("../../../.dockerignore", import.meta.url), "utf8");
+
+  expect(dockerIgnore).toContain("!skills/densio/**");
+});
