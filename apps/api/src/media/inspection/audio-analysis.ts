@@ -6,9 +6,7 @@ import { MediaInspectionError } from "./media-inspection-error.ts";
 export type AudioClassification = "absent" | "silent" | "audible";
 
 const peakMetadataKey = "lavfi.astats.Overall.Peak_level";
-const peakFilter =
-  `astats=metadata=1:reset=0,ametadata=mode=print:key=${peakMetadataKey}` +
-  ":file=pipe\\:1:direct=1";
+const peakFilter = `astats=metadata=1:reset=0,ametadata=mode=print:key=${peakMetadataKey}:file=-:direct=1`;
 
 export const buildAudioAnalysisCommand = (
   inputPath: string,

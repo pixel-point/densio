@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { open, rm } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { link, open, rm, stat } from "node:fs/promises";
 
 import { Effect, Schema } from "effect";
 
@@ -106,3 +107,59 @@ export const storeUpload = Effect.fn("Storage.storeUpload")(function* (
     try: () => streamUpload(options),
   });
 });
+
+export const verifyStoredUpload = Effect.fn("Storage.verifyStoredUpload")(function* (
+  path: string,
+  expected: { readonly bytes: number; readonly sha256: string },
+) {
+  const verified = yield* Effect.tryPromise({
+    catch: (cause) => cause,
+    try: async () => {
+      const metadata = await stat(path);
+      if (metadata.size !== expected.bytes) return false;
+
+      const digest = createHash("sha256");
+      for await (const chunk of createReadStream(path)) digest.update(chunk);
+      return digest.digest("hex") === expected.sha256;
+    },
+  }).pipe(
+    Effect.catch((cause) =>
+      isMissingFile(cause)
+        ? Effect.succeed(false)
+        : Effect.fail(
+            new StorageOperationError({
+              message: "The stored upload could not be verified.",
+              operation: "verify-upload",
+            }),
+          ),
+    ),
+  );
+
+  return verified;
+});
+
+const isMissingFile = (cause: unknown) =>
+  cause instanceof Error && "code" in cause && cause.code === "ENOENT";
+
+export const publishStoredUpload = (stagingPath: string, destination: string) =>
+  Effect.tryPromise({
+    catch: () =>
+      new StorageOperationError({
+        message: "The stored upload could not be published.",
+        operation: "publish-upload",
+      }),
+    try: async () => {
+      await link(stagingPath, destination);
+      await rm(stagingPath);
+    },
+  });
+
+export const removeStoredUpload = (path: string) =>
+  Effect.tryPromise({
+    catch: () =>
+      new StorageOperationError({
+        message: "The stored upload could not be removed.",
+        operation: "remove-upload",
+      }),
+    try: () => rm(path, { force: true }),
+  });

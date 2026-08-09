@@ -9,6 +9,7 @@ node_modules/
 data/
 dist/
 coverage/
+output/
 .vitest/
 repos/
 tmp/

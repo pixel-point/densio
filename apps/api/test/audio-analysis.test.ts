@@ -27,7 +27,7 @@ describe("audio analysis command", () => {
         "-sn",
         "-dn",
         "-af",
-        "astats=metadata=1:reset=0,ametadata=mode=print:key=lavfi.astats.Overall.Peak_level:file=pipe\\:1:direct=1",
+        "astats=metadata=1:reset=0,ametadata=mode=print:key=lavfi.astats.Overall.Peak_level:file=-:direct=1",
         "-f",
         "null",
         "-",

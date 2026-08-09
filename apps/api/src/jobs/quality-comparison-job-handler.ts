@@ -21,6 +21,7 @@ import {
   entitlementsFor,
   inspectJob,
   invalidJobResult,
+  meteredAnalysis,
   type MediaJobHandler,
   type MediaJobHandlerContext,
   positiveDurationSchema,
@@ -58,9 +59,10 @@ const analyze = Effect.fn("QualityComparisonJobHandler.inspect")(function* (
     job.optionsJson,
     "quality comparison",
   );
-  return yield* inspectJob(context, job, (inspector, inputFile) =>
+  const analysis = yield* inspectJob(context, job, (inspector, inputFile) =>
     inspectComparison(inspector, job, inputFile, options),
   );
+  return meteredAnalysis(analysis);
 });
 
 const inspectComparison = Effect.fn("QualityComparisonJobHandler.inspectMedia")(function* (

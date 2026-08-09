@@ -11,12 +11,14 @@ const media = {
   ffprobeVersion: "7.1-static",
 } as const;
 
-it("reports exact defaults and plan-specific limits through the shared schema", () => {
-  const config = loadConfig({ MAX_UPLOAD_BYTES: "123456" });
+it("reports exact defaults and plan-specific upload limits through the shared schema", () => {
+  const config = loadConfig({ MAX_UPLOAD_BYTES: "20000000000" });
   const free = Schema.decodeUnknownSync(CapabilitiesSchema)(
     buildCapabilities(config, media, "free"),
   );
-  const pro = Schema.decodeUnknownSync(CapabilitiesSchema)(buildCapabilities(config, media, "pro"));
+  const basic = Schema.decodeUnknownSync(CapabilitiesSchema)(
+    buildCapabilities(config, media, "basic"),
+  );
 
   expect(free).toMatchObject({
     defaults: {
@@ -24,9 +26,24 @@ it("reports exact defaults and plan-specific limits through the shared schema", 
       compressionCodecs: ["vp9", "h265"],
       extractionIntervalSeconds: 1,
     },
-    limits: { maxUploadBytes: 123456, maxVideoDurationSeconds: 10 },
+    limits: { maxUploadBytes: 1_000_000_000, maxVideoDurationSeconds: 1_800 },
     plan: "free",
   });
-  expect(pro.limits.maxVideoDurationSeconds).toBe(1_800);
-  expect(pro.codecs.find(({ codec }) => codec === "av1")?.minimumPlan).toBe("pro");
+  expect(basic.limits.maxUploadBytes).toBe(10_000_000_000);
+  expect(free.codecs.find(({ codec }) => codec === "av1")?.minimumPlan).toBe("free");
+});
+
+it("uses the configured comparison duration as the advertised option maximum", () => {
+  const config = loadConfig({ MAX_COMPARISON_SECONDS: "1" });
+
+  const capabilities = Schema.decodeUnknownSync(CapabilitiesSchema)(
+    buildCapabilities(config, media, "free"),
+  );
+
+  expect(capabilities.limits.maxComparisonDurationSeconds).toBe(1);
+  expect(capabilities.options.comparisonDurationSeconds).toEqual({
+    default: 1,
+    maximum: 1,
+    minimum: 1,
+  });
 });

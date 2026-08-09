@@ -13,12 +13,26 @@ interface CropPlan extends VideoDimensions {
   readonly filter?: string;
 }
 
+interface ScalePlan extends VideoDimensions {
+  readonly filter?: string;
+}
+
 export const buildVideoFilters = (source: VideoDimensions, transform: TransformOptions = {}) => {
   assertDimensions(source, "Source");
   const crop = buildCropPlan(source, transform.crop);
-  const scale = buildScaleFilter(crop, transform.scale);
+  const scale = buildScalePlan(crop, transform.scale);
 
-  return [crop.filter, scale].filter((filter): filter is string => filter !== undefined);
+  return [crop.filter, scale.filter].filter((filter): filter is string => filter !== undefined);
+};
+
+export const resolveVideoDimensions = (
+  source: VideoDimensions,
+  transform: TransformOptions = {},
+) => {
+  assertDimensions(source, "Source");
+  const crop = buildCropPlan(source, transform.crop);
+  const { width, height } = buildScalePlan(crop, transform.scale);
+  return { height, width };
 };
 
 const buildCropPlan = (source: VideoDimensions, crop?: CropOptions): CropPlan => {
@@ -66,8 +80,8 @@ const buildAspectRatioCrop = (source: VideoDimensions, aspectRatio: string): Cro
   return { width, height, filter: `crop=${width}:${height}:${x}:${y}` };
 };
 
-const buildScaleFilter = (source: VideoDimensions, scale?: ScaleOptions) => {
-  if (scale === undefined) return buildEvenDimensionFilter(source);
+const buildScalePlan = (source: VideoDimensions, scale?: ScaleOptions): ScalePlan => {
+  if (scale === undefined) return buildEvenDimensionPlan(source);
   if (typeof scale !== "object" || scale === null) {
     throw new MediaPlanError("INVALID_SCALE", "Scale options are invalid");
   }
@@ -88,36 +102,49 @@ const buildScaleFilter = (source: VideoDimensions, scale?: ScaleOptions) => {
 const buildWidthScale = (
   source: VideoDimensions,
   scale: { readonly width: number; readonly allowUpscale?: boolean },
-) => {
+): ScalePlan => {
   assertInteger(scale.width, "Scale width", 2);
   if (scale.width > source.width && scale.allowUpscale !== true) {
     throw new MediaPlanError("UPSCALING_DISABLED", "Width would upscale the video");
   }
 
-  return `scale=${evenFloor(scale.width)}:-2`;
+  const width = evenFloor(scale.width);
+  return {
+    filter: `scale=${width}:-2`,
+    height: proportionalEven(source.height, width, source.width),
+    width,
+  };
 };
 
 const buildHeightScale = (
   source: VideoDimensions,
   scale: { readonly height: number; readonly allowUpscale?: boolean },
-) => {
+): ScalePlan => {
   assertInteger(scale.height, "Scale height", 2);
   if (scale.height > source.height && scale.allowUpscale !== true) {
     throw new MediaPlanError("UPSCALING_DISABLED", "Height would upscale the video");
   }
 
-  return `scale=-2:${evenFloor(scale.height)}`;
+  const height = evenFloor(scale.height);
+  return {
+    filter: `scale=-2:${height}`,
+    height,
+    width: proportionalEven(source.width, height, source.height),
+  };
 };
 
-const buildEvenDimensionFilter = ({ width, height }: VideoDimensions) => {
+const buildEvenDimensionPlan = ({ width, height }: VideoDimensions): ScalePlan => {
   assertDimensions({ width, height }, "Output");
-  if (width % 2 !== 0) return `scale=${evenFloor(width)}:-2`;
-  if (height % 2 !== 0) return `scale=-2:${evenFloor(height)}`;
+  if (width % 2 !== 0) return buildWidthScale({ width, height }, { width: evenFloor(width) });
+  if (height % 2 !== 0) return buildHeightScale({ width, height }, { height: evenFloor(height) });
 
-  return undefined;
+  return { height, width };
 };
 
 const evenFloor = (value: number) => Math.floor(value / 2) * 2;
+
+const proportionalEven = (value: number, target: number, source: number) =>
+  Math.max(2, Math.round((value * target) / source / 2) * 2);
 
 const assertDimensions = ({ width, height }: VideoDimensions, label: string) => {
   assertInteger(width, `${label} width`, 2);

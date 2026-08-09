@@ -9,6 +9,8 @@ const validEnvironment = {
   EMAIL_FROM: "FFmpeg API <login@media.acme.test>",
   PUBLIC_BASE_URL: "https://media.acme.test",
   RESEND_API_KEY: "re_live_realistic",
+  STRIPE_BASIC_PRICE_ID: "price_basic_realistic",
+  STRIPE_PREMIUM_PRICE_ID: "price_premium_realistic",
   STRIPE_PRO_PRICE_ID: "price_pro_realistic",
   STRIPE_SECRET_KEY: "sk_live_realistic",
   STRIPE_WEBHOOK_SECRET: "whsec_realistic",
@@ -49,4 +51,23 @@ it("requires a non-placeholder 32-byte outbox encryption key", () => {
       loadConfig({ ...validEnvironment, AUTH_OUTBOX_ENCRYPTION_KEY: "not-hex" }),
     ),
   ).toThrow(/AUTH_OUTBOX_ENCRYPTION_KEY/);
+});
+
+it("requires every paid plan price", () => {
+  expect(() =>
+    validateProductionConfig(
+      loadConfig({ ...validEnvironment, STRIPE_BASIC_PRICE_ID: "", STRIPE_PREMIUM_PRICE_ID: "" }),
+    ),
+  ).toThrow(/STRIPE_BASIC_PRICE_ID.*STRIPE_PREMIUM_PRICE_ID/);
+});
+
+it("requires a distinct Stripe price ID for each paid plan", () => {
+  expect(() =>
+    validateProductionConfig(
+      loadConfig({
+        ...validEnvironment,
+        STRIPE_PRO_PRICE_ID: validEnvironment.STRIPE_BASIC_PRICE_ID,
+      }),
+    ),
+  ).toThrow(/Stripe price IDs must be unique/);
 });

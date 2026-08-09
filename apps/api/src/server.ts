@@ -22,6 +22,7 @@ import { makeRequestIpHasher } from "./http/request-ip.ts";
 import { makeJobService } from "./jobs/job-service.ts";
 import { startJobWorker, JobCleanup, JobProcessor } from "./jobs/job-worker.ts";
 import { makeMediaJobCleanup, makeMediaJobProcessor } from "./jobs/media-job-adapter.ts";
+import { startUploadLifecycleSupervisor } from "./jobs/upload-lifecycle-supervisor.ts";
 import { MediaInspector } from "./media/inspection/media-inspector.ts";
 import type { MediaCapabilities } from "./media/inspection/media-capabilities.ts";
 import { MediaProcessRunner } from "./media/process/media-process-runner.ts";
@@ -72,6 +73,7 @@ const runServer = Effect.fn("Application.runServer")(function* (
     makeStripeGateway(new Stripe(appConfig.stripeSecretKey)),
   );
   const jobService = makeJobService(database, {
+    maxComparisonSeconds: appConfig.maxComparisonSeconds,
     maxUploadBytes: appConfig.maxUploadBytes,
     mediaRoot: appConfig.mediaRoot,
     publicBaseUrl: appConfig.publicBaseUrl,
@@ -86,6 +88,10 @@ const runServer = Effect.fn("Application.runServer")(function* (
     mediaRoot: appConfig.mediaRoot,
     publicBaseUrl: appConfig.publicBaseUrl,
   };
+  const uploads = yield* startUploadLifecycleSupervisor(
+    jobService.recoverUploads,
+    appConfig.artifactCleanupIntervalMs,
+  );
   const worker = yield* startJobWorker(database, appConfig.jobWorker).pipe(
     Effect.provideService(JobProcessor, makeMediaJobProcessor(database, adapterConfig, runner)),
     Effect.provideService(JobCleanup, makeMediaJobCleanup(database, adapterConfig)),
@@ -101,9 +107,9 @@ const runServer = Effect.fn("Application.runServer")(function* (
     mediaRoot: appConfig.mediaRoot,
   });
   yield* Effect.addFinalizer(() =>
-    Effect.all([worker.stop(), email.stop(), artifacts.stop()], { concurrency: "unbounded" }).pipe(
-      Effect.asVoid,
-    ),
+    Effect.all([worker.stop(), email.stop(), artifacts.stop(), uploads.stop()], {
+      concurrency: "unbounded",
+    }).pipe(Effect.asVoid),
   );
 
   const app = createApp(
@@ -144,7 +150,7 @@ const applicationDependencies = (
       authService,
       billingService,
       pollAfterSeconds: 2,
-      proPriceId: appConfig.billing.proPriceId,
+      priceIds: appConfig.billing.priceIds,
       requestIpHash: (request, context) =>
         hashRequestIp(request, getConnInfo(context).remote.address),
     },
@@ -160,14 +166,14 @@ const applicationDependencies = (
       authService,
       billingService,
       capabilitiesForPlan: (plan) => buildCapabilities(appConfig, mediaCapabilities, plan),
-      proPriceId: appConfig.billing.proPriceId,
+      priceIds: appConfig.billing.priceIds,
     },
     mediaJobs: {
       ...common,
       authService,
       billingService,
       jobService,
-      proPriceId: appConfig.billing.proPriceId,
+      priceIds: appConfig.billing.priceIds,
     },
     readiness: () =>
       checkReadiness(database, appConfig.mediaRoot, {

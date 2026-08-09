@@ -1,9 +1,15 @@
-import { CompressionOptionsSchema, type CompressionOptions } from "@ffmpeg-api/shared";
+import {
+  CompressionOptionsSchema,
+  DEFAULT_COMPRESSION_CODECS,
+  type CompressionOptions,
+} from "@ffmpeg-api/shared";
 import { Effect, Schema } from "effect";
 
+import { compressionCreditUnits } from "../billing/compression-credit-cost.ts";
 import { validateMediaEntitlements } from "../media/inspection/media-entitlement-check.ts";
 import type { MediaInspector } from "../media/inspection/media-inspector.ts";
 import { MediaProcessRunner } from "../media/process/media-process-runner.ts";
+import { resolveVideoDimensions } from "../media/video-filter.ts";
 import { runCompressionWorkflow } from "../media/workflows/compression-workflow.ts";
 import { publishAndRegisterArtifacts } from "./artifact-publication.ts";
 import {
@@ -13,6 +19,7 @@ import {
   decodeJobOptions,
   entitlementsFor,
   inspectJob,
+  meteredAnalysis,
   type MediaJobHandler,
   type MediaJobHandlerContext,
   positiveDurationSchema,
@@ -43,8 +50,19 @@ const analyze = Effect.fn("CompressionJobHandler.inspect")(function* (
   job: Job,
 ) {
   const options = yield* decodeJobOptions(CompressionOptionsSchema, job.optionsJson, "compression");
-  return yield* inspectJob(context, job, (inspector, inputFile) =>
+  const analysis = yield* inspectJob(context, job, (inspector, inputFile) =>
     inspectCompression(inspector, job, inputFile, options),
+  );
+  const output = resolveVideoDimensions(analysis.source, options.transform);
+  const codecs = options.codecs ?? DEFAULT_COMPRESSION_CODECS;
+  return meteredAnalysis(
+    analysis,
+    compressionCreditUnits({
+      codecCount: codecs.length,
+      durationSeconds: analysis.durationSeconds,
+      output,
+      source: analysis.source,
+    }),
   );
 });
 
@@ -55,7 +73,11 @@ const inspectCompression = Effect.fn("CompressionJobHandler.inspectMedia")(funct
   options: CompressionOptions,
 ) {
   const media = yield* inspector.inspect(inputFile);
-  yield* validateMediaEntitlements(media, options.codecs ?? ["vp9", "h265"], entitlementsFor(job));
+  yield* validateMediaEntitlements(
+    media,
+    options.codecs ?? DEFAULT_COMPRESSION_CODECS,
+    entitlementsFor(job),
+  );
   const audioMode = options.audio ?? "auto";
   if (audioMode === "keep" && media.audioStreamIndexes.length === 0) {
     return yield* new JobProcessorError({

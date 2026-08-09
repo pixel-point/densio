@@ -22,7 +22,6 @@ export const registerDocumentationRoutes = (app: Hono) => {
           title: "Densio API",
           version: "1.0.0",
         },
-        servers: [{ url: "https://api.densio.sh" }],
       },
       exclude: [/^\/billing(?:\/|$)/, "/docs", "/openapi.json"],
     }),

@@ -21,6 +21,29 @@ interface ProblemInput {
   readonly title: string;
 }
 
+export interface ProblemDescriptor {
+  readonly code: string;
+  readonly description: string;
+  readonly status: number;
+  readonly title: string;
+}
+
+type DescriptorProblemInput = Omit<ProblemInput, "code" | "status" | "title">;
+
+export const defineProblem = <const Descriptor extends ProblemDescriptor>(descriptor: Descriptor) =>
+  Object.freeze(descriptor);
+
+export const makeDescriptorProblem = (
+  descriptor: ProblemDescriptor,
+  input: DescriptorProblemInput,
+) =>
+  makeProblem({
+    ...input,
+    code: descriptor.code,
+    status: descriptor.status,
+    title: descriptor.title,
+  });
+
 export const makeProblem = (input: ProblemInput) =>
   new ApiProblem({
     ...input,
@@ -40,12 +63,30 @@ export const toProblemDetails = (problem: ApiProblem, correlationId: string): Pr
   ...(problem.jobId === null ? {} : { jobId: problem.jobId }),
 });
 
+export const invalidRequestProblemDescriptor = defineProblem({
+  code: "INVALID_REQUEST",
+  description: "The request body or required header is invalid.",
+  status: 400,
+  title: "Invalid request",
+});
+
+export const requestTooLargeProblemDescriptor = defineProblem({
+  code: "REQUEST_TOO_LARGE",
+  description: "The JSON request body is too large.",
+  status: 413,
+  title: "Request body too large",
+});
+
+export const internalErrorProblemDescriptor = defineProblem({
+  code: "INTERNAL_ERROR",
+  description: "The server could not complete the request.",
+  status: 500,
+  title: "Internal server error",
+});
+
 export const unexpectedProblem = (_cause: unknown) =>
-  makeProblem({
-    code: "INTERNAL_ERROR",
+  makeDescriptorProblem(internalErrorProblemDescriptor, {
     detail: "The server could not complete the request.",
     retryable: true,
-    status: 500,
     suggestedAction: "Retry once, then contact the server operator with the correlation ID.",
-    title: "Internal server error",
   });

@@ -9,7 +9,7 @@ JSON problems include `code`, `retryable`, `suggestedAction`, `correlationId`, a
 |    0 | Success                 | Parse the one stdout JSON document.                    |
 |    2 | Usage                   | Correct flags; do not retry unchanged.                 |
 |    3 | Authentication          | Run `auth login`, then retry once.                     |
-|    4 | Plan or entitlement     | Change codec/duration or offer Pro billing.            |
+|    4 | Plan, limit, or credits | Follow the suggested plan or credit action.            |
 |    5 | Remote/media failure    | Follow the problem code and suggested action.          |
 |    6 | Network or wait timeout | Resume/retry with the same job ID or idempotency key.  |
 |  130 | Interrupted wait        | Follow `suggestedAction`; media jobs continue running. |
@@ -17,7 +17,9 @@ JSON problems include `code`, `retryable`, `suggestedAction`, `correlationId`, a
 ## Common codes
 
 - `AUTH_REQUIRED`, `AUTH_CHALLENGE_EXPIRED`: complete or restart human email login.
-- `CODEC_NOT_ENTITLED`, `DURATION_LIMIT_EXCEEDED`: choose an allowed codec/duration or ask whether the user wants Pro.
+- `CREDITS_EXHAUSTED`: the current UTC month's credits cannot cover the initial hold or the exact compression cost calculated after inspection. No encode was started and the job's reservation was released. Do not retry unchanged until credits reset, the requested work costs less, or the account moves to a plan with more credits.
+- `DURATION_LIMIT_EXCEEDED`: shorten the source to the server's global duration limit.
+- `CODEC_NOT_ENTITLED`: refresh capabilities before choosing a codec; all current plans advertise VP9, H.265, and AV1.
 - `IDEMPOTENCY_CONFLICT`: the key belongs to a different request. Reuse the original request or create a new intentional key.
 - `UPLOAD_TOO_LARGE`, `UPLOAD_SIZE_MISMATCH`: correct the source/request; do not loop.
 - `JOB_STATE_CONFLICT`: fetch `jobs get JOB_ID` before deciding whether to wait, cancel, or create another job.

@@ -16,8 +16,8 @@ import {
 afterEach(cleanupWorkflowTestRoots);
 
 describe("quality comparison workflow", () => {
-  it("encodes all previews before stills and returns measured size estimates", async () => {
-    const { executable, paths } = await makeWorkflowTestContext("require-two-previews");
+  it("runs ordered variant pipelines concurrently and returns measured size estimates", async () => {
+    const { executable, paths } = await makeWorkflowTestContext("require-concurrent-previews");
 
     const result = await Effect.runPromise(
       provideWorkflowRunner(
@@ -66,8 +66,8 @@ describe("quality comparison workflow", () => {
     });
     expect(result.commands.map((command) => command.arguments.at(-1))).toEqual([
       `${paths.stagingDirectory}/preview-vp9-crf-30.webm`,
-      `${paths.stagingDirectory}/preview-vp9-crf-40.webm`,
       `${paths.stagingDirectory}/still-vp9-crf-30.jpg`,
+      `${paths.stagingDirectory}/preview-vp9-crf-40.webm`,
       `${paths.stagingDirectory}/still-vp9-crf-40.jpg`,
     ]);
     await expect(access(paths.artifactDirectory)).rejects.toMatchObject({ code: "ENOENT" });
@@ -93,8 +93,11 @@ describe("quality comparison workflow", () => {
 
     expect(error).toBeInstanceOf(MediaWorkflowProcessError);
     if (!(error instanceof MediaWorkflowProcessError)) throw error;
-    expect(error.completedCommands).toHaveLength(1);
-    expect(error.completedCommands[0]?.arguments.at(-1)).toContain("preview-vp9-crf-30.webm");
+    expect(
+      error.completedCommands.some((command) =>
+        command.arguments.at(-1)?.includes("preview-vp9-crf-30.webm"),
+      ),
+    ).toBe(true);
     expect(error.failedCommand.arguments.at(-1)).toContain("preview-vp9-crf-40.webm");
     await expect(access(paths.stagingDirectory)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(paths.artifactDirectory)).rejects.toMatchObject({ code: "ENOENT" });

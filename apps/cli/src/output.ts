@@ -33,6 +33,7 @@ export const exitCodeForProblem = ({
   if (status === 401 || code.startsWith("AUTH_")) return CLI_EXIT_CODES.authentication;
   if (
     code.startsWith("PLAN_") ||
+    code === "CREDITS_EXHAUSTED" ||
     code === "CODEC_NOT_ENTITLED" ||
     code === "DURATION_LIMIT_EXCEEDED"
   ) {

@@ -1,6 +1,7 @@
 import {
   BillingSessionResponseSchema,
   CapabilitiesSchema,
+  PAID_PLANS,
   successEnvelope,
 } from "@ffmpeg-api/shared";
 import { Schema } from "effect";
@@ -39,16 +40,19 @@ export const runBillingCommand = async (
   argumentsInput: ReadonlyArray<string>,
   runtime: CliRuntime,
 ) => {
-  const [command, ...extra] = argumentsInput;
-  if ((command !== "subscribe" && command !== "portal") || extra.length > 0) {
-    throw new CliUsageError("billing requires subscribe or portal.");
+  const [command, plan, ...extra] = argumentsInput;
+  const paidPlan = PAID_PLANS.find((candidate) => candidate === plan);
+  const validPortal = command === "portal" && plan === undefined;
+  const validSubscription = command === "subscribe" && paidPlan !== undefined && extra.length === 0;
+  if (!validPortal && !validSubscription) {
+    throw new CliUsageError("billing requires subscribe basic|pro|premium or portal.");
   }
   const headers = await authorizationHeaders(runtime);
   const path = command === "subscribe" ? "/v1/billing/checkout" : "/v1/billing/portal";
   const response = await requestJson(
     runtime,
     path,
-    jsonRequest("POST", undefined, headers),
+    jsonRequest("POST", command === "subscribe" ? { plan: paidPlan } : undefined, headers),
     decodeBillingSession,
   );
   emitSuccess(runtime, response, `${response.data.url}\n`);

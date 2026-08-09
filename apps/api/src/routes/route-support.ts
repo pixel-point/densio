@@ -3,7 +3,13 @@ import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import type { AuthService } from "../auth/auth-service.ts";
-import { ApiProblem, makeProblem, toProblemDetails } from "../errors/problem-details.ts";
+import {
+  ApiProblem,
+  invalidRequestProblemDescriptor,
+  makeDescriptorProblem,
+  requestTooLargeProblemDescriptor,
+  toProblemDetails,
+} from "../errors/problem-details.ts";
 import { RangeNotSatisfiable } from "../storage/byte-range.ts";
 import { authRequiredProblem } from "./problems/auth-problems.ts";
 import {
@@ -120,23 +126,17 @@ const problemHeaders = (error: unknown) =>
   error instanceof RangeNotSatisfiable ? { "content-range": error.contentRange } : {};
 
 export const invalidRequestProblem = () =>
-  makeProblem({
-    code: "INVALID_REQUEST",
+  makeDescriptorProblem(invalidRequestProblemDescriptor, {
     detail: "The request body or required header is invalid.",
     retryable: false,
-    status: 400,
     suggestedAction: "Correct the request using the documented JSON schema.",
-    title: "Invalid request",
   });
 
 const requestTooLargeProblem = () =>
-  makeProblem({
-    code: "REQUEST_TOO_LARGE",
+  makeDescriptorProblem(requestTooLargeProblemDescriptor, {
     detail: `JSON request bodies are limited to ${maximumJsonBytes} bytes.`,
     retryable: false,
-    status: 413,
     suggestedAction: "Remove unsupported or oversized request fields and retry.",
-    title: "Request body too large",
   });
 
 const readJsonBody = async (request: Request): Promise<unknown> => {

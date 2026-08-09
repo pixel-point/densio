@@ -18,6 +18,8 @@ export const validateProductionConfig = (config: AppConfig) => {
       publicUrl !== undefined && (publicUrl.protocol === "https:" || localPublicUrl),
     ],
     ["RESEND_API_KEY", validPrefixedSecret(config.resendApiKey, "re_")],
+    ["STRIPE_BASIC_PRICE_ID", validPrefixedSecret(config.stripeBasicPriceId, "price_")],
+    ["STRIPE_PREMIUM_PRICE_ID", validPrefixedSecret(config.stripePremiumPriceId, "price_")],
     ["STRIPE_PRO_PRICE_ID", validPrefixedSecret(config.stripeProPriceId, "price_")],
     ["STRIPE_SECRET_KEY", validPrefixedSecret(config.stripeSecretKey, "sk_")],
     ["STRIPE_WEBHOOK_SECRET", validPrefixedSecret(config.stripeWebhookSecret, "whsec_")],
@@ -25,6 +27,10 @@ export const validateProductionConfig = (config: AppConfig) => {
   const missing = required.flatMap(([name, valid]) => (valid ? [] : [name]));
   if (missing.length > 0) {
     throw new Error(`Missing or placeholder configuration: ${missing.join(", ")}`);
+  }
+  const priceIds = Object.values(config.billing.priceIds);
+  if (new Set(priceIds).size !== priceIds.length) {
+    throw new Error("Stripe price IDs must be unique across paid plans.");
   }
 };
 

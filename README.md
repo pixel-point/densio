@@ -4,7 +4,7 @@ An agent-first, self-hosted video-processing API and CLI. It turns a few typed
 workflows into durable FFmpeg jobs without exposing arbitrary command arguments:
 
 - web compression to VP9/WebM and H.265/MP4 by default;
-- Pro-only AV1/WebM compression;
+- explicit AV1/WebM compression;
 - interval image extraction to a ZIP with a manifest;
 - CRF quality comparisons at a time, timecode, or exact source frame.
 
@@ -25,12 +25,32 @@ heartbeats, and conditional transitions make interrupted work recoverable after
 a restart. FFmpeg receives an executable plus an argument array directly; no
 request is evaluated by a shell.
 
-Plans are enforced from FFprobe metadata before processing:
+Plans use automatic monthly credits. Every plan supports VP9, H.265, and AV1,
+with the same 30-minute input-duration safety ceiling:
 
-| Plan | Maximum input duration | Codecs          |
-| ---- | ---------------------: | --------------- |
-| Free |             10 seconds | VP9, H.265      |
-| Pro  |             30 minutes | VP9, H.265, AV1 |
+| Plan    | Monthly credits | Maximum upload | Queue priority |
+| ------- | --------------: | -------------: | -------------- |
+| Free    |              30 |           1 GB | Standard       |
+| Basic   |             750 |          10 GB | Paid           |
+| Pro     |           5,000 |          10 GB | Paid           |
+| Premium |           7,500 |          10 GB | Paid           |
+
+Each created media job reserves 0.05 credits automatically. After FFprobe
+inspects a compression source, the reservation is adjusted before FFmpeg starts:
+
+```text
+credits = duration / 5 minutes
+        * average(input pixels, output pixels) / 1080p pixels
+        * output codec count
+```
+
+The result rounds up to the next 0.05 credits, with a 0.05 minimum. For example,
+a five-minute 1080p source costs 1 credit per output codec; the default VP9 +
+H.265 pair costs 2 credits. Image extraction and quality comparison currently
+cost the 0.05-credit minimum. Success consumes the final reservation; failure,
+cancellation, upload expiry, or insufficient post-analysis credits releases it.
+Credits reset at the start of each UTC calendar month. Metering is automatic and
+never adds a quote or confirmation step.
 
 Compression without options produces both VP9/WebM and H.265/MP4. Audio defaults
 to `auto`: audible audio is retained, silent audio is removed, and no audio track
@@ -179,11 +199,12 @@ it scrubs the ciphertext after delivery or a terminal failure. Keep
 challenge and retry settings from `.env.example` unless traffic measurements
 justify changing them.
 
-## Stripe Pro subscriptions
+## Stripe subscriptions
 
-Create one recurring Stripe Price for Pro and set its ID as
-`STRIPE_PRO_PRICE_ID`. Configure the Customer Portal in Stripe, then register an
-HTTPS webhook at:
+Create recurring Stripe Prices for Basic, Pro, and Premium, then set their IDs
+as `STRIPE_BASIC_PRICE_ID`, `STRIPE_PRO_PRICE_ID`, and
+`STRIPE_PREMIUM_PRICE_ID`. Configure the Customer Portal in Stripe, then
+register an HTTPS webhook at:
 
 ```text
 https://video.example.com/v1/billing/webhook
@@ -206,9 +227,12 @@ stripe listen \
   --forward-to http://127.0.0.1:3000/v1/billing/webhook
 ```
 
-Use the printed `whsec_...` only in the local `.env`. The CLI's
-`billing subscribe` and `billing portal` commands return hosted Stripe URLs; the
-API never handles card data.
+Use the printed `whsec_...` only in the local `.env`. The CLI commands
+`billing subscribe basic`, `billing subscribe pro`,
+`billing subscribe premium`, and `billing portal` return hosted Stripe URLs;
+the API never handles card data. Stripe webhooks maintain the local subscription
+mirror. Creating or processing a media job reads that local state and never
+calls Stripe, so billing does not interrupt compression.
 
 ## Operator Pro grants
 

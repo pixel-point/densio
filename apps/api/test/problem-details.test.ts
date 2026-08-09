@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { makeProblem, toProblemDetails, unexpectedProblem } from "../src/errors/problem-details.ts";
+import {
+  defineProblem,
+  makeDescriptorProblem,
+  makeProblem,
+  toProblemDetails,
+  unexpectedProblem,
+} from "../src/errors/problem-details.ts";
+import { JobCreditsExhausted } from "../src/jobs/job-service.ts";
+import { jobProblem } from "../src/routes/problems/job-problems.ts";
 
 describe("problem details", () => {
   it("creates schema-versioned actionable RFC 9457 responses", () => {
@@ -30,5 +38,33 @@ describe("problem details", () => {
     expect(JSON.stringify(unexpectedProblem(new Error("database password")))).not.toContain(
       "database password",
     );
+  });
+
+  it("uses one descriptor for stable runtime and documentation fields", () => {
+    const descriptor = defineProblem({
+      code: "AUTH_REQUIRED",
+      description: "A valid bearer token is required.",
+      status: 401,
+      title: "Authentication required",
+    });
+
+    expect(
+      makeDescriptorProblem(descriptor, {
+        detail: "Authenticate before submitting a job.",
+        retryable: false,
+        suggestedAction: "Run ffmpeg-api auth login.",
+      }),
+    ).toMatchObject({ code: "AUTH_REQUIRED", status: 401, title: "Authentication required" });
+    expect(descriptor.description).toBe("A valid bearer token is required.");
+  });
+
+  it("returns a payment-required problem when monthly credits are exhausted", () => {
+    expect(
+      jobProblem(new JobCreditsExhausted({ availableCredits: 0, monthlyCredits: 30 })),
+    ).toMatchObject({
+      code: "CREDITS_EXHAUSTED",
+      retryable: false,
+      status: 402,
+    });
   });
 });

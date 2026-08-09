@@ -7,6 +7,7 @@ import {
   AuthStatusSchema,
   BillingSessionResponseSchema,
   BillingStatusSchema,
+  CheckoutPlanRequestSchema,
   ProblemDetailsSchema,
   successEnvelope,
 } from "../src/index.ts";
@@ -68,6 +69,13 @@ describe("billing responses", () => {
 
   it("reports independent Stripe and administrator entitlements", () => {
     const status = {
+      credits: {
+        available: 4_998.7,
+        monthly: 5_000,
+        reserved: 0.05,
+        resetsAt: "2026-09-01T00:00:00.000Z",
+        used: 1.25,
+      },
       plan: "pro",
       entitlementSource: "both",
       subscriptionStatus: "past_due",
@@ -75,6 +83,14 @@ describe("billing responses", () => {
     };
 
     expect(Schema.decodeUnknownSync(BillingStatusSchema)(status)).toEqual(status);
+  });
+
+  it("accepts only paid plans for Checkout", () => {
+    const decode = Schema.decodeUnknownSync(CheckoutPlanRequestSchema);
+
+    expect(decode({ plan: "basic" })).toEqual({ plan: "basic" });
+    expect(decode({ plan: "premium" })).toEqual({ plan: "premium" });
+    expect(() => decode({ plan: "free" })).toThrow();
   });
 });
 
@@ -94,15 +110,15 @@ describe("transport envelopes", () => {
 
   it("accepts RFC 9457 problem details with stable recovery metadata", () => {
     const problem = {
-      type: "https://ffmpeg-api.example/problems/plan-limit-exceeded",
-      title: "Plan limit exceeded",
-      status: 403,
-      detail: "Free accounts can process videos up to 10 seconds.",
+      type: "https://ffmpeg-api.example/problems/credits-exhausted",
+      title: "Credits exhausted",
+      status: 402,
+      detail: "All 30 monthly credits are used or reserved.",
       instance: "/v1/jobs/job-1",
       schemaVersion: 1,
-      code: "PLAN_LIMIT_EXCEEDED",
+      code: "CREDITS_EXHAUSTED",
       retryable: false,
-      suggestedAction: "Upgrade to Pro or submit a shorter video.",
+      suggestedAction: "Wait for the monthly reset or upgrade the account plan.",
       correlationId: "request-1",
       jobId: "job-1",
     };

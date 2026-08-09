@@ -1,7 +1,13 @@
-import type { AudioMode, MediaCodec, TransformOptions } from "@ffmpeg-api/shared";
+import {
+  DEFAULT_COMPRESSION_CODECS,
+  type AudioMode,
+  type MediaCodec,
+  type TransformOptions,
+} from "@ffmpeg-api/shared";
 import { Effect } from "effect";
 
 import { buildCompressionPlan, type AudioAnalysis } from "../compression-plan.ts";
+import { MEDIA_CODEC_EXECUTION_POLICY } from "../codec-execution-policy.ts";
 import type { VideoDimensions } from "../video-filter.ts";
 import type { JobStoragePaths } from "../../storage/workspace.ts";
 import { resolveStagedFile } from "../../storage/workspace.ts";
@@ -33,8 +39,6 @@ export interface CompressionWorkflowResult {
   readonly outputs: ReadonlyArray<StagedWorkflowOutput>;
 }
 
-const defaultCodecs = ["vp9", "h265"] as const;
-
 export const runCompressionWorkflow = Effect.fn("MediaWorkflow.runCompression")(function* (
   options: CompressionWorkflowOptions,
 ) {
@@ -45,7 +49,7 @@ const executeCompressionWorkflow = Effect.fn("MediaWorkflow.executeCompression")
   options: CompressionWorkflowOptions,
 ) {
   yield* resetWorkflowStaging(options.paths);
-  const codecs = options.codecs ?? defaultCodecs;
+  const codecs = options.codecs ?? DEFAULT_COMPRESSION_CODECS;
   const outputs = codecs.map(compressionOutput);
   const outputPaths = yield* Effect.forEach(outputs, (output) =>
     resolveStagedFile(options.paths, output.stagedFilename),
@@ -69,21 +73,13 @@ const executeCompressionWorkflow = Effect.fn("MediaWorkflow.executeCompression")
 });
 
 const compressionOutput = (codec: MediaCodec): StagedWorkflowOutput => {
-  if (codec === "h265") {
-    return {
-      artifactFilename: "video-h265.mp4",
-      codec,
-      kind: "video",
-      mediaType: "video/mp4",
-      stagedFilename: "compressed-h265.mp4",
-    };
-  }
+  const policy = MEDIA_CODEC_EXECUTION_POLICY[codec];
 
   return {
-    artifactFilename: `video-${codec}.webm`,
+    artifactFilename: `video-${codec}.${policy.fileExtension}`,
     codec,
     kind: "video",
-    mediaType: "video/webm",
-    stagedFilename: `compressed-${codec}.webm`,
+    mediaType: policy.mediaType,
+    stagedFilename: `compressed-${codec}.${policy.fileExtension}`,
   };
 };

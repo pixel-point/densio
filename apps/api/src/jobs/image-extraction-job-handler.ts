@@ -14,6 +14,7 @@ import {
   entitlementsFor,
   inspectJob,
   invalidJobResult,
+  meteredAnalysis,
   type MediaJobHandler,
   type MediaJobHandlerContext,
   positiveDurationSchema,
@@ -49,9 +50,10 @@ const analyze = Effect.fn("ImageExtractionJobHandler.inspect")(function* (
     job.optionsJson,
     "image extraction",
   );
-  return yield* inspectJob(context, job, (inspector, inputFile) =>
+  const analysis = yield* inspectJob(context, job, (inspector, inputFile) =>
     inspectExtraction(inspector, job, inputFile, options, context.config.maxExtractedImages),
   );
+  return meteredAnalysis(analysis);
 });
 
 const inspectExtraction = Effect.fn("ImageExtractionJobHandler.inspectMedia")(function* (

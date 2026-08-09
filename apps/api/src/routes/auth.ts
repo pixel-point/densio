@@ -13,6 +13,12 @@ import { describeRoute } from "hono-openapi";
 
 import type { AuthConfig, AuthService } from "../auth/auth-service.ts";
 import type { BillingService } from "../billing/billing-service.ts";
+import type { BillingPriceIds } from "../billing/billing-repository.ts";
+import {
+  internalErrorProblemDescriptor,
+  invalidRequestProblemDescriptor,
+  requestTooLargeProblemDescriptor,
+} from "../errors/problem-details.ts";
 import {
   beginRequest,
   decodeRequestJson,
@@ -25,10 +31,19 @@ import {
   bearerSecurity,
   jsonRequest,
   optionalBearerSecurity,
-  problemResponse,
+  problemResponses,
   queryParameter,
   successResponse,
 } from "./openapi-support.ts";
+import {
+  authChallengeExpiredProblemDescriptor,
+  authChallengeInvalidProblemDescriptor,
+  authChallengeUsedProblemDescriptor,
+  authRateLimitProblemDescriptor,
+  authRequiredProblemDescriptor,
+  invalidEmailProblemDescriptor,
+  refreshReplayProblemDescriptor,
+} from "./problems/auth-problems.ts";
 
 const LoginRequestSchema = Schema.Struct({ email: EmailAddressSchema });
 const PollRequestSchema = Schema.Struct({ pollToken: Schema.NonEmptyString });
@@ -43,8 +58,13 @@ const loginDocumentation = describeRoute({
   requestBody: jsonRequest(LoginRequestSchema),
   responses: {
     "202": successResponse("A login challenge was created.", AuthStartResponseSchema),
-    "400": problemResponse("The email or JSON body is invalid."),
-    "429": problemResponse("The login rate limit was exceeded."),
+    ...problemResponses(
+      invalidRequestProblemDescriptor,
+      invalidEmailProblemDescriptor,
+      requestTooLargeProblemDescriptor,
+      authRateLimitProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   summary: "Request a magic login link",
   tags: ["Authentication"],
@@ -57,7 +77,13 @@ const confirmationDocumentation = describeRoute({
       content: { "text/html": { schema: { type: "string" } } },
       description: "The login was confirmed in a browser page.",
     },
-    "400": problemResponse("The confirmation token is invalid."),
+    ...problemResponses(
+      invalidRequestProblemDescriptor,
+      authChallengeInvalidProblemDescriptor,
+      authChallengeUsedProblemDescriptor,
+      authChallengeExpiredProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   summary: "Confirm a magic login link",
   tags: ["Authentication"],
@@ -67,7 +93,14 @@ const pollDocumentation = describeRoute({
   requestBody: jsonRequest(PollRequestSchema),
   responses: {
     "200": successResponse("The challenge is pending or confirmed.", AuthPollResponseSchema),
-    "400": problemResponse("The poll token or JSON body is invalid."),
+    ...problemResponses(
+      invalidRequestProblemDescriptor,
+      authChallengeInvalidProblemDescriptor,
+      authChallengeUsedProblemDescriptor,
+      authChallengeExpiredProblemDescriptor,
+      requestTooLargeProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   summary: "Poll a login challenge",
   tags: ["Authentication"],
@@ -77,8 +110,13 @@ const refreshDocumentation = describeRoute({
   requestBody: jsonRequest(RefreshRequestSchema),
   responses: {
     "200": successResponse("The session tokens were rotated.", AuthTokensSchema),
-    "400": problemResponse("The refresh token or JSON body is invalid."),
-    "401": problemResponse("The refresh token is expired or revoked."),
+    ...problemResponses(
+      invalidRequestProblemDescriptor,
+      authRequiredProblemDescriptor,
+      refreshReplayProblemDescriptor,
+      requestTooLargeProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   summary: "Refresh an authenticated session",
   tags: ["Authentication"],
@@ -87,7 +125,7 @@ const logoutDocumentation = describeRoute({
   operationId: "logout",
   responses: {
     "200": successResponse("The session was revoked.", LogoutResponseSchema),
-    "401": problemResponse("A valid bearer token is required."),
+    ...problemResponses(authRequiredProblemDescriptor, internalErrorProblemDescriptor),
   },
   security: bearerSecurity,
   summary: "Log out the current session",
@@ -97,7 +135,7 @@ const authStatusDocumentation = describeRoute({
   operationId: "getAuthStatus",
   responses: {
     "200": successResponse("The current authentication status.", AuthStatusSchema),
-    "401": problemResponse("The supplied bearer token is invalid."),
+    ...problemResponses(authRequiredProblemDescriptor, internalErrorProblemDescriptor),
   },
   security: optionalBearerSecurity,
   summary: "Get authentication status",
@@ -111,7 +149,7 @@ export interface AuthRouteDependencies {
   readonly createCorrelationId: () => string;
   readonly now: () => number;
   readonly pollAfterSeconds: number;
-  readonly proPriceId: string;
+  readonly priceIds: BillingPriceIds;
   readonly requestIpHash: (request: Request, context: HonoContext) => string;
 }
 
@@ -255,7 +293,8 @@ const registerStatusRoute = (routes: Hono, dependencies: AuthRouteDependencies) 
         now: dependencies.now(),
       });
       const billing = yield* dependencies.billingService.getEntitlement({
-        proPriceId: dependencies.proPriceId,
+        now: dependencies.now(),
+        priceIds: dependencies.priceIds,
         userId: identity.userId,
       });
       return {

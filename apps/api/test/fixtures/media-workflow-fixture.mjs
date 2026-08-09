@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { basename, dirname, join } from "node:path";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, writeFile } from "node:fs/promises";
 
 const argv = process.argv.slice(2);
 const executableMode = basename(process.argv[1]);
@@ -34,6 +34,16 @@ const writeSingleOutput = async () => {
   const crfIndex = argv.indexOf("-crf");
   const crf = crfIndex < 0 ? undefined : Number(argv[crfIndex + 1]);
 
+  if (executableMode.includes("require-concurrent-codecs") && outputPath.includes("compressed-")) {
+    await waitForOutputPeers("compressed-", 2);
+  }
+  if (executableMode.includes("require-concurrent-previews") && outputPath.includes("preview-")) {
+    await waitForOutputPeers("preview-", 2);
+  }
+  if (executableMode.includes("require-concurrent-previews") && outputPath.endsWith(".jpg")) {
+    await access(inputPath);
+  }
+
   if (executableMode.includes("require-two-previews") && outputPath.endsWith(".jpg")) {
     const previews = (await readdir(dirname(outputPath))).filter((name) =>
       name.startsWith("preview-"),
@@ -49,9 +59,25 @@ const writeSingleOutput = async () => {
   const shouldFailPreview =
     executableMode.includes("fail-preview") && outputPath.includes("preview-vp9-crf-40");
   if (shouldFailH265 || shouldFailPreview) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
     process.stderr.write("deterministic workflow failure");
     process.exit(9);
   }
+};
+
+const waitForOutputPeers = async (prefix, count) => {
+  const directory = dirname(outputPath);
+  await writeFile(join(directory, `.started-${basename(outputPath)}`), "");
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 500) {
+    const peers = (await readdir(directory)).filter((name) =>
+      name.startsWith(`.started-${prefix}`),
+    );
+    if (peers.length >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  process.stderr.write("independent workflow commands did not overlap");
+  process.exit(10);
 };
 
 if (outputPath.includes("%06d")) {

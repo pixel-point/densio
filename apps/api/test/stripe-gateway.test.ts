@@ -5,6 +5,7 @@ import { expect, it } from "vitest";
 import { InvalidStripeWebhook } from "../src/billing/billing-errors.ts";
 import {
   makeStripeGateway,
+  normalizeStripeSubscription,
   normalizeStripeSubscriptionStatus,
 } from "../src/billing/stripe-gateway.ts";
 
@@ -28,11 +29,17 @@ it("verifies raw webhook bytes with Stripe and normalizes subscription data", as
   );
 
   expect(event).toEqual({
+    eventId: "evt_subscription_updated",
+    kind: "subscription-sync",
+    subscriptionId: "sub_agent",
+  });
+});
+
+it("normalizes the current Stripe subscription representation", () => {
+  expect(normalizeStripeSubscription(subscriptionEventFixture().data.object)).toEqual({
     cancelAtPeriodEnd: false,
     currentPeriodEnd: 1_900_000_000_000,
     customerId: "cus_agent",
-    eventId: "evt_subscription_updated",
-    kind: "subscription-upsert",
     priceId: "price_pro",
     status: "trialing",
     subscriptionId: "sub_agent",

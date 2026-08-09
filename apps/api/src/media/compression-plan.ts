@@ -1,6 +1,7 @@
-import type { AudioMode, MediaCodec } from "@ffmpeg-api/shared";
+import { MEDIA_CODEC_POLICY, type AudioMode, type MediaCodec } from "@ffmpeg-api/shared";
 
 import { assertCommandPath, createCommandPlan } from "./command-plan.ts";
+import { MEDIA_CODEC_EXECUTION_POLICY } from "./codec-execution-policy.ts";
 import { MediaPlanError } from "./media-plan-error.ts";
 import { buildVideoFilters, type TransformOptions, type VideoDimensions } from "./video-filter.ts";
 
@@ -36,20 +37,17 @@ export interface DefaultCompressionPlanOptions {
   readonly transform?: TransformOptions;
 }
 
-const defaultCrf = { vp9: 40, h265: 32, av1: 35 } as const;
-const crfMaximum = { vp9: 63, h265: 51, av1: 63 } as const;
-
 export const buildDefaultCompressionPlans = (options: DefaultCompressionPlanOptions) => [
   buildCompressionPlan({
     ...sharedCompressionOptions(options),
     codec: "vp9",
-    crf: options.crf?.vp9 ?? defaultCrf.vp9,
+    crf: options.crf?.vp9 ?? MEDIA_CODEC_POLICY.vp9.defaultCrf,
     outputPath: options.outputPaths.vp9,
   }),
   buildCompressionPlan({
     ...sharedCompressionOptions(options),
     codec: "h265",
-    crf: options.crf?.h265 ?? defaultCrf.h265,
+    crf: options.crf?.h265 ?? MEDIA_CODEC_POLICY.h265.defaultCrf,
     outputPath: options.outputPaths.h265,
   }),
 ];
@@ -84,7 +82,7 @@ export const buildCompressionPlan = (options: CompressionPlanOptions) => {
 };
 
 export const assertCrf = (codec: MediaCodec, crf: number) => {
-  const maximum = crfMaximumFor(codec);
+  const maximum = codecPolicyFor(codec).crfRange.maximum;
   if (!Number.isSafeInteger(crf) || crf < 0 || crf > maximum) {
     throw new MediaPlanError(
       "INVALID_CRF",
@@ -103,13 +101,14 @@ const sharedCompressionOptions = (options: DefaultCompressionPlanOptions) => ({
 });
 
 const codecArguments = (codec: MediaCodec, crf: number) => {
+  const execution = codecExecutionPolicyFor(codec);
   if (codec === "vp9") {
-    return ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", String(crf), "-deadline", "best"];
+    return ["-c:v", execution.encoder, "-b:v", "0", "-crf", String(crf), "-deadline", "best"];
   }
   if (codec === "h265") {
     return [
       "-c:v",
-      "libx265",
+      execution.encoder,
       "-crf",
       String(crf),
       "-preset",
@@ -121,7 +120,7 @@ const codecArguments = (codec: MediaCodec, crf: number) => {
     ];
   }
   if (codec === "av1") {
-    return ["-c:v", "libsvtav1", "-b:v", "0", "-crf", String(crf), "-preset", "6"];
+    return ["-c:v", execution.encoder, "-b:v", "0", "-crf", String(crf), "-preset", "6"];
   }
 
   throw new MediaPlanError("INVALID_CODEC", "Media codec is invalid");
@@ -129,9 +128,8 @@ const codecArguments = (codec: MediaCodec, crf: number) => {
 
 const audioArguments = (codec: MediaCodec, decision: "keep" | "remove") => {
   if (decision === "remove") return ["-an"];
-  if (codec === "h265") return ["-c:a", "aac"];
 
-  return ["-c:a", "libopus"];
+  return ["-c:a", codecExecutionPolicyFor(codec).audioEncoder];
 };
 
 const resolveAudioDecision = (mode: AudioMode, analysis?: AudioAnalysis): "keep" | "remove" => {
@@ -156,19 +154,17 @@ const segmentArguments = (segment?: SegmentOptions) => {
   return ["-ss", formatNumber(segment.startSeconds), "-t", formatNumber(segment.durationSeconds)];
 };
 
-const defaultCrfFor = (codec: MediaCodec) => {
-  if (codec === "vp9") return defaultCrf.vp9;
-  if (codec === "h265") return defaultCrf.h265;
-  if (codec === "av1") return defaultCrf.av1;
+const defaultCrfFor = (codec: MediaCodec) => codecPolicyFor(codec).defaultCrf;
 
+const codecPolicyFor = (codec: MediaCodec) => {
+  if (Object.hasOwn(MEDIA_CODEC_POLICY, codec)) return MEDIA_CODEC_POLICY[codec];
   throw new MediaPlanError("INVALID_CODEC", "Media codec is invalid");
 };
 
-const crfMaximumFor = (codec: MediaCodec) => {
-  if (codec === "vp9") return crfMaximum.vp9;
-  if (codec === "h265") return crfMaximum.h265;
-  if (codec === "av1") return crfMaximum.av1;
-
+const codecExecutionPolicyFor = (codec: MediaCodec) => {
+  if (Object.hasOwn(MEDIA_CODEC_EXECUTION_POLICY, codec)) {
+    return MEDIA_CODEC_EXECUTION_POLICY[codec];
+  }
   throw new MediaPlanError("INVALID_CODEC", "Media codec is invalid");
 };
 

@@ -21,11 +21,13 @@ Article-inspired VP9/WebM and H.265/MP4 defaults:
 ffmpeg-api --json compress input.mp4
 ```
 
+Omitting CRF flags uses VP9 42, H.265 30, and AV1 42.
+
 Choose codecs or CRFs:
 
 ```sh
 ffmpeg-api --json compress input.mp4 --codec vp9,h265 --vp9-crf 38 --h265-crf 30
-ffmpeg-api --json compress input.mp4 --codec av1 --av1-crf 35
+ffmpeg-api --json compress input.mp4 --codec av1 --av1-crf 42
 ```
 
 Audio policy is `--audio auto|keep|remove`. `auto` keeps only detected audible audio. `keep` fails if no audio track exists; `remove` always omits it.
@@ -80,12 +82,14 @@ Idempotency keys are non-empty and at most 200 characters. Reuse a key only for 
 ## Billing and downloads
 
 ```sh
-ffmpeg-api --json billing subscribe
+ffmpeg-api --json billing subscribe basic
+ffmpeg-api --json billing subscribe pro
+ffmpeg-api --json billing subscribe premium
 ffmpeg-api --json billing portal
 ffmpeg-api --json artifacts download 'SIGNED_URL' --output ./video.webm --sha256 HEX
 # Add --force only when replacing an existing destination is intentional.
 ```
 
-Present the returned Stripe URL to the user; do not claim billing changed until a later capabilities or billing response confirms Pro.
+Use the paid plan the user requested. Present the returned Stripe URL; do not claim billing changed until a later capabilities or billing response confirms the selected plan. Media jobs initially reserve 0.05 credits. Compression automatically adjusts that reservation after inspection based on duration, average input/output resolution, and output codec count, rounded up to 0.05 credits; a five-minute 1080p source costs 1 credit per output codec. No quote or confirmation step interrupts processing.
 
 Before the final encode after comparison, ask whether the user wants only the compared codec or the default VP9 + H.265 compatibility pair. Do not infer that choice from “web optimized.”

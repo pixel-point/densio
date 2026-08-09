@@ -2,6 +2,8 @@ import { ProblemDetailsSchema, successEnvelope } from "@ffmpeg-api/shared";
 import { Schema } from "effect";
 import type { OpenAPIV3_1 } from "openapi-types";
 
+import type { ProblemDescriptor } from "../errors/problem-details.ts";
+
 export const jsonRequest = <S extends Schema.Top>(schema: S) => ({
   content: { "application/json": { schema: openApiSchema(schema) } },
   required: true,
@@ -23,6 +25,22 @@ export const problemResponse = (description: string) => ({
   content: { "application/problem+json": { schema: openApiSchema(ProblemDetailsSchema) } },
   description,
 });
+
+export const problemResponses = (...descriptors: ReadonlyArray<ProblemDescriptor>) =>
+  Object.fromEntries(
+    [...new Set(descriptors.map(({ status }) => status))].map((status) => [
+      String(status),
+      problemResponse(
+        [
+          ...new Set(
+            descriptors
+              .filter((descriptor) => descriptor.status === status)
+              .map(({ description }) => description),
+          ),
+        ].join(" "),
+      ),
+    ]),
+  );
 
 export const bearerSecurity = [{ bearerAuth: [] }];
 export const optionalBearerSecurity = [{}, { bearerAuth: [] }];

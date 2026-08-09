@@ -17,6 +17,13 @@ import { describeRoute } from "hono-openapi";
 
 import type { AuthService } from "../auth/auth-service.ts";
 import type { BillingService } from "../billing/billing-service.ts";
+import type { BillingPriceIds } from "../billing/billing-repository.ts";
+import {
+  internalErrorProblemDescriptor,
+  invalidRequestProblemDescriptor,
+  requestTooLargeProblemDescriptor,
+  type ProblemDescriptor,
+} from "../errors/problem-details.ts";
 import type { makeJobService } from "../jobs/job-service.ts";
 import {
   authenticateRequest,
@@ -32,9 +39,21 @@ import {
   headerParameter,
   jsonRequest,
   pathParameter,
-  problemResponse,
+  problemResponses,
   successResponse,
 } from "./openapi-support.ts";
+import { authRequiredProblemDescriptor } from "./problems/auth-problems.ts";
+import { billingUserProblemDescriptor } from "./problems/billing-problems.ts";
+import {
+  comparisonDurationProblemDescriptor,
+  creditsExhaustedProblemDescriptor,
+  idempotencyConflictProblemDescriptor,
+  jobNotFoundProblemDescriptor,
+  jobStateProblemDescriptor,
+  uploadExpiredProblemDescriptor,
+  uploadLimitProblemDescriptor,
+  uploadSizeProblemDescriptor,
+} from "./problems/job-problems.ts";
 
 const IdempotencyKeySchema = Schema.NonEmptyString.check(Schema.isMaxLength(200));
 const decodeIdempotencyKey = Schema.decodeUnknownEffect(IdempotencyKeySchema);
@@ -57,6 +76,7 @@ const comparisonDocumentation = jobCreationDocumentation(
   "createQualityComparisonJob",
   "Create a quality comparison job",
   QualityComparisonJobRequestSchema,
+  comparisonDurationProblemDescriptor,
 );
 const uploadDocumentation = describeRoute({
   description: "Streams the source bytes for a job that is awaiting upload.",
@@ -71,10 +91,16 @@ const uploadDocumentation = describeRoute({
       "The source was stored and the job was queued.",
       UploadCompletedResponseSchema,
     ),
-    "400": problemResponse("The upload body is missing or invalid."),
-    "401": problemResponse("A valid bearer token is required."),
-    "404": problemResponse("The job does not exist for this user."),
-    "413": problemResponse("The upload exceeds the job or plan limit."),
+    ...problemResponses(
+      invalidRequestProblemDescriptor,
+      uploadSizeProblemDescriptor,
+      authRequiredProblemDescriptor,
+      jobNotFoundProblemDescriptor,
+      jobStateProblemDescriptor,
+      uploadExpiredProblemDescriptor,
+      uploadLimitProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   security: bearerSecurity,
   summary: "Upload source media",
@@ -85,8 +111,11 @@ const statusDocumentation = describeRoute({
   parameters: [pathParameter("id", "Job identifier.")],
   responses: {
     "200": successResponse("The current job state and result, when available.", JobStatusSchema),
-    "401": problemResponse("A valid bearer token is required."),
-    "404": problemResponse("The job does not exist for this user."),
+    ...problemResponses(
+      authRequiredProblemDescriptor,
+      jobNotFoundProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   security: bearerSecurity,
   summary: "Get job status",
@@ -97,9 +126,11 @@ const cancellationDocumentation = describeRoute({
   parameters: [pathParameter("id", "Job identifier.")],
   responses: {
     "200": successResponse("The updated job state.", JobStatusSchema),
-    "401": problemResponse("A valid bearer token is required."),
-    "404": problemResponse("The job does not exist for this user."),
-    "409": problemResponse("The job can no longer be canceled."),
+    ...problemResponses(
+      authRequiredProblemDescriptor,
+      jobNotFoundProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   security: bearerSecurity,
   summary: "Cancel a job",
@@ -117,7 +148,7 @@ export interface MediaJobRouteDependencies {
   readonly createCorrelationId: () => string;
   readonly jobService: ReturnType<typeof makeJobService>;
   readonly now: () => number;
-  readonly proPriceId: string;
+  readonly priceIds: BillingPriceIds;
 }
 
 export const createMediaJobRoutes = (dependencies: MediaJobRouteDependencies) => {
@@ -179,7 +210,8 @@ const createOwnedJob = Effect.fn("MediaRoutes.createJob")(function* (
   const now = dependencies.now();
   const identity = yield* authenticateRequest(request, dependencies.authService, now);
   const billing = yield* dependencies.billingService.getEntitlement({
-    proPriceId: dependencies.proPriceId,
+    now,
+    priceIds: dependencies.priceIds,
     userId: identity.userId,
   });
   const idempotencyKey = yield* optionalIdempotencyKey(
@@ -268,6 +300,7 @@ function jobCreationDocumentation<S extends Schema.Top>(
   operationId: string,
   summary: string,
   schema: S,
+  ...additionalProblems: ReadonlyArray<ProblemDescriptor>
 ) {
   return describeRoute({
     operationId,
@@ -283,9 +316,17 @@ function jobCreationDocumentation<S extends Schema.Top>(
         "The job was created and is awaiting upload.",
         JobCreatedResponseSchema,
       ),
-      "400": problemResponse("The request body or idempotency key is invalid."),
-      "401": problemResponse("A valid bearer token is required."),
-      "409": problemResponse("The idempotency key conflicts with another request."),
+      ...problemResponses(
+        invalidRequestProblemDescriptor,
+        ...additionalProblems,
+        authRequiredProblemDescriptor,
+        billingUserProblemDescriptor,
+        creditsExhaustedProblemDescriptor,
+        idempotencyConflictProblemDescriptor,
+        requestTooLargeProblemDescriptor,
+        uploadLimitProblemDescriptor,
+        internalErrorProblemDescriptor,
+      ),
     },
     security: bearerSecurity,
     summary,

@@ -51,26 +51,35 @@ describe("media process runner", () => {
     });
   });
 
-  it("escalates interrupted processes from SIGTERM to SIGKILL", async () => {
+  it("keeps a permit until an interrupted process exits", async () => {
     const logPath = await createLogPath();
     const startedAt = Date.now();
     const program = Effect.gen(function* () {
+      const runner = yield* MediaProcessRunner;
       const fiber = yield* Effect.forkChild(
-        MediaProcessRunner.use((runner) =>
-          runner.run({
-            ...command(logPath, "400", "0"),
-            arguments: [fixturePath, logPath, "400", "0", "", "ignore-term"],
-          }),
-        ),
+        runner.run({
+          ...command(logPath, "400", "0"),
+          arguments: [fixturePath, logPath, "400", "0", "", "ignore-term"],
+        }),
       );
       yield* waitForProcessStart(logPath);
+      const firstPid = (yield* readProcessEvents(logPath))[0]?.pid;
+      if (firstPid === undefined) return yield* Effect.die("First child PID was not recorded");
       yield* Fiber.interrupt(fiber);
+      const interruptedAfterMs = Date.now() - startedAt;
+      yield* runner.run({
+        ...command(logPath, "0", "0"),
+        arguments: [fixturePath, logPath, "0", "0", "", "default", String(firstPid)],
+      });
+
+      return { interruptedAfterMs, events: yield* readProcessEvents(logPath) };
     }).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 1, forceKillAfterMs: 25 })));
 
-    await Effect.runPromise(program);
+    const result = await Effect.runPromise(program);
 
-    expect(Date.now() - startedAt).toBeLessThan(250);
-    expect((await readEvents(logPath)).map(({ event }) => event)).toEqual(["start"]);
+    expect(result.interruptedAfterMs).toBeLessThan(250);
+    expect(result.events.map(({ event }) => event)).toEqual(["start", "start", "end"]);
+    expect(result.events[1]?.peerAlive).toBe(false);
   });
 });
 
@@ -93,6 +102,7 @@ const command = (
 
 interface ProcessEvent {
   readonly event: "start" | "end";
+  readonly peerAlive?: boolean;
   readonly pid: number;
 }
 
@@ -101,6 +111,12 @@ const readEvents = async (path: string) =>
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line) as ProcessEvent);
+
+const readProcessEvents = (path: string) =>
+  Effect.tryPromise({
+    catch: () => new Error("Could not read process events"),
+    try: () => readEvents(path),
+  }).pipe(Effect.orDie);
 
 const waitForProcessStart = (path: string) =>
   Effect.gen(function* () {

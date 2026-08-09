@@ -54,7 +54,11 @@ const BILLING_CONFIG: BillingConfig = {
   checkoutCancelUrl: "https://app.example/billing/canceled",
   checkoutSuccessUrl: "https://app.example/billing/success",
   portalReturnUrl: "https://app.example/settings/billing",
-  proPriceId: "price_pro",
+  priceIds: {
+    basic: "price_basic",
+    premium: "price_premium",
+    pro: "price_pro",
+  },
   webhookSecret: "whsec_route_fixture",
 };
 const decodeAuthStart = Schema.decodeUnknownSync(successEnvelope(AuthStartResponseSchema));
@@ -183,7 +187,11 @@ it("uses the authenticated user for Checkout, Portal, and billing status", async
   if (user === undefined) throw new Error("Missing user");
 
   const checkoutResponse = await harness.app.request("/v1/billing/checkout", {
-    headers: { authorization: `Bearer ${tokens.accessToken}` },
+    body: JSON.stringify({ plan: "basic" }),
+    headers: {
+      authorization: `Bearer ${tokens.accessToken}`,
+      "content-type": "application/json",
+    },
     method: "POST",
   });
   expect(checkoutResponse.status).toBe(201);
@@ -195,7 +203,30 @@ it("uses the authenticated user for Checkout, Portal, and billing status", async
     client_reference_id: user.id,
     customer_email: "agent@example.com",
     metadata: { userId: user.id },
+    line_items: [{ price: "price_basic", quantity: 1 }],
   });
+
+  const malformedCheckout = await harness.app.request("/v1/billing/checkout", {
+    body: "not-json",
+    headers: {
+      authorization: `Bearer ${tokens.accessToken}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+  expect(malformedCheckout.status).toBe(400);
+  expect(decodeProblem(await malformedCheckout.json()).code).toBe("INVALID_REQUEST");
+
+  const oversizedCheckout = await harness.app.request("/v1/billing/checkout", {
+    body: JSON.stringify({ padding: "x".repeat(70_000), plan: "basic" }),
+    headers: {
+      authorization: `Bearer ${tokens.accessToken}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+  expect(oversizedCheckout.status).toBe(413);
+  expect(decodeProblem(await oversizedCheckout.json()).code).toBe("REQUEST_TOO_LARGE");
 
   const missingPortal = await harness.app.request("/v1/billing/portal", {
     headers: { authorization: `Bearer ${tokens.accessToken}` },
@@ -222,6 +253,13 @@ it("uses the authenticated user for Checkout, Portal, and billing status", async
     headers: { authorization: `Bearer ${tokens.accessToken}` },
   });
   expect(decodeBillingStatus(await billingStatus.json()).data).toEqual({
+    credits: {
+      available: 5_000,
+      monthly: 5_000,
+      reserved: 0,
+      resetsAt: nextUtcMonth(NOW),
+      used: 0,
+    },
     entitlementSource: "admin",
     plan: "pro",
   });
@@ -233,10 +271,26 @@ it("uses the authenticated user for Checkout, Portal, and billing status", async
 
 it("verifies the raw Stripe webhook body and exposes Stripe billing status", async () => {
   const stripe = new Stripe("sk_test_route_fixture");
-  const harness = await createRouteHarness(makeStripeGateway(stripe));
+  const harness = await createRouteHarness(
+    StripeGateway.of({
+      ...makeStripeGateway(stripe),
+      retrieveSubscription: Effect.fn("RouteStripe.retrieveSubscription")(() =>
+        Effect.succeed({
+          cancelAtPeriodEnd: false,
+          currentPeriodEnd: 1_900_000_000_000,
+          customerId: "cus_agent",
+          priceId: "price_premium",
+          status: "active" as const,
+          subscriptionId: "sub_agent",
+          userId: null,
+        }),
+      ),
+    }),
+  );
   const tokens = await completeLogin(harness);
   const userId = harness.database.db.select().from(users).get()?.id;
   if (userId === undefined) throw new Error("Missing user");
+  databaseCustomer(harness.database, userId);
   const payload = JSON.stringify(subscriptionEventFixture(userId));
   const signature = stripe.webhooks.generateTestHeaderString({
     payload,
@@ -259,8 +313,15 @@ it("verifies the raw Stripe webhook body and exposes Stripe billing status", asy
     headers: { authorization: `Bearer ${tokens.accessToken}` },
   });
   expect(decodeBillingStatus(await statusResponse.json()).data).toEqual({
+    credits: {
+      available: 7_500,
+      monthly: 7_500,
+      reserved: 0,
+      resetsAt: nextUtcMonth(NOW),
+      used: 0,
+    },
     entitlementSource: "stripe",
-    plan: "pro",
+    plan: "premium",
     renewsAt: "2030-03-17T17:46:40.000Z",
     subscriptionStatus: "active",
   });
@@ -312,7 +373,7 @@ const createRouteHarness = async (
       ...common,
       authConfig: AUTH_CONFIG,
       pollAfterSeconds: 2,
-      proPriceId: BILLING_CONFIG.proPriceId,
+      priceIds: BILLING_CONFIG.priceIds,
       requestIpHash: () => "request-ip-hash",
     }),
   );
@@ -397,6 +458,9 @@ const recordingStripeGateway = (
     parseWebhook: Effect.fn("RouteStripe.parseWebhook")(() =>
       Effect.succeed<BillingWebhookEvent>({ eventId: "evt_ignored", kind: "ignored" }),
     ),
+    retrieveSubscription: Effect.fn("RouteStripe.unusedRetrieveSubscription")(() =>
+      Effect.die("Stripe subscription retrieval was not expected"),
+    ),
   });
 
 const databaseCustomer = (database: Database, userId: string) => {
@@ -418,7 +482,7 @@ const subscriptionEventFixture = (userId: string) => ({
         data: [
           {
             current_period_end: 1_900_000_000,
-            price: { id: "price_pro" },
+            price: { id: "price_premium" },
           },
         ],
       },
@@ -434,3 +498,8 @@ const subscriptionEventFixture = (userId: string) => ({
   request: null,
   type: "customer.subscription.updated",
 });
+
+const nextUtcMonth = (now: number) => {
+  const date = new Date(now);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)).toISOString();
+};

@@ -1,11 +1,13 @@
+import { MEDIA_CODECS } from "@ffmpeg-api/shared";
 import { Effect } from "effect";
 
+import { MEDIA_CODEC_EXECUTION_POLICY } from "../codec-execution-policy.ts";
 import { MediaInspectionError } from "./media-inspection-error.ts";
 
-const requiredEncoders = ["libvpx-vp9", "libx265", "libsvtav1"] as const;
+const requiredEncoders = MEDIA_CODECS.map((codec) => MEDIA_CODEC_EXECUTION_POLICY[codec].encoder);
 
 export interface MediaCapabilities {
-  readonly encoders: typeof requiredEncoders;
+  readonly encoders: ReadonlyArray<(typeof requiredEncoders)[number]>;
   readonly ffmpegVersion: string;
   readonly ffprobeVersion: string;
 }

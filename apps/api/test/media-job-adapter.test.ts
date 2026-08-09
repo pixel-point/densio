@@ -199,19 +199,39 @@ it("analyzes audible audio and retains it in both default outputs", async () => 
   context.database.close();
 });
 
-it("rejects AV1 for a free job before encoding", async () => {
+it("allows AV1 for a free job", async () => {
   const context = await createContext("compress", { codecs: ["av1"] }, { duration: 6 });
+  const result = Schema.decodeUnknownSync(JobResultSchema)(await runProcessor(context));
 
-  const error = await Effect.runPromise(Effect.flip(processorProgram(context)));
-
-  expect(error).toMatchObject({ code: "CODEC_NOT_ENTITLED" });
-  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(1);
-  expect(context.database.db.select().from(artifacts).all()).toEqual([]);
+  expect(result).toMatchObject({ artifacts: [{ codec: "av1" }], kind: "compress" });
+  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(2);
+  expect(context.database.db.select().from(artifacts).all()).toHaveLength(1);
   context.database.close();
 });
 
 it.each([
-  ["free", 10.01],
+  ["one H.265 output", { codecs: ["h265"] }, 100],
+  ["the default VP9 and H.265 outputs", {}, 200],
+] as const)("meters five-minute 1080p compression for %s", async (_label, options, expected) => {
+  const context = await createContext("compress", options, {
+    duration: 300,
+    height: 1080,
+    width: 1920,
+  });
+
+  const analysis = await Effect.runPromise(
+    MediaProcessRunner.use((runner) =>
+      makeMediaJobProcessor(context.database, context.config, runner).analyze(context.job),
+    ).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 }))),
+  );
+
+  expect(analysis.creditUnits).toBe(expected);
+  expect(analysis.data).toMatchObject({ kind: "compress" });
+  context.database.close();
+});
+
+it.each([
+  ["free", 1_800.01],
   ["pro", 1_800.01],
 ] as const)("enforces the %s duration limit", async (plan, duration) => {
   const context = await createContext("compress", {}, { duration }, plan);
@@ -233,7 +253,7 @@ it("rejects analysis from a different job attempt", async () => {
         return Effect.gen(function* () {
           const analysis = yield* processor.analyze(context.job);
           return yield* Effect.flip(
-            processor.process({ ...context.job, attemptCount: 2 }, analysis),
+            processor.process({ ...context.job, attemptCount: 2 }, analysis.data),
           );
         });
       });
@@ -260,7 +280,7 @@ it.each([
     ).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 }))),
   );
 
-  expect(analysis).toMatchObject({ kind });
+  expect(analysis).toMatchObject({ creditUnits: 5, data: { kind } });
   context.database.close();
 });
 
@@ -273,7 +293,7 @@ const processorProgram = (context: TestContext) =>
       const processor = makeMediaJobProcessor(context.database, context.config, runner);
       return Effect.gen(function* () {
         const analysis = yield* processor.analyze(context.job);
-        return yield* processor.process(context.job, analysis);
+        return yield* processor.process(context.job, analysis.data);
       });
     });
   }).pipe(

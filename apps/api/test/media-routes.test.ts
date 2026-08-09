@@ -10,6 +10,7 @@ import {
   ProblemDetailsSchema,
   UploadCompletedResponseSchema,
   type Capabilities,
+  type Plan,
   successEnvelope,
 } from "@ffmpeg-api/shared";
 import { Effect, Schema } from "effect";
@@ -225,7 +226,7 @@ it("returns injected free capabilities publicly and Pro capabilities to an owner
   const capabilities = decodeCapabilities(await proResponse.json()).data;
   expect(capabilities.plan).toBe("pro");
   expect(capabilities.codecs.find(({ codec }) => codec === "av1")).toMatchObject({
-    minimumPlan: "pro",
+    minimumPlan: "free",
   });
 });
 
@@ -246,6 +247,7 @@ const createHarness = async (): Promise<Harness> => {
   const authService = makeAuthService(database, makeMagicLinkSealer("0123456789abcdef".repeat(4)));
   const billingService = makeBillingService(database, unusedStripeGateway);
   const jobService = makeJobService(database, {
+    maxComparisonSeconds: 3,
     maxUploadBytes: 1_000,
     mediaRoot,
     publicBaseUrl: "https://media.example",
@@ -256,7 +258,11 @@ const createHarness = async (): Promise<Harness> => {
     billingService,
     createCorrelationId: () => "media-route-correlation",
     now: () => NOW,
-    proPriceId: "price_pro",
+    priceIds: {
+      basic: "price_basic",
+      premium: "price_premium",
+      pro: "price_pro",
+    },
   };
   const app = new Hono();
   app.route("/", createMediaJobRoutes({ ...common, jobService }));
@@ -287,6 +293,9 @@ const unusedStripeGateway = StripeGateway.of({
   ),
   parseWebhook: Effect.fn("MediaRoutes.unusedWebhook")(() =>
     Effect.die("Stripe webhook parsing was not expected"),
+  ),
+  retrieveSubscription: Effect.fn("MediaRoutes.unusedSubscription")(() =>
+    Effect.die("Stripe subscription retrieval was not expected"),
   ),
 });
 
@@ -340,29 +349,29 @@ const insertJob = (database: Database, id: string, userId: string) => {
     .run();
 };
 
-const capabilitiesForPlan = (plan: "free" | "pro"): Capabilities => ({
+const capabilitiesForPlan = (plan: Plan): Capabilities => ({
   apiVersion: "v1",
   codecs: [
     {
       codec: "vp9",
       container: "webm",
       crfRange: { maximum: 63, minimum: 0 },
-      defaultCrf: 40,
+      defaultCrf: 42,
       minimumPlan: "free",
     },
     {
       codec: "h265",
       container: "mp4",
       crfRange: { maximum: 51, minimum: 0 },
-      defaultCrf: 32,
+      defaultCrf: 30,
       minimumPlan: "free",
     },
     {
       codec: "av1",
       container: "webm",
       crfRange: { maximum: 63, minimum: 0 },
-      defaultCrf: 35,
-      minimumPlan: "pro",
+      defaultCrf: 42,
+      minimumPlan: "free",
     },
   ],
   defaults: {
@@ -379,7 +388,7 @@ const capabilitiesForPlan = (plan: "free" | "pro"): Capabilities => ({
     maxComparisonDurationSeconds: 3,
     maxExtractionImages: 2_000,
     maxUploadBytes: 1_000,
-    maxVideoDurationSeconds: plan === "pro" ? 1_800 : 10,
+    maxVideoDurationSeconds: 1_800,
   },
   options: {
     audioModes: ["auto", "keep", "remove"],

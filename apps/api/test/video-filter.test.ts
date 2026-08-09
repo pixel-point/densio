@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { buildVideoFilters } from "../src/media/video-filter.ts";
+import { buildVideoFilters, resolveVideoDimensions } from "../src/media/video-filter.ts";
+
+describe("video dimension planning", () => {
+  it("resolves the transformed output dimensions used by filters", () => {
+    expect(
+      resolveVideoDimensions(
+        { width: 1920, height: 1080 },
+        {
+          crop: { kind: "aspect-ratio", aspectRatio: "1:1" },
+          scale: { width: 641 },
+        },
+      ),
+    ).toEqual({ height: 640, width: 640 });
+    expect(
+      resolveVideoDimensions({ width: 3840, height: 2160 }, { scale: { height: 1080 } }),
+    ).toEqual({ height: 1080, width: 1920 });
+  });
+});
 
 describe("video filter planning", () => {
   it("applies a centered aspect-ratio crop before proportional scaling", () => {

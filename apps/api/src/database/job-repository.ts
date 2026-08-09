@@ -1,8 +1,23 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { PLAN_CATALOG } from "@ffmpeg-api/shared";
+
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
+
+import {
+  creditsFromUnits,
+  MINIMUM_JOB_CREDIT_UNITS,
+  monthlyCreditUnits,
+} from "../billing/credit-units.ts";
 
 import type { Database } from "./database.ts";
+import {
+  creditPeriodTotals,
+  holdJobCredits,
+  releaseJobCredits,
+  reserveExactJobCredits,
+  settleJobCredits,
+} from "./job-credit-ledger.ts";
 import { jobAttempts, jobs } from "./schema.ts";
 
 interface ClaimJobOptions {
@@ -38,7 +53,11 @@ interface FailJobOptions {
   readonly workerId: string;
 }
 
-export const createJob = (database: Database, values: typeof jobs.$inferInsert) =>
+export const createJob = (
+  database: Database,
+  values: typeof jobs.$inferInsert,
+  creditPolicy: { readonly creditPeriodStart: number; readonly monthlyCredits: number },
+) =>
   database.db.transaction(
     (transaction) => {
       const existing =
@@ -54,7 +73,24 @@ export const createJob = (database: Database, values: typeof jobs.$inferInsert) 
 
       if (existing !== undefined) return { created: false as const, job: existing };
 
-      const job = transaction.insert(jobs).values(values).returning().get();
+      const totals = creditPeriodTotals(transaction, values.userId, creditPolicy.creditPeriodStart);
+      const availableUnits = Math.max(
+        0,
+        monthlyCreditUnits(creditPolicy.monthlyCredits) - totals.reservedUnits - totals.usedUnits,
+      );
+      if (availableUnits < MINIMUM_JOB_CREDIT_UNITS) {
+        return {
+          availableCredits: creditsFromUnits(availableUnits),
+          kind: "insufficient-credits" as const,
+        };
+      }
+
+      const job = transaction
+        .insert(jobs)
+        .values({ ...values, queuePriority: PLAN_CATALOG[values.plan].queuePriority })
+        .returning()
+        .get();
+      holdJobCredits(transaction, job, creditPolicy.creditPeriodStart, MINIMUM_JOB_CREDIT_UNITS);
       return { created: true as const, job };
     },
     { behavior: "immediate" },
@@ -70,7 +106,7 @@ export const claimNextJob = (
         .select()
         .from(jobs)
         .where(eq(jobs.state, "queued"))
-        .orderBy(asc(jobs.createdAt))
+        .orderBy(desc(jobs.queuePriority), asc(jobs.createdAt))
         .limit(1)
         .get();
 
@@ -127,12 +163,14 @@ export const requestJobCancellation = (
       if (["succeeded", "failed", "canceled", "expired"].includes(job.state)) return job;
 
       if (job.state === "awaiting-upload" || job.state === "queued") {
-        return transaction
+        const canceled = transaction
           .update(jobs)
           .set({ completedAt: now, state: "canceled", updatedAt: now })
           .where(eq(jobs.id, job.id))
           .returning()
           .get();
+        if (canceled !== undefined) releaseJobCredits(transaction, canceled, now);
+        return canceled;
       }
 
       return transaction
@@ -155,29 +193,52 @@ export const isJobCancellationRequested = ({ db }: Database, jobId: string, work
   return job?.cancelRequestedAt !== null && job?.cancelRequestedAt !== undefined;
 };
 
-export const markJobProcessing = (
-  { db }: Database,
-  { jobId, leaseDurationMs, now, workerId }: WorkerTransitionOptions,
+export const reserveJobCreditsAndMarkProcessing = (
+  database: Database,
+  input: WorkerTransitionOptions & {
+    readonly creditUnits: number;
+    readonly monthlyCreditUnits: number;
+  },
 ) =>
-  db
-    .update(jobs)
-    .set({
-      leaseExpiresAt: now + leaseDurationMs,
-      progress: 10,
-      state: "processing",
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(jobs.id, jobId),
-        eq(jobs.state, "analyzing"),
-        eq(jobs.leaseOwner, workerId),
-        gt(jobs.leaseExpiresAt, now),
-        isNull(jobs.cancelRequestedAt),
-      ),
-    )
-    .returning()
-    .get();
+  database.db.transaction(
+    (transaction) => {
+      const job = transaction
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.id, input.jobId),
+            eq(jobs.state, "analyzing"),
+            eq(jobs.leaseOwner, input.workerId),
+            gt(jobs.leaseExpiresAt, input.now),
+            isNull(jobs.cancelRequestedAt),
+          ),
+        )
+        .get();
+      if (job === undefined) return undefined;
+
+      const reservation = reserveExactJobCredits(
+        transaction,
+        job,
+        input.creditUnits,
+        input.monthlyCreditUnits,
+        input.now,
+      );
+      if (reservation.kind !== "reserved") return reservation;
+      return transaction
+        .update(jobs)
+        .set({
+          leaseExpiresAt: input.now + input.leaseDurationMs,
+          progress: 10,
+          state: "processing",
+          updatedAt: input.now,
+        })
+        .where(eq(jobs.id, job.id))
+        .returning()
+        .get();
+    },
+    { behavior: "immediate" },
+  );
 
 export const renewJobLease = (
   { db }: Database,
@@ -225,6 +286,8 @@ export const cancelClaimedJob = (
 
       if (canceled === undefined) return undefined;
 
+      releaseJobCredits(transaction, canceled, now);
+
       transaction
         .update(jobAttempts)
         .set({ completedAt: now, outcome: "interrupted" })
@@ -271,6 +334,8 @@ export const completeJob = (
         .get();
 
       if (completed === undefined) return undefined;
+
+      settleJobCredits(transaction, completed, now);
 
       transaction
         .update(jobAttempts)
@@ -324,6 +389,7 @@ export const recoverExpiredJobs = (database: Database, { maxAttempts, now }: Rec
             })
             .where(eq(jobs.id, job.id))
             .run();
+          releaseJobCredits(transaction, job, now);
           return { id: job.id, outcome: "canceled" as const };
         }
 
@@ -341,6 +407,7 @@ export const recoverExpiredJobs = (database: Database, { maxAttempts, now }: Rec
             })
             .where(eq(jobs.id, job.id))
             .run();
+          releaseJobCredits(transaction, job, now);
           return { id: job.id, outcome: "failed" as const };
         }
 
@@ -400,6 +467,8 @@ export const failJob = (
         .get();
 
       if (failed === undefined) return undefined;
+
+      releaseJobCredits(transaction, failed, now);
 
       transaction
         .update(jobAttempts)

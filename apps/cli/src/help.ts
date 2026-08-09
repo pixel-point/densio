@@ -11,7 +11,7 @@ Commands:
   compare-quality <video>       Compare codec CRFs at a source position
   jobs get|wait|cancel           Inspect, resume, or cancel asynchronous jobs
   artifacts download            Download and SHA-256 verify an artifact
-  billing subscribe|portal      Open Stripe Checkout or Customer Portal
+  billing subscribe PLAN|portal Open Stripe Checkout or Customer Portal
 
 Agent behavior:
   --json emits one success document on stdout; problems use stderr.
@@ -26,7 +26,7 @@ Compression options:
   --codec vp9,h265,av1         Select outputs (default: vp9,h265)
   --vp9-crf N                  VP9 CRF 0-63
   --h265-crf N                 H.265 CRF 0-51
-  --av1-crf N                  AV1 CRF 0-63 (Pro)
+  --av1-crf N                  AV1 CRF 0-63
   --audio auto|keep|remove     Audio policy (default: auto)
 
 Extraction options:

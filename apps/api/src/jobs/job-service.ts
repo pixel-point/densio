@@ -2,57 +2,48 @@ import { randomUUID } from "node:crypto";
 
 import {
   JobResultSchema,
+  PLAN_CATALOG,
   type JobSource,
   type JobStatus,
   type JobWorkflow,
   type Plan,
 } from "@ffmpeg-api/shared";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import type { Database } from "../database/database.ts";
-import {
-  expireAwaitingUpload,
-  findOwnedJob,
-  queueUploadedJob,
-} from "../database/job-lifecycle-repository.ts";
+import { findOwnedJob } from "../database/job-lifecycle-repository.ts";
 import { createJob, requestJobCancellation } from "../database/job-repository.ts";
 import { jobs } from "../database/schema.ts";
 import { makeProblem, toProblemDetails } from "../errors/problem-details.ts";
-import { storeUpload } from "../storage/upload.ts";
 import {
   cleanupJobWorkspace,
   makeJobStoragePaths,
   prepareJobWorkspace,
 } from "../storage/workspace.ts";
+import { tryJobRepository } from "./job-effect-support.ts";
+import {
+  JobComparisonDurationExceeded,
+  JobCreditsExhausted,
+  JobIdempotencyConflict,
+  JobNotFound,
+  JobRepositoryError,
+  JobUploadLimitExceeded,
+} from "./job-errors.ts";
+import { makeJobUploadService } from "./job-upload-service.ts";
 
-export class JobIdempotencyConflict extends Schema.TaggedErrorClass<JobIdempotencyConflict>()(
-  "JobIdempotencyConflict",
-  {},
-) {}
-
-export class JobUploadExpired extends Schema.TaggedErrorClass<JobUploadExpired>()(
-  "JobUploadExpired",
-  {},
-) {}
-
-export class JobNotFound extends Schema.TaggedErrorClass<JobNotFound>()("JobNotFound", {}) {}
-
-export class JobStateConflict extends Schema.TaggedErrorClass<JobStateConflict>()(
-  "JobStateConflict",
-  { state: Schema.String },
-) {}
-
-export class JobUploadLimitExceeded extends Schema.TaggedErrorClass<JobUploadLimitExceeded>()(
-  "JobUploadLimitExceeded",
-  { limitBytes: Schema.Number },
-) {}
-
-export class JobRepositoryError extends Schema.TaggedErrorClass<JobRepositoryError>()(
-  "JobRepositoryError",
-  { cause: Schema.Defect(), operation: Schema.String },
-) {}
+export {
+  JobComparisonDurationExceeded,
+  JobCreditsExhausted,
+  JobIdempotencyConflict,
+  JobNotFound,
+  JobRepositoryError,
+  JobStateConflict,
+  JobUploadExpired,
+  JobUploadLimitExceeded,
+} from "./job-errors.ts";
 
 interface JobServiceConfig {
+  readonly maxComparisonSeconds: number;
   readonly maxUploadBytes: number;
   readonly mediaRoot: string;
   readonly publicBaseUrl: string;
@@ -69,13 +60,6 @@ interface CreateJobInput {
   readonly workflow: JobWorkflow;
 }
 
-interface UploadJobInput {
-  readonly body: ReadableStream<Uint8Array>;
-  readonly jobId: string;
-  readonly now: number;
-  readonly userId: string;
-}
-
 interface OwnedJobInput {
   readonly correlationId: string;
   readonly jobId: string;
@@ -83,9 +67,23 @@ interface OwnedJobInput {
 }
 
 export const makeJobService = (database: Database, config: JobServiceConfig) => {
+  const uploads = makeJobUploadService(database, config);
   const create = Effect.fn("JobService.create")(function* (input: CreateJobInput) {
-    if (input.source.bytes > config.maxUploadBytes) {
-      return yield* new JobUploadLimitExceeded({ limitBytes: config.maxUploadBytes });
+    const comparisonDuration =
+      input.workflow === "compare-quality" &&
+      Predicate.isObject(input.options) &&
+      Predicate.isNumber(input.options.durationSeconds)
+        ? input.options.durationSeconds
+        : undefined;
+    if (comparisonDuration !== undefined && comparisonDuration > config.maxComparisonSeconds) {
+      return yield* new JobComparisonDurationExceeded({
+        limitSeconds: config.maxComparisonSeconds,
+      });
+    }
+    const planPolicy = PLAN_CATALOG[input.plan];
+    const maxUploadBytes = Math.min(config.maxUploadBytes, planPolicy.maxUploadBytes);
+    if (input.source.bytes > maxUploadBytes) {
+      return yield* new JobUploadLimitExceeded({ limitBytes: maxUploadBytes });
     }
 
     const optionsJson = JSON.stringify(input.options);
@@ -94,21 +92,37 @@ export const makeJobService = (database: Database, config: JobServiceConfig) => 
     yield* prepareJobWorkspace(paths).pipe(
       Effect.tapError(() => ignoreCleanup(cleanupJobWorkspace(paths))),
     );
-    const creation = yield* tryRepository("create", () =>
-      createJob(database, {
-        createdAt: input.now,
-        declaredBytes: input.source.bytes,
-        id: jobId,
-        idempotencyKey: input.idempotencyKey,
-        kind: input.workflow,
-        optionsJson,
-        plan: input.plan,
-        sourceFilename: input.source.filename,
-        state: "awaiting-upload",
-        updatedAt: input.now,
-        userId: input.userId,
-      }),
+    const creation = yield* tryJobRepository("create", () =>
+      createJob(
+        database,
+        {
+          createdAt: input.now,
+          declaredBytes: input.source.bytes,
+          id: jobId,
+          idempotencyKey: input.idempotencyKey,
+          kind: input.workflow,
+          maxUploadBytes,
+          optionsJson,
+          plan: input.plan,
+          sourceFilename: input.source.filename,
+          state: "awaiting-upload",
+          updatedAt: input.now,
+          userId: input.userId,
+        },
+        {
+          creditPeriodStart: utcMonthStart(input.now),
+          monthlyCredits: planPolicy.monthlyCredits,
+        },
+      ),
     ).pipe(Effect.tapError(() => ignoreCleanup(cleanupJobWorkspace(paths))));
+
+    if ("availableCredits" in creation) {
+      yield* cleanupJobWorkspace(paths);
+      return yield* new JobCreditsExhausted({
+        availableCredits: creation.availableCredits,
+        monthlyCredits: planPolicy.monthlyCredits,
+      });
+    }
 
     if (!creation.created) {
       yield* cleanupJobWorkspace(paths);
@@ -119,47 +133,17 @@ export const makeJobService = (database: Database, config: JobServiceConfig) => 
     return createdResponse(creation.job, config);
   });
 
-  const upload = Effect.fn("JobService.upload")(function* (input: UploadJobInput) {
-    const job = yield* tryRepository("find-upload", () => findOwnedJob(database, input));
-    if (job === undefined) return yield* new JobNotFound();
-    if (job.state !== "awaiting-upload") {
-      return yield* new JobStateConflict({ state: job.state });
-    }
-
-    const paths = yield* makeJobStoragePaths(config.mediaRoot, job.id);
-    if (input.now >= job.createdAt + config.uploadTtlMs) {
-      const expired = yield* tryRepository("expire-upload", () =>
-        expireAwaitingUpload(database, input),
-      );
-      if (expired === undefined) {
-        const current = yield* tryRepository("find-upload-race", () =>
-          findOwnedJob(database, input),
-        );
-        return yield* new JobStateConflict({ state: current?.state ?? "unknown" });
-      }
-      yield* cleanupJobWorkspace(paths);
-      return yield* new JobUploadExpired();
-    }
-
-    const stored = yield* storeUpload({
-      body: input.body,
-      declaredBytes: job.declaredBytes,
-      destination: paths.inputFile,
-      maxBytes: config.maxUploadBytes,
-    });
-    const queued = yield* tryRepository("queue-upload", () =>
-      queueUploadedJob(database, { ...input, ...stored }),
-    );
-    if (queued === undefined) return yield* new JobStateConflict({ state: "unknown" });
-    return { bytes: stored.bytes, jobId: job.id, sha256: stored.sha256, state: "queued" as const };
-  });
-
-  return { create, upload, ...makeOwnedJobOperations(database, config) };
+  return {
+    create,
+    recoverUploads: uploads.maintain,
+    upload: uploads.upload,
+    ...makeOwnedJobOperations(database, config),
+  };
 };
 
 const makeOwnedJobOperations = (database: Database, config: JobServiceConfig) => {
   const status = Effect.fn("JobService.status")(function* (input: OwnedJobInput) {
-    const job = yield* tryRepository("find-status", () => findOwnedJob(database, input));
+    const job = yield* tryJobRepository("find-status", () => findOwnedJob(database, input));
     if (job === undefined) return yield* new JobNotFound();
     return yield* toJobStatus(job, input.correlationId);
   });
@@ -167,9 +151,9 @@ const makeOwnedJobOperations = (database: Database, config: JobServiceConfig) =>
   const cancel = Effect.fn("JobService.cancel")(function* (
     input: OwnedJobInput & { readonly now: number },
   ) {
-    const existing = yield* tryRepository("find-cancel", () => findOwnedJob(database, input));
+    const existing = yield* tryJobRepository("find-cancel", () => findOwnedJob(database, input));
     if (existing === undefined) return yield* new JobNotFound();
-    const job = yield* tryRepository("cancel", () =>
+    const job = yield* tryJobRepository("cancel", () =>
       requestJobCancellation(database, input.jobId, input.userId, input.now),
     );
     if (job === undefined) return yield* new JobNotFound();
@@ -237,24 +221,34 @@ const decodeStoredResult = Effect.fn("JobService.decodeResult")(function* (value
   );
 });
 
-const toFailedProblem = (job: typeof jobs.$inferSelect, correlationId: string) =>
-  toProblemDetails(
-    makeProblem({
-      code:
-        job.errorCode !== null && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(job.errorCode)
-          ? job.errorCode
-          : "JOB_FAILED",
-      detail: "The media job could not be completed.",
-      jobId: job.id,
-      retryable: false,
-      status: 422,
-      suggestedAction: "Check the source media and options, then create a new job.",
-      title: "Media job failed",
-    }),
-    correlationId,
-  );
+const toFailedProblem = (job: typeof jobs.$inferSelect, correlationId: string) => {
+  const problem =
+    job.errorCode === "CREDITS_EXHAUSTED"
+      ? makeProblem({
+          code: "CREDITS_EXHAUSTED",
+          detail: "The analyzed job cost exceeds the account's available monthly credits.",
+          jobId: job.id,
+          retryable: false,
+          status: 402,
+          suggestedAction: "Wait for the monthly reset or upgrade the account plan.",
+          title: "Credits exhausted",
+        })
+      : makeProblem({
+          code:
+            job.errorCode !== null && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(job.errorCode)
+              ? job.errorCode
+              : "JOB_FAILED",
+          detail: "The media job could not be completed.",
+          jobId: job.id,
+          retryable: false,
+          status: 422,
+          suggestedAction: "Check the source media and options, then create a new job.",
+          title: "Media job failed",
+        });
+  return toProblemDetails(problem, correlationId);
+};
 
-const createdResponse = (job: ReturnType<typeof createJob>["job"], config: JobServiceConfig) => ({
+const createdResponse = (job: typeof jobs.$inferSelect, config: JobServiceConfig) => ({
   jobId: job.id,
   state: "awaiting-upload" as const,
   statusUrl: new URL(`/v1/jobs/${job.id}`, config.publicBaseUrl).toString(),
@@ -266,7 +260,7 @@ const createdResponse = (job: ReturnType<typeof createJob>["job"], config: JobSe
 });
 
 const matchesIdempotentRequest = (
-  job: ReturnType<typeof createJob>["job"],
+  job: typeof jobs.$inferSelect,
   input: CreateJobInput,
   optionsJson: string,
 ) =>
@@ -278,10 +272,7 @@ const matchesIdempotentRequest = (
 const ignoreCleanup = (cleanup: Effect.Effect<void, unknown>) =>
   cleanup.pipe(Effect.catch(() => Effect.void));
 
-const tryRepository = Effect.fn("JobService.repository")(
-  <Value>(operation: string, evaluate: () => Value) =>
-    Effect.try({
-      catch: (cause) => new JobRepositoryError({ cause, operation }),
-      try: evaluate,
-    }),
-);
+const utcMonthStart = (timestamp: number) => {
+  const date = new Date(timestamp);
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+};

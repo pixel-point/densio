@@ -1,34 +1,60 @@
-import type { MediaCodec, Plan, SubscriptionStatus } from "@ffmpeg-api/shared";
+import {
+  MEDIA_CODEC_POLICY,
+  MEDIA_CODECS,
+  type MediaCodec,
+  type Plan,
+  type SubscriptionStatus,
+} from "@ffmpeg-api/shared";
 
 export type StripeSubscriptionStatus = SubscriptionStatus;
 
 export interface Entitlements {
   readonly plan: Plan;
-  readonly maxVideoDurationSeconds: 10 | 1_800;
+  readonly maxVideoDurationSeconds: 1_800;
   readonly allowedCodecs: ReadonlyArray<MediaCodec>;
 }
 
-const FREE_CODECS: ReadonlyArray<MediaCodec> = Object.freeze(["vp9", "h265"]);
-const PRO_CODECS: ReadonlyArray<MediaCodec> = Object.freeze(["vp9", "h265", "av1"]);
+const ALL_PLAN_CODECS = Object.freeze(
+  MEDIA_CODECS.filter((codec) => MEDIA_CODEC_POLICY[codec].minimumPlan === "free"),
+);
 
-export const FREE_ENTITLEMENTS: Entitlements = Object.freeze({
-  plan: "free",
-  maxVideoDurationSeconds: 10,
-  allowedCodecs: FREE_CODECS,
-});
+const planEntitlements = (plan: Plan): Entitlements =>
+  Object.freeze({
+    allowedCodecs: ALL_PLAN_CODECS,
+    maxVideoDurationSeconds: 1_800,
+    plan,
+  });
 
-export const PRO_ENTITLEMENTS: Entitlements = Object.freeze({
-  plan: "pro",
-  maxVideoDurationSeconds: 1_800,
-  allowedCodecs: PRO_CODECS,
+export const FREE_ENTITLEMENTS = planEntitlements("free");
+export const BASIC_ENTITLEMENTS = planEntitlements("basic");
+export const PRO_ENTITLEMENTS = planEntitlements("pro");
+export const PREMIUM_ENTITLEMENTS = planEntitlements("premium");
+
+export const PLAN_ENTITLEMENTS = Object.freeze({
+  basic: BASIC_ENTITLEMENTS,
+  free: FREE_ENTITLEMENTS,
+  premium: PREMIUM_ENTITLEMENTS,
+  pro: PRO_ENTITLEMENTS,
 });
 
 export interface EntitlementSource {
   readonly adminGrant: boolean;
+  readonly stripePlan: Exclude<Plan, "free"> | null;
   readonly stripeSubscriptionStatus: StripeSubscriptionStatus | null;
 }
 
-export const resolveEntitlements = ({ adminGrant, stripeSubscriptionStatus }: EntitlementSource) =>
-  adminGrant || stripeSubscriptionStatus === "active" || stripeSubscriptionStatus === "trialing"
-    ? PRO_ENTITLEMENTS
-    : FREE_ENTITLEMENTS;
+export const resolveEntitlements = ({
+  adminGrant,
+  stripePlan,
+  stripeSubscriptionStatus,
+}: EntitlementSource) => {
+  if (
+    stripePlan !== null &&
+    (stripeSubscriptionStatus === "active" || stripeSubscriptionStatus === "trialing")
+  ) {
+    if (adminGrant && stripePlan === "basic") return PRO_ENTITLEMENTS;
+    return PLAN_ENTITLEMENTS[stripePlan];
+  }
+  if (adminGrant) return PRO_ENTITLEMENTS;
+  return FREE_ENTITLEMENTS;
+};

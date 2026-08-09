@@ -5,6 +5,7 @@ export {
   IsoTimestampSchema,
   NonNegativeFiniteSchema,
   NonNegativeIntegerSchema,
+  PLAN_NAMES,
   PlanSchema,
   PositiveFiniteSchema,
   PositiveIntegerSchema,
@@ -22,6 +23,9 @@ export type {
   PositiveInteger,
   SchemaVersion,
 } from "./common-contracts.ts";
+
+export { PAID_PLANS, PaidPlanSchema, PLAN_CATALOG } from "./plan-catalog.ts";
+export type { PaidPlan } from "./plan-catalog.ts";
 
 export {
   AudioModeSchema,
@@ -48,11 +52,18 @@ export type {
   ExtractImagesOptions,
   H265Crf,
   ImageFormat,
-  MediaCodec,
   ScaleOptions,
   TransformOptions,
   Vp9Crf,
 } from "./media-options.ts";
+
+export {
+  DEFAULT_COMPRESSION_CODECS,
+  MEDIA_CODEC_CAPABILITIES,
+  MEDIA_CODEC_POLICY,
+  MEDIA_CODECS,
+} from "./media-policy.ts";
+export type { MediaCodec } from "./media-policy.ts";
 
 export {
   ArtifactKindSchema,
@@ -139,12 +150,14 @@ export type {
 export {
   BillingSessionResponseSchema,
   BillingStatusSchema,
+  CheckoutPlanRequestSchema,
   EntitlementSourceSchema,
   SubscriptionStatusSchema,
 } from "./billing-contracts.ts";
 export type {
   BillingSessionResponse,
   BillingStatus,
+  CheckoutPlanRequest,
   EntitlementSource,
   SubscriptionStatus,
 } from "./billing-contracts.ts";

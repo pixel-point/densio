@@ -1,6 +1,7 @@
 import {
   BillingSessionResponseSchema,
   BillingStatusSchema,
+  CheckoutPlanRequestSchema,
   successEnvelope,
 } from "@ffmpeg-api/shared";
 import { Effect, Schema } from "effect";
@@ -11,8 +12,14 @@ import type { AuthService } from "../auth/auth-service.ts";
 import type { EffectiveBillingEntitlement } from "../billing/billing-repository.ts";
 import type { BillingConfig, BillingService } from "../billing/billing-service.ts";
 import {
+  internalErrorProblemDescriptor,
+  invalidRequestProblemDescriptor,
+  requestTooLargeProblemDescriptor,
+} from "../errors/problem-details.ts";
+import {
   authenticateRequest,
   beginRequest,
+  decodeRequestJson,
   readRawBody,
   requireHeader,
   runRouteEffect,
@@ -21,9 +28,18 @@ import {
 import {
   bearerSecurity,
   headerParameter,
-  problemResponse,
+  jsonRequest,
+  problemResponses,
   successResponse,
 } from "./openapi-support.ts";
+import { authRequiredProblemDescriptor } from "./problems/auth-problems.ts";
+import {
+  billingCustomerProblemDescriptor,
+  billingUserProblemDescriptor,
+  invalidStripeWebhookProblemDescriptor,
+  stripeUnavailableProblemDescriptor,
+  unmatchedWebhookProblemDescriptor,
+} from "./problems/billing-problems.ts";
 
 const WebhookResponseSchema = Schema.Struct({ processed: Schema.Boolean });
 const decodeBillingSessionEnvelope = Schema.decodeUnknownSync(
@@ -33,13 +49,20 @@ const decodeBillingStatusEnvelope = Schema.decodeUnknownSync(successEnvelope(Bil
 const decodeWebhookEnvelope = Schema.decodeUnknownSync(successEnvelope(WebhookResponseSchema));
 const checkoutDocumentation = describeRoute({
   operationId: "createCheckoutSession",
+  requestBody: jsonRequest(CheckoutPlanRequestSchema),
   responses: {
     "201": successResponse("A Stripe Checkout session was created.", BillingSessionResponseSchema),
-    "401": problemResponse("A valid bearer token is required."),
-    "502": problemResponse("Stripe could not create the session."),
+    ...problemResponses(
+      authRequiredProblemDescriptor,
+      billingUserProblemDescriptor,
+      invalidRequestProblemDescriptor,
+      requestTooLargeProblemDescriptor,
+      internalErrorProblemDescriptor,
+      stripeUnavailableProblemDescriptor,
+    ),
   },
   security: bearerSecurity,
-  summary: "Create a Pro checkout session",
+  summary: "Create a paid-plan checkout session",
   tags: ["Billing"],
 });
 const portalDocumentation = describeRoute({
@@ -49,9 +72,13 @@ const portalDocumentation = describeRoute({
       "A Stripe Billing Portal session was created.",
       BillingSessionResponseSchema,
     ),
-    "401": problemResponse("A valid bearer token is required."),
-    "409": problemResponse("The user has no Stripe customer to manage."),
-    "502": problemResponse("Stripe could not create the session."),
+    ...problemResponses(
+      authRequiredProblemDescriptor,
+      billingUserProblemDescriptor,
+      billingCustomerProblemDescriptor,
+      internalErrorProblemDescriptor,
+      stripeUnavailableProblemDescriptor,
+    ),
   },
   security: bearerSecurity,
   summary: "Create a billing portal session",
@@ -61,7 +88,11 @@ const billingStatusDocumentation = describeRoute({
   operationId: "getBillingStatus",
   responses: {
     "200": successResponse("The user's current billing entitlement.", BillingStatusSchema),
-    "401": problemResponse("A valid bearer token is required."),
+    ...problemResponses(
+      authRequiredProblemDescriptor,
+      billingUserProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   security: bearerSecurity,
   summary: "Get billing status",
@@ -79,7 +110,12 @@ const webhookDocumentation = describeRoute({
   },
   responses: {
     "200": successResponse("The Stripe event was accepted.", WebhookResponseSchema),
-    "400": problemResponse("The signature or event payload is invalid."),
+    ...problemResponses(
+      invalidStripeWebhookProblemDescriptor,
+      internalErrorProblemDescriptor,
+      stripeUnavailableProblemDescriptor,
+      unmatchedWebhookProblemDescriptor,
+    ),
   },
   summary: "Receive a Stripe webhook",
   tags: ["Billing"],
@@ -108,9 +144,11 @@ const registerCheckoutRoute = (routes: Hono, dependencies: BillingRouteDependenc
     const correlationId = beginRequest(context, dependencies.createCorrelationId);
     const now = dependencies.now();
     const program = Effect.gen(function* () {
+      const input = yield* decodeRequestJson(context.req.raw, CheckoutPlanRequestSchema);
       const identity = yield* authenticateRequest(context.req.raw, dependencies.authService, now);
       return yield* dependencies.billingService.createCheckout({
         config: dependencies.billingConfig,
+        plan: input.plan,
         userId: identity.userId,
       });
     });
@@ -171,7 +209,8 @@ const registerBillingStatusRoute = (routes: Hono, dependencies: BillingRouteDepe
         dependencies.now(),
       );
       return yield* dependencies.billingService.getEntitlement({
-        proPriceId: dependencies.billingConfig.proPriceId,
+        now: dependencies.now(),
+        priceIds: dependencies.billingConfig.priceIds,
         userId: identity.userId,
       });
     });
@@ -205,6 +244,10 @@ const registerWebhookRoute = (routes: Hono, dependencies: BillingRouteDependenci
 };
 
 const toBillingStatus = (entitlement: EffectiveBillingEntitlement) => ({
+  credits: {
+    ...entitlement.credits,
+    resetsAt: toIso(entitlement.credits.resetsAt),
+  },
   entitlementSource: entitlement.source,
   plan: entitlement.entitlements.plan,
   ...(entitlement.renewsAt === null ? {} : { renewsAt: toIso(entitlement.renewsAt) }),

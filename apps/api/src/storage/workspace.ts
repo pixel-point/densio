@@ -131,3 +131,13 @@ export const cleanupJobWorkspace = Effect.fn("Storage.cleanupJobWorkspace")(func
     rm(paths.workspaceDirectory, { force: true, recursive: true }),
   );
 });
+
+export const cleanupJobStaging = Effect.fn("Storage.cleanupJobStaging")(function* (
+  paths: JobStoragePaths,
+) {
+  yield* verifyJobStoragePaths(paths);
+  yield* storageOperation("cleanup-staging", async () => {
+    await rm(paths.stagingDirectory, { force: true, recursive: true });
+    await mkdir(paths.stagingDirectory, { recursive: true });
+  });
+});

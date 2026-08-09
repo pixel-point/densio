@@ -13,10 +13,10 @@ import {
   createJob,
   failJob,
   isJobCancellationRequested,
-  markJobProcessing,
   renewJobLease,
   recoverExpiredJobs,
   requestJobCancellation,
+  reserveJobCreditsAndMarkProcessing,
 } from "../src/database/job-repository.ts";
 import { jobs, users } from "../src/database/schema.ts";
 
@@ -69,6 +69,50 @@ it("claims queued jobs oldest-first with an atomic lease", async () => {
   database.close();
 });
 
+it("claims paid work before older Free work", async () => {
+  const database = await createTestDatabase();
+  database.db
+    .insert(users)
+    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
+    .run();
+  database.db.insert(jobs).values(jobValues("job-free", 10)).run();
+  database.db
+    .insert(jobs)
+    .values({ ...jobValues("job-paid", 20), plan: "basic", queuePriority: 10 })
+    .run();
+
+  const claimed = claimNextJob(database, {
+    leaseDurationMs: 60_000,
+    now: 100,
+    workerId: "worker-1",
+  });
+
+  expect(claimed?.id).toBe("job-paid");
+  database.close();
+});
+
+it("claims by the snapshotted numeric queue priority instead of plan name", async () => {
+  const database = await createTestDatabase();
+  database.db
+    .insert(users)
+    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
+    .run();
+  database.db.insert(jobs).values(jobValues("job-lower", 10)).run();
+  database.db
+    .insert(jobs)
+    .values({ ...jobValues("job-higher", 20), queuePriority: 30 })
+    .run();
+
+  const claimed = claimNextJob(database, {
+    leaseDurationMs: 60_000,
+    now: 100,
+    workerId: "worker-1",
+  });
+
+  expect(claimed?.id).toBe("job-higher");
+  database.close();
+});
+
 it("returns the original job when an idempotency key is retried", async () => {
   const database = await createTestDatabase();
   database.db
@@ -76,20 +120,92 @@ it("returns the original job when an idempotency key is retried", async () => {
     .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
     .run();
 
-  const first = createJob(database, {
-    ...jobValues("job-first", 10),
-    idempotencyKey: "request-1",
-    state: "awaiting-upload",
-  });
-  const retried = createJob(database, {
-    ...jobValues("job-retry", 20),
-    idempotencyKey: "request-1",
-    state: "awaiting-upload",
-  });
+  const first = createJob(
+    database,
+    {
+      ...jobValues("job-first", 10),
+      idempotencyKey: "request-1",
+      state: "awaiting-upload",
+    },
+    { creditPeriodStart: 0, monthlyCredits: 1 },
+  );
+  const retried = createJob(
+    database,
+    {
+      ...jobValues("job-retry", 20),
+      idempotencyKey: "request-1",
+      state: "awaiting-upload",
+    },
+    { creditPeriodStart: 0, monthlyCredits: 1 },
+  );
 
   expect(first).toMatchObject({ created: true, job: { id: "job-first" } });
   expect(retried).toMatchObject({ created: false, job: { id: "job-first" } });
   expect(database.db.select().from(jobs).all()).toHaveLength(1);
+
+  database.close();
+});
+
+it("snapshots queue priority from the plan when creating a job", async () => {
+  const database = await createTestDatabase();
+  database.db
+    .insert(users)
+    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
+    .run();
+
+  const created = createJob(
+    database,
+    { ...jobValues("job-basic", 10), plan: "basic" },
+    { creditPeriodStart: 0, monthlyCredits: 750 },
+  );
+
+  expect(created).toMatchObject({ created: true, job: { queuePriority: 10 } });
+  database.close();
+});
+
+it("atomically reserves the minimum job cost and rejects work after the allowance", async () => {
+  const database = await createTestDatabase();
+  database.db
+    .insert(users)
+    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
+    .run();
+
+  const first = createJob(database, jobValues("job-1", 100), {
+    creditPeriodStart: 0,
+    monthlyCredits: 0.1,
+  });
+  const second = createJob(database, jobValues("job-2", 101), {
+    creditPeriodStart: 0,
+    monthlyCredits: 0.1,
+  });
+  const exhausted = createJob(database, jobValues("job-3", 102), {
+    creditPeriodStart: 0,
+    monthlyCredits: 0.1,
+  });
+
+  expect(first).toMatchObject({ created: true, job: { id: "job-1" } });
+  expect(second).toMatchObject({ created: true, job: { id: "job-2" } });
+  expect(exhausted).toEqual({ availableCredits: 0, kind: "insufficient-credits" });
+  expect(database.db.select().from(jobs).all()).toHaveLength(2);
+
+  database.close();
+});
+
+it("does not count released or previous-period entries against the allowance", async () => {
+  const database = await createTestDatabase();
+  database.db
+    .insert(users)
+    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
+    .run();
+  createJob(database, jobValues("job-old", 99), { creditPeriodStart: 0, monthlyCredits: 0.05 });
+  requestJobCancellation(database, "job-old", "user-1", 100);
+
+  expect(
+    createJob(database, jobValues("job-current", 102), {
+      creditPeriodStart: 100,
+      monthlyCredits: 0.05,
+    }),
+  ).toMatchObject({ created: true, job: { id: "job-current" } });
 
   database.close();
 });
@@ -127,21 +243,25 @@ it("completes only the worker-owned attempt and persists its result atomically",
     .insert(users)
     .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
     .run();
-  database.db.insert(jobs).values(jobValues("job-1", 10)).run();
+  createJob(database, jobValues("job-1", 10), { creditPeriodStart: 0, monthlyCredits: 1 });
   claimNextJob(database, { leaseDurationMs: 100, now: 20, workerId: "worker-1" });
 
   expect(
-    markJobProcessing(database, {
+    reserveJobCreditsAndMarkProcessing(database, {
+      creditUnits: 5,
       jobId: "job-1",
       leaseDurationMs: 100,
+      monthlyCreditUnits: 100,
       now: 30,
       workerId: "another-worker",
     }),
   ).toBeUndefined();
   expect(
-    markJobProcessing(database, {
+    reserveJobCreditsAndMarkProcessing(database, {
+      creditUnits: 5,
       jobId: "job-1",
       leaseDurationMs: 100,
+      monthlyCreditUnits: 100,
       now: 30,
       workerId: "worker-1",
     }),
@@ -299,6 +419,7 @@ const createTestDatabase = async () => {
 const jobValues = (id: string, createdAt: number) => ({
   createdAt,
   declaredBytes: 100,
+  maxUploadBytes: 1_000_000_000,
   id,
   kind: "compress" as const,
   optionsJson: "{}",

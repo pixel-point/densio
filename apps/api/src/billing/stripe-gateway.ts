@@ -12,6 +12,30 @@ export interface HostedStripeSession {
   readonly url: string;
 }
 
+export interface StripeSubscriptionState {
+  readonly cancelAtPeriodEnd: boolean;
+  readonly currentPeriodEnd: number;
+  readonly customerId: string;
+  readonly priceId: string;
+  readonly status: StripeSubscriptionStatus;
+  readonly subscriptionId: string;
+  readonly userId: string | null;
+}
+
+interface StripeSubscriptionInput {
+  readonly cancel_at_period_end: boolean;
+  readonly customer: string | { readonly id: string } | null;
+  readonly id: string;
+  readonly items: {
+    readonly data: ReadonlyArray<{
+      readonly current_period_end: number;
+      readonly price: { readonly id: string };
+    }>;
+  };
+  readonly metadata: Readonly<Record<string, string>>;
+  readonly status: unknown;
+}
+
 export type BillingWebhookEvent =
   | {
       readonly eventId: string;
@@ -20,22 +44,15 @@ export type BillingWebhookEvent =
       readonly userId: string;
     }
   | {
-      readonly cancelAtPeriodEnd: boolean;
-      readonly currentPeriodEnd: number;
-      readonly customerId: string;
       readonly eventId: string;
-      readonly kind: "subscription-upsert";
-      readonly priceId: string;
-      readonly status: StripeSubscriptionStatus;
-      readonly subscriptionId: string;
-      readonly userId: string | null;
-    }
-  | {
-      readonly eventId: string;
-      readonly kind: "subscription-delete";
+      readonly kind: "subscription-sync";
       readonly subscriptionId: string;
     }
   | { readonly eventId: string; readonly kind: "ignored" };
+
+export type BillingEvent =
+  | Exclude<BillingWebhookEvent, { readonly kind: "subscription-sync" }>
+  | ({ readonly eventId: string; readonly kind: "subscription-upsert" } & StripeSubscriptionState);
 
 export interface ParseWebhookInput {
   readonly rawBody: string | Uint8Array;
@@ -53,6 +70,9 @@ export interface StripeGatewayDefinition {
   readonly parseWebhook: (
     input: ParseWebhookInput,
   ) => Effect.Effect<BillingWebhookEvent, InvalidStripeWebhook>;
+  readonly retrieveSubscription: (
+    subscriptionId: string,
+  ) => Effect.Effect<StripeSubscriptionState, StripeGatewayError>;
 }
 
 export class StripeGateway extends Context.Service<StripeGateway, StripeGatewayDefinition>()(
@@ -96,6 +116,13 @@ export const makeStripeGateway = (stripe: Stripe) =>
           ),
       }),
     ),
+    retrieveSubscription: Effect.fn("StripeGateway.retrieveSubscription")((subscriptionId) =>
+      Effect.tryPromise({
+        catch: (cause) => new StripeGatewayError({ cause, operation: "retrieve-subscription" }),
+        try: async () =>
+          normalizeStripeSubscription(await stripe.subscriptions.retrieve(subscriptionId)),
+      }),
+    ),
   });
 
 export const normalizeStripeSubscriptionStatus = (status: unknown): StripeSubscriptionStatus =>
@@ -107,11 +134,10 @@ const normalizeStripeEvent = (event: Stripe.Event): BillingWebhookEvent => {
       return normalizeCheckoutEvent(event.id, event.data.object);
     case "customer.subscription.created":
     case "customer.subscription.updated":
-      return normalizeSubscriptionEvent(event.id, event.data.object);
     case "customer.subscription.deleted":
       return {
         eventId: event.id,
-        kind: "subscription-delete",
+        kind: "subscription-sync",
         subscriptionId: event.data.object.id,
       };
     default:
@@ -129,10 +155,9 @@ const normalizeCheckoutEvent = (
   userId: requireValue(session.metadata?.userId ?? session.client_reference_id, "User ID"),
 });
 
-const normalizeSubscriptionEvent = (
-  eventId: string,
-  subscription: Stripe.Subscription,
-): BillingWebhookEvent => {
+export const normalizeStripeSubscription = (
+  subscription: StripeSubscriptionInput,
+): StripeSubscriptionState => {
   const item = requireValue(subscription.items.data[0], "Subscription item");
 
   return {
@@ -141,8 +166,6 @@ const normalizeSubscriptionEvent = (
       Math.max(...subscription.items.data.map(({ current_period_end }) => current_period_end)) *
       1_000,
     customerId: requireValue(getExpandableId(subscription.customer), "Customer ID"),
-    eventId,
-    kind: "subscription-upsert",
     priceId: item.price.id,
     status: normalizeStripeSubscriptionStatus(subscription.status),
     subscriptionId: subscription.id,

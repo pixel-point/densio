@@ -18,7 +18,7 @@ describe("CLI help", () => {
     expect(capture.stdout()).toContain("compare-quality <video>");
     expect(capture.stdout()).toContain("jobs get|wait|cancel");
     expect(capture.stdout()).toContain("artifacts download");
-    expect(capture.stdout()).toContain("billing subscribe|portal");
+    expect(capture.stdout()).toContain("billing subscribe PLAN|portal");
     expect(capture.stdout()).toContain("capabilities");
     expect(capture.stderr()).toBe("");
   });

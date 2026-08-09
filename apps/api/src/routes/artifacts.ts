@@ -7,6 +7,7 @@ import { describeRoute } from "hono-openapi";
 
 import { ArtifactUnavailable, findSignedArtifact } from "../database/artifact-repository.ts";
 import type { Database } from "../database/database.ts";
+import { internalErrorProblemDescriptor } from "../errors/problem-details.ts";
 import { createArtifactEtag } from "../storage/artifact.ts";
 import { parseSingleRange, type ByteRange } from "../storage/byte-range.ts";
 import { StorageOperationError } from "../storage/workspace.ts";
@@ -16,8 +17,12 @@ import {
   emptyResponse,
   headerParameter,
   pathParameter,
-  problemResponse,
+  problemResponses,
 } from "./openapi-support.ts";
+import {
+  artifactNotFoundProblemDescriptor,
+  rangeProblemDescriptor,
+} from "./problems/storage-problems.ts";
 
 const SafeFilenameSchema = Schema.String.check(Schema.isPattern(/^[^\p{Cc}/\\]+$/u));
 const decodeSafeFilename = Schema.decodeUnknownEffect(SafeFilenameSchema);
@@ -37,8 +42,11 @@ const artifactDocumentation = describeRoute({
     "200": artifactResponse("The complete artifact stream."),
     "206": artifactResponse("The requested artifact byte range.", true),
     "304": emptyResponse("The supplied ETag still matches."),
-    "404": problemResponse("The signed artifact URL is invalid or expired."),
-    "416": problemResponse("The requested byte range cannot be satisfied."),
+    ...problemResponses(
+      artifactNotFoundProblemDescriptor,
+      rangeProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   summary: "Download a signed artifact",
   tags: ["Artifacts"],

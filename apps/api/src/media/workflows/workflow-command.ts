@@ -70,17 +70,27 @@ export const runWorkflowCommand = Effect.fn("MediaWorkflow.runCommand")(function
 export const runWorkflowCommands = Effect.fn("MediaWorkflow.runCommands")(function* (
   plans: ReadonlyArray<CommandPlan>,
 ) {
-  const completedCommands: Array<WorkflowCommandDiagnostic> = [];
+  const completedCommands = new Map<number, WorkflowCommandDiagnostic>();
 
-  return yield* Effect.forEach(plans, (plan) =>
-    runWorkflowCommand(plan).pipe(
-      Effect.tap((command) =>
-        Effect.sync(() => {
-          completedCommands.push(command);
-        }),
+  return yield* Effect.forEach(
+    plans,
+    (plan, index) =>
+      runWorkflowCommand(plan).pipe(
+        Effect.tap((command) =>
+          Effect.sync(() => {
+            completedCommands.set(index, command);
+          }),
+        ),
+        Effect.mapError((error) =>
+          withCompletedCommands(
+            error,
+            [...completedCommands.entries()]
+              .toSorted(([left], [right]) => left - right)
+              .map(([, command]) => command),
+          ),
+        ),
       ),
-      Effect.mapError((error) => withCompletedCommands(error, completedCommands)),
-    ),
+    { concurrency: "unbounded" },
   );
 });
 

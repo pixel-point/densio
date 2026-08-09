@@ -164,11 +164,17 @@ export const jobs = sqliteTable(
         "expired",
       ],
     }).notNull(),
-    plan: text("plan", { enum: ["free", "pro"] }).notNull(),
+    plan: text("plan", { enum: ["free", "basic", "pro", "premium"] }).notNull(),
+    queuePriority: integer("queue_priority").notNull().default(0),
     sourceFilename: text("source_filename").notNull(),
     declaredBytes: integer("declared_bytes").notNull(),
+    maxUploadBytes: integer("max_upload_bytes").notNull().default(1_000_000_000),
     inputBytes: integer("input_bytes"),
     inputSha256: text("input_sha256"),
+    uploadState: text("upload_state", { enum: ["pending", "finalizing"] })
+      .notNull()
+      .default("pending"),
+    uploadStagingFile: text("upload_staging_file"),
     optionsJson: text("options_json").notNull(),
     idempotencyKey: text("idempotency_key"),
     progress: real("progress").notNull().default(0),
@@ -186,8 +192,30 @@ export const jobs = sqliteTable(
   },
   (table) => [
     uniqueIndex("jobs_user_idempotency_unique").on(table.userId, table.idempotencyKey),
-    index("jobs_queue_index").on(table.state, table.createdAt),
+    index("jobs_queue_index").on(table.state, table.queuePriority, table.createdAt),
     index("jobs_user_created_index").on(table.userId, table.createdAt),
+  ],
+);
+
+export const jobCreditEntries = sqliteTable(
+  "job_credit_entries",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    periodStart: integer("period_start").notNull(),
+    kind: text("kind", { enum: ["hold", "adjustment", "release", "usage"] }).notNull(),
+    units: integer("units").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("job_credit_entries_job_kind_unique").on(table.jobId, table.kind),
+    index("job_credit_entries_user_period_index").on(table.userId, table.periodStart),
+    index("job_credit_entries_job_index").on(table.jobId),
   ],
 );
 

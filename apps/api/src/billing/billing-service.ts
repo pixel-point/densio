@@ -1,5 +1,6 @@
 import { Context, Effect } from "effect";
 import type Stripe from "stripe";
+import type { PaidPlan } from "@ffmpeg-api/shared";
 
 import type { Database } from "../database/database.ts";
 import {
@@ -12,6 +13,7 @@ import {
 } from "./billing-errors.ts";
 import {
   type EffectiveBillingEntitlement,
+  type BillingPriceIds,
   findBillingAccount,
   findEffectiveBillingEntitlement,
   grantAdminPro,
@@ -26,13 +28,14 @@ export interface BillingConfig {
   readonly checkoutCancelUrl: string;
   readonly checkoutSuccessUrl: string;
   readonly portalReturnUrl: string;
-  readonly proPriceId: string;
+  readonly priceIds: BillingPriceIds;
   readonly webhookSecret: string;
 }
 
 export interface BillingServiceDefinition {
   readonly createCheckout: (input: {
     readonly config: BillingConfig;
+    readonly plan: PaidPlan;
     readonly userId: string;
   }) => Effect.Effect<
     HostedStripeSession,
@@ -46,7 +49,8 @@ export interface BillingServiceDefinition {
     BillingCustomerNotFound | BillingStorageError | BillingUserNotFound | StripeGatewayError
   >;
   readonly getEntitlement: (input: {
-    readonly proPriceId: string;
+    readonly now: number;
+    readonly priceIds: BillingPriceIds;
     readonly userId: string;
   }) => Effect.Effect<EffectiveBillingEntitlement, BillingStorageError | BillingUserNotFound>;
   readonly grantPro: (input: {
@@ -61,7 +65,7 @@ export interface BillingServiceDefinition {
     readonly signature: string;
   }) => Effect.Effect<
     { readonly processed: boolean },
-    BillingStorageError | BillingWebhookUnmatched | InvalidStripeWebhook
+    BillingStorageError | BillingWebhookUnmatched | InvalidStripeWebhook | StripeGatewayError
   >;
   readonly listProGrants: () => Effect.Effect<ReadonlyArray<ProGrant>, BillingStorageError>;
   readonly revokePro: (input: {
@@ -79,10 +83,13 @@ type StripeGatewayService = StripeGateway["Service"];
 export const makeBillingService = (database: Database, stripeGateway: StripeGatewayService) => {
   const createCheckout = Effect.fn("BillingService.createCheckout")(function* (input: {
     readonly config: BillingConfig;
+    readonly plan: PaidPlan;
     readonly userId: string;
   }) {
     const account = yield* findAccount(database, input.userId);
-    return yield* stripeGateway.createCheckoutSession(buildCheckoutParams(account, input.config));
+    return yield* stripeGateway.createCheckoutSession(
+      buildCheckoutParams(account, input.config, input.plan),
+    );
   });
 
   const createPortal = Effect.fn("BillingService.createPortal")(function* (input: {
@@ -99,25 +106,7 @@ export const makeBillingService = (database: Database, stripeGateway: StripeGate
     });
   });
 
-  const handleWebhook = Effect.fn("BillingService.handleWebhook")(function* (input: {
-    readonly config: BillingConfig;
-    readonly now: number;
-    readonly rawBody: string | Uint8Array;
-    readonly signature: string;
-  }) {
-    const event = yield* stripeGateway.parseWebhook({
-      rawBody: input.rawBody,
-      signature: input.signature,
-      webhookSecret: input.config.webhookSecret,
-    });
-    const outcome = yield* tryStorage("process-webhook", () =>
-      processBillingWebhook(database, event, input.now),
-    );
-    if (outcome.kind === "unmatched") {
-      return yield* new BillingWebhookUnmatched({ eventId: event.eventId });
-    }
-    return { processed: outcome.kind === "processed" };
-  });
+  const handleWebhook = makeWebhookHandler(database, stripeGateway);
 
   const grantPro = Effect.fn("BillingService.grantPro")(function* (input: {
     readonly grantedBy: string;
@@ -145,7 +134,8 @@ export const makeBillingService = (database: Database, stripeGateway: StripeGate
   });
 
   const getEntitlement = Effect.fn("BillingService.getEntitlement")(function* (input: {
-    readonly proPriceId: string;
+    readonly now: number;
+    readonly priceIds: BillingPriceIds;
     readonly userId: string;
   }) {
     const entitlement = yield* tryStorage("get-entitlement", () =>
@@ -168,6 +158,35 @@ export const makeBillingService = (database: Database, stripeGateway: StripeGate
   });
 };
 
+const makeWebhookHandler = (database: Database, stripeGateway: StripeGatewayService) =>
+  Effect.fn("BillingService.handleWebhook")(function* (input: {
+    readonly config: BillingConfig;
+    readonly now: number;
+    readonly rawBody: string | Uint8Array;
+    readonly signature: string;
+  }) {
+    const event = yield* stripeGateway.parseWebhook({
+      rawBody: input.rawBody,
+      signature: input.signature,
+      webhookSecret: input.config.webhookSecret,
+    });
+    const billingEvent =
+      event.kind === "subscription-sync"
+        ? {
+            ...(yield* stripeGateway.retrieveSubscription(event.subscriptionId)),
+            eventId: event.eventId,
+            kind: "subscription-upsert" as const,
+          }
+        : event;
+    const outcome = yield* tryStorage("process-webhook", () =>
+      processBillingWebhook(database, billingEvent, input.now),
+    );
+    if (outcome.kind === "unmatched") {
+      return yield* new BillingWebhookUnmatched({ eventId: billingEvent.eventId });
+    }
+    return { processed: outcome.kind === "processed" };
+  });
+
 const findAccount = Effect.fn("BillingService.findAccount")(function* (
   database: Database,
   userId: string,
@@ -188,13 +207,14 @@ const tryStorage = Effect.fn("BillingService.tryStorage")(
 const buildCheckoutParams = (
   account: { readonly customerId: string | null; readonly email: string; readonly userId: string },
   config: BillingConfig,
+  plan: PaidPlan,
 ): Stripe.Checkout.SessionCreateParams => ({
   cancel_url: config.checkoutCancelUrl,
   client_reference_id: account.userId,
   ...(account.customerId === null
     ? { customer_email: account.email }
     : { customer: account.customerId }),
-  line_items: [{ price: config.proPriceId, quantity: 1 }],
+  line_items: [{ price: config.priceIds[plan], quantity: 1 }],
   metadata: { userId: account.userId },
   mode: "subscription",
   subscription_data: { metadata: { userId: account.userId } },

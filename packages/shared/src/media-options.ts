@@ -6,9 +6,10 @@ import {
   PositiveFiniteSchema,
   PositiveIntegerSchema,
 } from "./common-contracts.ts";
+import { MEDIA_CODEC_POLICY, MEDIA_CODECS } from "./media-policy.ts";
 
-export const MediaCodecSchema = Schema.Literals(["vp9", "h265", "av1"]);
-export type MediaCodec = typeof MediaCodecSchema.Type;
+export const MediaCodecSchema = Schema.Literals(MEDIA_CODECS);
+export type { MediaCodec } from "./media-policy.ts";
 
 export const AudioModeSchema = Schema.Literals(["auto", "keep", "remove"]);
 export type AudioMode = typeof AudioModeSchema.Type;
@@ -18,19 +19,19 @@ export type ImageFormat = typeof ImageFormatSchema.Type;
 
 export const Vp9CrfSchema = Schema.Finite.check(
   Schema.isInt(),
-  Schema.isBetween({ minimum: 0, maximum: 63 }),
+  Schema.isBetween(MEDIA_CODEC_POLICY.vp9.crfRange),
 );
 export type Vp9Crf = typeof Vp9CrfSchema.Type;
 
 export const H265CrfSchema = Schema.Finite.check(
   Schema.isInt(),
-  Schema.isBetween({ minimum: 0, maximum: 51 }),
+  Schema.isBetween(MEDIA_CODEC_POLICY.h265.crfRange),
 );
 export type H265Crf = typeof H265CrfSchema.Type;
 
 export const Av1CrfSchema = Schema.Finite.check(
   Schema.isInt(),
-  Schema.isBetween({ minimum: 0, maximum: 63 }),
+  Schema.isBetween(MEDIA_CODEC_POLICY.av1.crfRange),
 );
 export type Av1Crf = typeof Av1CrfSchema.Type;
 

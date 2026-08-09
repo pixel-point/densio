@@ -1,4 +1,10 @@
-import type { Capabilities, Plan } from "@ffmpeg-api/shared";
+import {
+  DEFAULT_COMPRESSION_CODECS,
+  MEDIA_CODEC_CAPABILITIES,
+  PLAN_CATALOG,
+  type Capabilities,
+  type Plan,
+} from "@ffmpeg-api/shared";
 
 import type { AppConfig } from "./config.ts";
 import type { MediaCapabilities } from "./media/inspection/media-capabilities.ts";
@@ -9,34 +15,12 @@ export const buildCapabilities = (
   plan: Plan,
 ): Capabilities => ({
   apiVersion: "v1",
-  codecs: [
-    {
-      codec: "vp9",
-      container: "webm",
-      crfRange: { maximum: 63, minimum: 0 },
-      defaultCrf: 40,
-      minimumPlan: "free",
-    },
-    {
-      codec: "h265",
-      container: "mp4",
-      crfRange: { maximum: 51, minimum: 0 },
-      defaultCrf: 32,
-      minimumPlan: "free",
-    },
-    {
-      codec: "av1",
-      container: "webm",
-      crfRange: { maximum: 63, minimum: 0 },
-      defaultCrf: 35,
-      minimumPlan: "pro",
-    },
-  ],
+  codecs: MEDIA_CODEC_CAPABILITIES,
   defaults: {
     audio: "auto",
     comparisonDurationSeconds: 1,
     comparisonPositionSeconds: 0,
-    compressionCodecs: ["vp9", "h265"],
+    compressionCodecs: DEFAULT_COMPRESSION_CODECS,
     extractionFormat: "jpeg",
     extractionIntervalSeconds: 1,
   },
@@ -45,13 +29,17 @@ export const buildCapabilities = (
     maxComparisonCrfs: 8,
     maxComparisonDurationSeconds: config.maxComparisonSeconds,
     maxExtractionImages: config.maxExtractedImages,
-    maxUploadBytes: config.maxUploadBytes,
-    maxVideoDurationSeconds: plan === "pro" ? 1_800 : 10,
+    maxUploadBytes: Math.min(config.maxUploadBytes, PLAN_CATALOG[plan].maxUploadBytes),
+    maxVideoDurationSeconds: 1_800,
   },
   options: {
     audioModes: ["auto", "keep", "remove"],
     comparisonCrfCount: { maximum: 8, minimum: 2 },
-    comparisonDurationSeconds: { default: 1, maximum: 3, minimum: 1 },
+    comparisonDurationSeconds: {
+      default: 1,
+      maximum: config.maxComparisonSeconds,
+      minimum: 1,
+    },
     comparisonPositionKinds: ["seconds", "timecode", "frame"],
     cropKinds: ["aspect-ratio", "rectangle"],
     imageFormats: ["jpeg", "png", "webp"],

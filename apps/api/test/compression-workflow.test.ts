@@ -17,7 +17,7 @@ afterEach(cleanupWorkflowTestRoots);
 
 describe("compression workflow", () => {
   it("executes every selected codec into staging and returns publishable descriptors", async () => {
-    const { executable, paths } = await makeWorkflowTestContext("success");
+    const { executable, paths } = await makeWorkflowTestContext("require-concurrent-codecs");
 
     const result = await Effect.runPromise(
       provideWorkflowRunner(
@@ -62,7 +62,7 @@ describe("compression workflow", () => {
     });
     expect(result.commands[0]?.displayCommand).toContain(executable);
     await expect(readFile(`${paths.stagingDirectory}/compressed-vp9.webm`)).resolves.toHaveLength(
-      400,
+      420,
     );
     await expect(access(paths.artifactDirectory)).rejects.toMatchObject({ code: "ENOENT" });
   });

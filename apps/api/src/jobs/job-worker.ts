@@ -1,5 +1,7 @@
+import { PLAN_CATALOG } from "@ffmpeg-api/shared";
 import { Clock, Context, Deferred, Effect, Fiber, Ref, Schema, type Scope } from "effect";
 
+import { creditsFromUnits, monthlyCreditUnits } from "../billing/credit-units.ts";
 import type { Database } from "../database/database.ts";
 import {
   cancelClaimedJob,
@@ -8,9 +10,9 @@ import {
   failJob,
   findJobsByIds,
   isJobCancellationRequested,
-  markJobProcessing,
   recoverExpiredJobs,
   renewJobLease,
+  reserveJobCreditsAndMarkProcessing,
 } from "../database/job-repository.ts";
 import { jobs } from "../database/schema.ts";
 
@@ -29,10 +31,15 @@ class JobCanceled extends Schema.TaggedErrorClass<JobCanceled>()("JobCanceled", 
 
 class JobLeaseLost extends Schema.TaggedErrorClass<JobLeaseLost>()("JobLeaseLost", {}) {}
 
+export interface JobAnalysis {
+  readonly creditUnits: number;
+  readonly data: Schema.Json;
+}
+
 export class JobProcessor extends Context.Service<
   JobProcessor,
   {
-    analyze(job: Job): Effect.Effect<Schema.Json, JobProcessorError>;
+    analyze(job: Job): Effect.Effect<JobAnalysis, JobProcessorError>;
     process(job: Job, analysis: Schema.Json): Effect.Effect<Schema.Json, JobProcessorError>;
   }
 >()("ffmpeg-api/jobs/JobProcessor") {}
@@ -147,15 +154,31 @@ const executeClaimedJob = Effect.fn("JobWorker.executeClaimedJob")(function* (
 ) {
   const analysis = yield* processor.analyze(job);
   const processingAt = yield* Clock.currentTimeMillis;
-  const processing = markJobProcessing(database, {
+  const processing = reserveJobCreditsAndMarkProcessing(database, {
+    creditUnits: analysis.creditUnits,
     jobId: job.id,
     leaseDurationMs: options.leaseDurationMs,
+    monthlyCreditUnits: monthlyCreditUnits(PLAN_CATALOG[job.plan].monthlyCredits),
     now: processingAt,
     workerId,
   });
   if (processing === undefined) return yield* claimUnavailable(database, job, workerId);
+  if (processing.kind === "insufficient-credits") {
+    return yield* new JobProcessorError({
+      code: "CREDITS_EXHAUSTED",
+      details: { availableCredits: creditsFromUnits(processing.availableUnits) },
+      message: "The compression requires more credits than the account has available.",
+    });
+  }
+  if (processing.kind === "missing-reservation") {
+    return yield* new JobProcessorError({
+      code: "CREDIT_RESERVATION_MISSING",
+      details: {},
+      message: "The job credit reservation is missing.",
+    });
+  }
 
-  const result = yield* processor.process(processing, analysis);
+  const result = yield* processor.process(processing, analysis.data);
   const completedAt = yield* Clock.currentTimeMillis;
   const completed = completeJob(database, {
     jobId: job.id,

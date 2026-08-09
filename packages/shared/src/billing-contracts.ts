@@ -1,6 +1,16 @@
 import { Schema } from "effect";
 
-import { HttpUrlSchema, IsoTimestampSchema, PlanSchema } from "./common-contracts.ts";
+import {
+  HttpUrlSchema,
+  IsoTimestampSchema,
+  NonNegativeFiniteSchema,
+  PlanSchema,
+  PositiveIntegerSchema,
+} from "./common-contracts.ts";
+import { PaidPlanSchema } from "./plan-catalog.ts";
+
+export const CheckoutPlanRequestSchema = Schema.Struct({ plan: PaidPlanSchema });
+export type CheckoutPlanRequest = typeof CheckoutPlanRequestSchema.Type;
 
 const CheckoutSessionResponseSchema = Schema.Struct({
   kind: Schema.Literal("checkout"),
@@ -36,6 +46,13 @@ export const SubscriptionStatusSchema = Schema.Literals([
 export type SubscriptionStatus = typeof SubscriptionStatusSchema.Type;
 
 export const BillingStatusSchema = Schema.Struct({
+  credits: Schema.Struct({
+    available: NonNegativeFiniteSchema,
+    monthly: PositiveIntegerSchema,
+    reserved: NonNegativeFiniteSchema,
+    resetsAt: IsoTimestampSchema,
+    used: NonNegativeFiniteSchema,
+  }),
   plan: PlanSchema,
   entitlementSource: EntitlementSourceSchema,
   subscriptionStatus: Schema.optionalKey(SubscriptionStatusSchema),

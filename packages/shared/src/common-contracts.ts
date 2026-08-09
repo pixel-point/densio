@@ -6,7 +6,8 @@ export type ApiVersion = typeof ApiVersionSchema.Type;
 export const SchemaVersionSchema = Schema.Literal(1);
 export type SchemaVersion = typeof SchemaVersionSchema.Type;
 
-export const PlanSchema = Schema.Literals(["free", "pro"]);
+export const PLAN_NAMES = ["free", "basic", "pro", "premium"] as const;
+export const PlanSchema = Schema.Literals(PLAN_NAMES);
 export type Plan = typeof PlanSchema.Type;
 
 export const IdentifierSchema = Schema.NonEmptyString;

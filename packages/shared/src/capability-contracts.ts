@@ -7,6 +7,7 @@ import {
   PositiveIntegerSchema,
 } from "./common-contracts.ts";
 import { JobWorkflowSchema } from "./job-contracts.ts";
+import { DEFAULT_COMPRESSION_CODECS, MEDIA_CODEC_POLICY } from "./media-policy.ts";
 import { Av1CrfSchema, H265CrfSchema, Vp9CrfSchema } from "./media-options.ts";
 
 export const PlanLimitsSchema = Schema.Struct({
@@ -20,27 +21,36 @@ export const PlanLimitsSchema = Schema.Struct({
 export type PlanLimits = typeof PlanLimitsSchema.Type;
 
 const Vp9CapabilitySchema = Schema.Struct({
-  codec: Schema.Literal("vp9"),
-  container: Schema.Literal("webm"),
-  minimumPlan: Schema.Literal("free"),
+  codec: Schema.Literal(MEDIA_CODEC_POLICY.vp9.codec),
+  container: Schema.Literal(MEDIA_CODEC_POLICY.vp9.container),
+  minimumPlan: Schema.Literal(MEDIA_CODEC_POLICY.vp9.minimumPlan),
   defaultCrf: Vp9CrfSchema,
-  crfRange: Schema.Struct({ minimum: Schema.Literal(0), maximum: Schema.Literal(63) }),
+  crfRange: Schema.Struct({
+    minimum: Schema.Literal(MEDIA_CODEC_POLICY.vp9.crfRange.minimum),
+    maximum: Schema.Literal(MEDIA_CODEC_POLICY.vp9.crfRange.maximum),
+  }),
 });
 
 const H265CapabilitySchema = Schema.Struct({
-  codec: Schema.Literal("h265"),
-  container: Schema.Literal("mp4"),
-  minimumPlan: Schema.Literal("free"),
+  codec: Schema.Literal(MEDIA_CODEC_POLICY.h265.codec),
+  container: Schema.Literal(MEDIA_CODEC_POLICY.h265.container),
+  minimumPlan: Schema.Literal(MEDIA_CODEC_POLICY.h265.minimumPlan),
   defaultCrf: H265CrfSchema,
-  crfRange: Schema.Struct({ minimum: Schema.Literal(0), maximum: Schema.Literal(51) }),
+  crfRange: Schema.Struct({
+    minimum: Schema.Literal(MEDIA_CODEC_POLICY.h265.crfRange.minimum),
+    maximum: Schema.Literal(MEDIA_CODEC_POLICY.h265.crfRange.maximum),
+  }),
 });
 
 const Av1CapabilitySchema = Schema.Struct({
-  codec: Schema.Literal("av1"),
-  container: Schema.Literal("webm"),
-  minimumPlan: Schema.Literal("pro"),
+  codec: Schema.Literal(MEDIA_CODEC_POLICY.av1.codec),
+  container: Schema.Literal(MEDIA_CODEC_POLICY.av1.container),
+  minimumPlan: Schema.Literal(MEDIA_CODEC_POLICY.av1.minimumPlan),
   defaultCrf: Av1CrfSchema,
-  crfRange: Schema.Struct({ minimum: Schema.Literal(0), maximum: Schema.Literal(63) }),
+  crfRange: Schema.Struct({
+    minimum: Schema.Literal(MEDIA_CODEC_POLICY.av1.crfRange.minimum),
+    maximum: Schema.Literal(MEDIA_CODEC_POLICY.av1.crfRange.maximum),
+  }),
 });
 
 export const CodecCapabilitySchema = Schema.Union([
@@ -71,14 +81,17 @@ export const CapabilityOptionsSchema = Schema.Struct({
   comparisonCrfCount: Schema.Struct({ minimum: Schema.Literal(2), maximum: Schema.Literal(8) }),
   comparisonDurationSeconds: Schema.Struct({
     minimum: Schema.Literal(1),
-    maximum: Schema.Literal(3),
+    maximum: Schema.Finite.check(Schema.isBetween({ minimum: 1, maximum: 3 })),
     default: Schema.Literal(1),
   }),
 });
 export type CapabilityOptions = typeof CapabilityOptionsSchema.Type;
 
 export const CapabilityDefaultsSchema = Schema.Struct({
-  compressionCodecs: Schema.Tuple([Schema.Literal("vp9"), Schema.Literal("h265")]),
+  compressionCodecs: Schema.Tuple([
+    Schema.Literal(DEFAULT_COMPRESSION_CODECS[0]),
+    Schema.Literal(DEFAULT_COMPRESSION_CODECS[1]),
+  ]),
   audio: Schema.Literal("auto"),
   extractionIntervalSeconds: Schema.Literal(1),
   extractionFormat: Schema.Literal("jpeg"),

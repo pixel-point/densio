@@ -12,6 +12,9 @@ describe("configuration", () => {
         refreshTokenTtlMs: 2_592_000_000,
       },
       audioSilenceThresholdDb: -50,
+      billing: {
+        priceIds: { basic: "", premium: "", pro: "" },
+      },
       databasePath: "./data/database.sqlite",
       email: { maxAttempts: 5, pollIntervalMs: 1_000 },
       ffmpegPath: "ffmpeg",

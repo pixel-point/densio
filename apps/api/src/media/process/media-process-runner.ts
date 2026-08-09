@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-import { Context, Effect, Layer, Schema, Semaphore } from "effect";
+import { Context, Deferred, Effect, Layer, Schema, Semaphore } from "effect";
 
 export interface MediaProcessCommand {
   readonly executable: string;
@@ -49,6 +49,7 @@ export class MediaProcessRunner extends Context.Service<
     Layer.effect(
       MediaProcessRunner,
       Effect.gen(function* () {
+        const ownerScope = yield* Effect.scope;
         const semaphore = yield* Semaphore.make(options.concurrency);
         const limits = {
           forceKillAfterMs: options.forceKillAfterMs ?? 5_000,
@@ -56,7 +57,30 @@ export class MediaProcessRunner extends Context.Service<
           stdoutLimitBytes: options.stdoutLimitBytes ?? 16_777_216,
         };
         const run = Effect.fn("MediaProcessRunner.run")((command: MediaProcessCommand) =>
-          semaphore.withPermit(runProcess(command, limits)),
+          Effect.uninterruptibleMask((restore) =>
+            Effect.gen(function* () {
+              const completion = yield* Deferred.make<MediaProcessResult, MediaProcessError>();
+              const cancellation = new ProcessCancellation();
+              const ownedProcess = semaphore
+                .withPermit(
+                  Effect.suspend(() =>
+                    cancellation.requested
+                      ? Effect.fail(processIoError(command.executable))
+                      : runProcess(command, limits, cancellation),
+                  ),
+                )
+                .pipe(
+                  Effect.exit,
+                  Effect.flatMap((exit) => Deferred.done(completion, exit)),
+                  Effect.asVoid,
+                );
+              yield* Effect.forkIn(ownedProcess, ownerScope, { startImmediately: true });
+
+              return yield* restore(Deferred.await(completion)).pipe(
+                Effect.onInterrupt(() => Effect.sync(() => cancellation.request())),
+              );
+            }),
+          ),
         );
 
         return MediaProcessRunner.of({ run });
@@ -67,6 +91,7 @@ export class MediaProcessRunner extends Context.Service<
 const runProcess = (
   command: MediaProcessCommand,
   limits: ResolvedRunnerOptions,
+  cancellation: ProcessCancellation,
 ): Effect.Effect<MediaProcessResult, MediaProcessError> =>
   Effect.callback((resume) => {
     const child = spawn(command.executable, command.arguments, {
@@ -92,24 +117,60 @@ const runProcess = (
     });
     child.once("error", () => {
       closed = true;
+      unsubscribeCancellation();
+      if (forceKillTimer !== undefined) clearTimeout(forceKillTimer);
       resume(Effect.fail(processIoError(command.executable)));
     });
     child.once("close", (exitCode) => {
       closed = true;
+      unsubscribeCancellation();
       if (forceKillTimer !== undefined) clearTimeout(forceKillTimer);
       resume(processExit(command.executable, exitCode, stdout, stdoutTruncated, stderrTail));
     });
 
-    // Schedule escalation without awaiting process exit so Effect interruption is immediate.
-    return Effect.sync(() => {
+    const terminate = () => {
       if (closed) return;
       child.kill("SIGTERM");
       forceKillTimer = setTimeout(() => {
         if (!closed) child.kill("SIGKILL");
       }, limits.forceKillAfterMs);
       forceKillTimer.unref();
+    };
+    const unsubscribeCancellation = cancellation.subscribe(terminate);
+
+    return Effect.sync(() => {
+      unsubscribeCancellation();
+      terminate();
     });
   });
+
+class ProcessCancellation {
+  readonly #listeners = new Set<() => void>();
+  #requested = false;
+
+  get requested() {
+    return this.#requested;
+  }
+
+  request() {
+    if (this.#requested) return;
+    this.#requested = true;
+    this.#listeners.forEach((listener) => listener());
+    this.#listeners.clear();
+  }
+
+  subscribe(listener: () => void) {
+    if (this.#requested) {
+      listener();
+      return () => undefined;
+    }
+    this.#listeners.add(listener);
+
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
+}
 
 const processExit = (
   executable: string,

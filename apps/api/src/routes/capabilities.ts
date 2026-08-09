@@ -10,13 +10,17 @@ import { describeRoute } from "hono-openapi";
 
 import type { AuthService } from "../auth/auth-service.ts";
 import type { BillingService } from "../billing/billing-service.ts";
+import type { BillingPriceIds } from "../billing/billing-repository.ts";
+import { internalErrorProblemDescriptor } from "../errors/problem-details.ts";
 import {
   beginRequest,
   optionalBearerToken,
   runRouteEffect,
   successEnvelopeInput,
 } from "./route-support.ts";
-import { optionalBearerSecurity, problemResponse, successResponse } from "./openapi-support.ts";
+import { optionalBearerSecurity, problemResponses, successResponse } from "./openapi-support.ts";
+import { authRequiredProblemDescriptor } from "./problems/auth-problems.ts";
+import { billingUserProblemDescriptor } from "./problems/billing-problems.ts";
 
 const decodeCapabilitiesEnvelope = Schema.decodeUnknownSync(successEnvelope(CapabilitiesSchema));
 const capabilitiesDocumentation = describeRoute({
@@ -25,7 +29,11 @@ const capabilitiesDocumentation = describeRoute({
   operationId: "getCapabilities",
   responses: {
     "200": successResponse("The effective API capabilities.", CapabilitiesSchema),
-    "401": problemResponse("The supplied bearer token is invalid."),
+    ...problemResponses(
+      authRequiredProblemDescriptor,
+      billingUserProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
   },
   security: optionalBearerSecurity,
   summary: "Get API capabilities",
@@ -38,7 +46,7 @@ export interface CapabilityRouteDependencies {
   readonly capabilitiesForPlan: (plan: Plan) => Capabilities;
   readonly createCorrelationId: () => string;
   readonly now: () => number;
-  readonly proPriceId: string;
+  readonly priceIds: BillingPriceIds;
 }
 
 export const createCapabilitiesRoutes = (dependencies: CapabilityRouteDependencies) => {
@@ -53,7 +61,8 @@ export const createCapabilitiesRoutes = (dependencies: CapabilityRouteDependenci
         now: dependencies.now(),
       });
       const billing = yield* dependencies.billingService.getEntitlement({
-        proPriceId: dependencies.proPriceId,
+        now: dependencies.now(),
+        priceIds: dependencies.priceIds,
         userId: identity.userId,
       });
       return dependencies.capabilitiesForPlan(billing.entitlements.plan);

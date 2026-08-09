@@ -1,7 +1,8 @@
 import { JobResultSchema, type JobResult } from "@ffmpeg-api/shared";
 import { Effect, Layer, Predicate, Schema } from "effect";
 
-import { FREE_ENTITLEMENTS, PRO_ENTITLEMENTS } from "../auth/entitlements.ts";
+import { PLAN_ENTITLEMENTS } from "../auth/entitlements.ts";
+import { MINIMUM_JOB_CREDIT_UNITS } from "../billing/credit-units.ts";
 import type { Database } from "../database/database.ts";
 import { MediaInspectionError } from "../media/inspection/media-inspection-error.ts";
 import { MediaInspector } from "../media/inspection/media-inspector.ts";
@@ -12,7 +13,7 @@ import { MediaWorkflowProcessError } from "../media/workflows/workflow-command.t
 import type { WorkflowCommandDiagnostic } from "../media/workflows/workflow-types.ts";
 import { makeJobStoragePaths } from "../storage/workspace.ts";
 import { makeRecordingMediaProcessRunner, sanitizeMediaStderr } from "./job-command-recorder.ts";
-import type { Job } from "./job-worker.ts";
+import type { Job, JobAnalysis } from "./job-worker.ts";
 import { JobProcessorError } from "./job-worker.ts";
 
 export interface MediaJobAdapterConfig {
@@ -32,7 +33,7 @@ export interface MediaJobHandlerContext {
 }
 
 export interface MediaJobHandler {
-  readonly analyze: (job: Job) => Effect.Effect<Schema.Json, unknown>;
+  readonly analyze: (job: Job) => Effect.Effect<JobAnalysis, unknown>;
   readonly process: (job: Job, analysis: Schema.Json) => Effect.Effect<Schema.Json, unknown>;
 }
 
@@ -43,6 +44,11 @@ export const analysisIdentityFields = {
 };
 
 export const positiveDurationSchema = Schema.Finite.check(Schema.isGreaterThan(0));
+
+export const meteredAnalysis = (
+  data: Schema.Json,
+  creditUnits = MINIMUM_JOB_CREDIT_UNITS,
+): JobAnalysis => ({ creditUnits, data });
 
 const decodeJobResult = Schema.decodeUnknownEffect(JobResultSchema);
 
@@ -74,8 +80,7 @@ export const prepareJobExecution = Effect.fn("MediaJobHandler.prepare")(function
   };
 });
 
-export const entitlementsFor = (job: Job) =>
-  job.plan === "pro" ? PRO_ENTITLEMENTS : FREE_ENTITLEMENTS;
+export const entitlementsFor = (job: Job) => PLAN_ENTITLEMENTS[job.plan];
 
 export const assertCurrentAnalysis = (
   job: Job,

@@ -17,6 +17,7 @@ describe("agent-first output", () => {
   it("maps stable problem groups to documented exit codes", () => {
     expect(exitCodeForProblem({ code: "AUTH_REQUIRED", status: 401 })).toBe(3);
     expect(exitCodeForProblem({ code: "PLAN_LIMIT_EXCEEDED", status: 403 })).toBe(4);
+    expect(exitCodeForProblem({ code: "CREDITS_EXHAUSTED", status: 402 })).toBe(4);
     expect(exitCodeForProblem({ code: "JOB_FAILED", status: 422 })).toBe(5);
     expect(exitCodeForProblem({ code: "INTERNAL_ERROR", status: 500 })).toBe(5);
   });

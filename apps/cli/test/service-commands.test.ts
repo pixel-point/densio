@@ -5,6 +5,7 @@ import { writeCredentials } from "../src/config.ts";
 import {
   cleanupCliDirectories,
   makeCliCapture,
+  readRequestBody,
   sendEnvelope,
   startCliServer,
 } from "./cli-test-support.ts";
@@ -18,7 +19,7 @@ const capabilities = {
       codec: "vp9",
       container: "webm",
       crfRange: { maximum: 63, minimum: 0 },
-      defaultCrf: 40,
+      defaultCrf: 42,
       minimumPlan: "free",
     },
   ],
@@ -58,10 +59,14 @@ const capabilities = {
 
 describe("service commands", () => {
   it("decodes capabilities and authenticated billing session links", async () => {
-    const server = await startCliServer((request, response) => {
+    const checkoutBodies: Array<unknown> = [];
+    const server = await startCliServer(async (request, response) => {
       if (request.url === "/v1/capabilities") {
         sendEnvelope(response, capabilities);
         return;
+      }
+      if (request.url === "/v1/billing/checkout") {
+        checkoutBodies.push(JSON.parse((await readRequestBody(request)).toString("utf8")));
       }
       sendEnvelope(
         response,
@@ -82,7 +87,7 @@ describe("service commands", () => {
       ),
     ).toBe(0);
     expect(JSON.parse(capabilityCapture.stdout()).data.server.maxConcurrentMediaProcesses).toBe(3);
-    for (const command of ["subscribe", "portal"]) {
+    for (const command of [["subscribe", "basic"], ["portal"]]) {
       const capture = await makeCliCapture();
       await writeCredentials(capture.dependencies.credentialsPath, {
         accessToken: "access",
@@ -91,10 +96,14 @@ describe("service commands", () => {
         refreshToken: "refresh",
       });
       expect(
-        await runCli(["--json", "--api-url", server.url, "billing", command], capture.dependencies),
+        await runCli(
+          ["--json", "--api-url", server.url, "billing", ...command],
+          capture.dependencies,
+        ),
       ).toBe(0);
       expect(JSON.parse(capture.stdout()).data.url).toBe("https://billing.example/session");
     }
+    expect(checkoutBodies).toEqual([{ plan: "basic" }]);
     await server.close();
   });
 });

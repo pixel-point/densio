@@ -55,7 +55,7 @@ describe("credential origin binding", () => {
     });
     expect(
       await runCli(
-        ["--json", "--api-url", otherOrigin.url, "billing", "subscribe"],
+        ["--json", "--api-url", otherOrigin.url, "billing", "subscribe", "basic"],
         billingCapture.dependencies,
       ),
     ).toBe(3);
