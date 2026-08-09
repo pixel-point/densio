@@ -11,7 +11,7 @@ densio --json auth login agent@example.com
 densio --json auth logout
 ```
 
-The API URL precedence is `--api-url`, `DENSIO_API_URL`, config, then `http://localhost:3000`. Credentials are owner-only and bound to the normalized API origin.
+The API URL precedence is `--api-url`, `DENSIO_API_URL`, config, then `https://api.densio.sh`. Pass `--api-url` explicitly for local or self-hosted testing. Credentials are owner-only and bound to the normalized API origin.
 
 ## Compress
 

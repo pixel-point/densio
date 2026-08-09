@@ -14,6 +14,7 @@ describe("CLI help", () => {
     expect(exitCode).toBe(0);
     expect(capture.stdout()).toContain("densio — agent-first video processing");
     expect(capture.stdout()).toContain("DENSIO_API_URL");
+    expect(capture.stdout()).toContain("https://api.densio.sh");
     expect(capture.stdout()).not.toContain(["ffmpeg", "api"].join("-"));
     expect(capture.stdout()).toContain("auth login|status|logout");
     expect(capture.stdout()).toContain("compress <video>");

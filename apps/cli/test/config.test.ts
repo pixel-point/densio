@@ -59,7 +59,7 @@ describe("CLI configuration", () => {
       }),
     ).toBe("https://env.example");
     expect(resolveApiUrl({ configApiUrl: "https://file.example" })).toBe("https://file.example");
-    expect(resolveApiUrl({})).toBe("http://localhost:3000");
+    expect(resolveApiUrl({})).toBe("https://api.densio.sh");
   });
 
   it("writes and clears credentials with owner-only permissions", async () => {

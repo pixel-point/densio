@@ -5,6 +5,10 @@
 - `apps/api` owns the HTTP API surface.
 - `apps/cli` owns CLI entrypoints and command behavior.
 
+## CLI API Target
+
+- The CLI defaults to `https://api.densio.sh`; local testing must pass `--api-url` explicitly.
+
 ## Package Instructions
 
 - Before changing files under `apps/api`, read `apps/api/AGENTS.md`.

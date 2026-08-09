@@ -53,10 +53,13 @@ describe("job commands", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const exitCode = await runCli(["--json", "jobs", "wait", "job-1", "--timeout", "30"], {
-      ...capture.dependencies,
-      signal: controller.signal,
-    });
+    const exitCode = await runCli(
+      ["--json", "--api-url", "http://localhost:3000", "jobs", "wait", "job-1", "--timeout", "30"],
+      {
+        ...capture.dependencies,
+        signal: controller.signal,
+      },
+    );
 
     expect(exitCode).toBe(130);
     expect(JSON.parse(capture.stderr())).toMatchObject({

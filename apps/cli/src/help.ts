@@ -18,7 +18,7 @@ Agent behavior:
   Media commands wait by default. Use --no-wait for a resumable job ID.
 
 Global options:
-  --api-url URL                 API base URL (or DENSIO_API_URL)
+  --api-url URL                 API URL (DENSIO_API_URL; default: https://api.densio.sh)
   --credentials PATH           Override the owner-only credential file
   --json                       Stable schema-versioned machine output
 

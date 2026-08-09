@@ -263,25 +263,27 @@ Run the published CLI without installing it globally:
 
 ```sh
 npx densio --help
-npx densio --api-url https://video.example.com capabilities --json
+npx densio capabilities --json
 ```
 
-`--api-url` takes precedence over `DENSIO_API_URL`. Credentials default to
-`~/.config/densio/credentials.json` on Unix-like systems and can be overridden
-with `DENSIO_CREDENTIALS_PATH`. The rename to Densio is intentionally breaking;
-no previous command, environment-variable, or credential-path aliases are read.
+The CLI defaults to `https://api.densio.sh`. For local or self-hosted testing,
+pass `--api-url http://localhost:3000` explicitly. `--api-url` takes precedence
+over `DENSIO_API_URL`. Credentials default to `~/.config/densio/credentials.json`
+on Unix-like systems and can be overridden with `DENSIO_CREDENTIALS_PATH`. The
+rename to Densio is intentionally breaking; no previous command,
+environment-variable, or credential-path aliases are read.
 
 Build and run the workspace executable with:
 
 ```sh
 pnpm --filter densio build
-node apps/cli/dist/index.js --api-url https://video.example.com --help
+node apps/cli/dist/index.js --api-url http://localhost:3000 --help
 ```
 
 Typical use:
 
 ```sh
-densio --api-url https://video.example.com auth login user@example.com
+densio auth login user@example.com
 densio capabilities
 densio compress input.mp4
 densio compress input.mp4 --vp9-crf 42 --h265-crf 34 --width 1280

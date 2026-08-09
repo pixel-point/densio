@@ -21,7 +21,7 @@ export type CliCredentials = typeof CliCredentialsSchema.Type;
 const decodeCredentials = Schema.decodeUnknownSync(Schema.fromJsonString(CliCredentialsSchema));
 
 export const resolveApiUrl = ({ configApiUrl, environmentApiUrl, flagApiUrl }: ApiUrlSources) =>
-  normalizeApiUrl(flagApiUrl ?? environmentApiUrl ?? configApiUrl ?? "http://localhost:3000");
+  normalizeApiUrl(flagApiUrl ?? environmentApiUrl ?? configApiUrl ?? "https://api.densio.sh");
 
 export const writeCredentials = async (path: string, credentials: CliCredentials) => {
   const directory = dirname(path);
