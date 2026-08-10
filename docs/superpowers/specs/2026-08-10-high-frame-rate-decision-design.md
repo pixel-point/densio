@@ -60,10 +60,16 @@ scope.
 
 `POST /v1/jobs/:id/frame-rate-decision` accepts `{ "frameRate": <policy> }` and returns the current
 job status. The first valid decision atomically stores the policy in the persisted compression
-options, clears the pending decision, and requeues the job. Retrying the same decision is
-idempotent, including after processing has begun. A conflicting second decision returns the
-existing job-state conflict response. The endpoint rejects non-compression jobs and jobs that have
-never requested a frame-rate decision.
+options, retains the original decision as durable provenance, and requeues the job. Retrying the
+same decision is idempotent, including after processing has begun, only when that persisted
+decision proves the job previously requested the choice. A conflicting second decision returns
+the existing job-state conflict response. The endpoint rejects non-compression jobs and jobs that
+have never requested a frame-rate decision, including jobs created with a matching preselected
+policy.
+
+The decision payload has one canonical shared `JobDecisionSchema`. The compression handler,
+worker, persistence decoder, and public awaiting-decision status all use its inferred type instead
+of independently describing the same JSON shape.
 
 Cancellation remains valid while awaiting a decision and releases the minimum credit hold and
 removes the uploaded workspace just as queued cancellation does.
@@ -85,19 +91,30 @@ removes the uploaded workspace just as queued cancellation does.
    and normal credit reservation and processing continue.
 
 The database adds the new job state, nullable `decision_json`, and the new job-attempt outcome.
-Re-analysis after the decision is deliberate: it keeps the existing process-analysis identity
-guarantee and avoids persisting a second resumable analysis format.
+`decision_json` remains populated after resolution so retries can distinguish a previously accepted
+decision from a policy supplied at job creation. Re-analysis after the decision is deliberate: it
+keeps the existing process-analysis identity guarantee and avoids persisting a second resumable
+analysis format.
+
+`attemptCount` remains a unique claim sequence used by attempt records and analysis identity.
+Recovery exhaustion is based only on attempts whose outcome is `interrupted`; a successful
+decision pause is not a crash and does not consume the worker's recovery budget.
 
 ## FFmpeg behavior
 
-Preserve mode adds no frame-rate filter. Cap mode appends an `fps` video filter only when the
-source rational rate exceeds 30 fps.
+Preserve mode adds no frame-rate filter. With no explicit policy, every source above 30 fps pauses
+for consent; the server never changes frame rate automatically. An explicit cap policy, whether
+supplied at creation or after the pause, resolves its output as follows:
 
-To retain regular cadence, the target is the highest integer-divisor cadence no greater than 30:
-the divisor is `ceil(source fps / 30)` and the reduced target rational is
-`source numerator / (source denominator * divisor)`. This maps 60 to 30, 60000/1001 to
-30000/1001, 50 to 25, and 120 to 30. FFmpeg receives the exact rational expression, avoiding
-floating-point command arguments. Crop and scale filters remain ordered before `fps`.
+- Sources above 30 but below 50 fps become exactly 30 fps. This maps 31 and 40 to 30 without the
+  severe motion loss caused by halving them.
+- Sources at or above 50 fps use the highest integer-divisor cadence no greater than 30. The
+  divisor is `ceil(source fps / 30)` and the reduced target rational is
+  `source numerator / (source denominator * divisor)`. This maps 50 to 25, 59.97 to 29.985, 60 to
+  30, and 120 to 30.
+
+FFmpeg receives exact rational expressions, avoiding floating-point command arguments. Crop and
+scale filters remain ordered before `fps`.
 
 The filter drops frames while preserving presentation duration; audio handling is unchanged. File
 size and encoding work should decrease, but no exact size reduction is promised because the codecs
@@ -123,8 +140,9 @@ the existing `--timeout`; no new interactive stdin dependency is introduced.
 ## Errors and concurrency
 
 All state changes use compare-and-set conditions. If cancellation, a duplicate submission, and a
-worker transition race, exactly one state transition wins. Same-value decision retries return the
-current status; different-value retries receive a 409 conflict. Invalid decision JSON receives the
+worker transition race, exactly one state transition wins. Same-value retries with persisted
+decision provenance return the current status; different-value retries and submissions to jobs
+that never requested a decision receive a 409 conflict. Invalid decision JSON receives the
 standard invalid-request problem. Repository failures use the existing storage-error mapping.
 
 An `awaiting-decision` job is not claimable and has no active lease, so worker recovery ignores it.
@@ -139,10 +157,11 @@ that omitted high-frame-rate policy can require a follow-up decision.
 Tests cover:
 
 - shared policy and job-status schema acceptance and rejection;
-- exact 60-to-30 and 60000/1001-to-30000/1001 FFmpeg filters, no upsampling, and filter order;
+- exact 31-to-30, 40-to-30, 50-to-25, 59.97-to-29.985, 60-to-30, and
+  60000/1001-to-30000/1001 FFmpeg filters, no upsampling, and filter order;
 - compression analysis pausing only omitted policies above 30 fps;
-- atomic worker pause, cancellation, recovery isolation, idempotent decision submission, and
-  conflicting decisions;
+- atomic worker pause, cancellation, recovery isolation, retry budgets that exclude decision
+  pauses, provenance-backed idempotent submission, and conflicting decisions;
 - route authentication, request validation, response contracts, and OpenAPI exposure;
 - CLI option parsing, actionable polling return, JSON output, human commands, and decision resume;
 - durable adapter behavior proving that no encoder command runs before consent and the selected
