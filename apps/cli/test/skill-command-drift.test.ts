@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 import { CLI_HELP } from "../src/help.ts";
 
 const commandsReference = fileURLToPath(
-  new URL("../../../skills/densio/references/commands.md", import.meta.url),
+  new URL("../../../skill-bundle/references/commands.md", import.meta.url),
 );
 
 it("keeps every agent-skill flag discoverable in CLI help", async () => {

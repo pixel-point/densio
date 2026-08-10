@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 import { SkillBundleSchema, type SkillBundle, type SkillFile } from "@densio/shared";
 import { Schema } from "effect";
 
-import skillMarkdown from "../../../skills/densio/SKILL.md?raw";
-import commandsMarkdown from "../../../skills/densio/references/commands.md?raw";
-import errorsMarkdown from "../../../skills/densio/references/errors.md?raw";
+import skillMarkdown from "../../../skill-bundle/entrypoint.md?raw";
+import commandsMarkdown from "../../../skill-bundle/references/commands.md?raw";
+import errorsMarkdown from "../../../skill-bundle/references/errors.md?raw";
 
 const decodeSkillBundle = Schema.decodeUnknownSync(SkillBundleSchema);
 
