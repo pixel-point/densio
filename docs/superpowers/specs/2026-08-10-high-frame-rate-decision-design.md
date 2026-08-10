@@ -108,10 +108,10 @@ supplied at creation or after the pause, resolves its output as follows:
 
 - Sources above 30 but below 50 fps become exactly 30 fps. This maps 31 and 40 to 30 without the
   severe motion loss caused by halving them.
-- Sources at or above 50 fps use the highest integer-divisor cadence no greater than 30. The
-  divisor is `ceil(source fps / 30)` and the reduced target rational is
-  `source numerator / (source denominator * divisor)`. This maps 50 to 25, 59.97 to 29.985, 60 to
-  30, and 120 to 30.
+- Sources at or above 50 fps prefer the nearest integer-divisor cadence. The divisor is at least
+  two and rounds `source fps / 30` to the nearest integer. If that candidate would exceed 30 fps,
+  the target falls back to exactly 30 instead of jumping to the next divisor. This maps 50 to 25,
+  59.97 to 29.985, 60 to 30, 60.01 to 30, and 120 to 30.
 
 FFmpeg receives exact rational expressions, avoiding floating-point command arguments. Crop and
 scale filters remain ordered before `fps`.
@@ -157,7 +157,7 @@ that omitted high-frame-rate policy can require a follow-up decision.
 Tests cover:
 
 - shared policy and job-status schema acceptance and rejection;
-- exact 31-to-30, 40-to-30, 50-to-25, 59.97-to-29.985, 60-to-30, and
+- exact 31-to-30, 40-to-30, 50-to-25, 59.97-to-29.985, 60-to-30, 60.01-to-30, and
   60000/1001-to-30000/1001 FFmpeg filters, no upsampling, and filter order;
 - compression analysis pausing only omitted policies above 30 fps;
 - atomic worker pause, cancellation, recovery isolation, retry budgets that exclude decision
