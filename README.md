@@ -1,8 +1,8 @@
-# Densio
+# Densio - Agent-first video compression for the web
 
-Large video files slow websites down. Densio turns source video into smaller, web-ready outputs at the quality level you choose, so each visitor downloads less data.
-
-Densio is an agent-first video compression service. Tell your coding agent what the site needs. Densio handles media inspection, codec policy, long-running FFmpeg jobs, and verified downloads through a small CLI.
+- Improve your site's performance by properly compressing videos while preserving quality.
+- Stop using GIFs. They are larger and look worse than properly compressed video files.
+- Reduce file sizes by up to 10x.
 
 ## Use Densio from your agent
 
@@ -12,40 +12,49 @@ Install the Densio skill:
 npx skills add pixel-point/densio --skill densio
 ```
 
-Then give your agent a concrete prompt:
+**Basic prompt:**
 
 ```text
-Use $densio to compress ./public/hero.mov for the web. Keep the original resolution, keep audio only when it is audible, and download the optimized files next to the source.
+Use /densio to compress ./public/hero.mov
 ```
 
-The installed skill fetches the current Densio workflow instructions when used. It tells the agent to inspect server capabilities, authenticate through a magic email link when needed, submit the job, and verify downloaded artifacts.
+**Compare quality**
 
-## Current features
+If you care about the size-to-quality ratio, ask Densio to compare quality. It will compress a few short samples at different quality levels and estimate the full output file sizes, so you can decide which result works for you.
+
+```text
+Use /densio and compare quality of ./public/hero.mov
+```
+
+**Extract images**
+
+Give your agent a clearer view of a video sequence or animation by asking Densio to extract images from it.
+
+```text
+Use /densio and extract images from ./public/hero.mov
+```
+
+## Features
 
 - Compress to VP9/WebM and H.265/MP4 by default, or request AV1/WebM explicitly.
-- Preserve source resolution or crop and resize by width or height. Upscaling requires an explicit request.
+- Preserve source resolution or crop and resize by width or height.
 - Detect audible audio automatically, keep it, or remove audio entirely.
-- Extract JPEG, PNG, or WebP frames at a chosen interval into a ZIP with a timestamp manifest.
-- Compare two to eight CRF values at a second, timecode, or exact source frame, with preview files and coarse full-video size estimates.
-- Keep compression, extraction, and comparison jobs running when the agent disconnects. Jobs can be inspected, resumed, or cancelled.
-- Return signed downloads, SHA-256 hashes, the executed FFmpeg commands, and a ready-to-use HTML `<video>` snippet for compressed output.
-- Delete source uploads and intermediate files after terminal processing. Published artifacts expire after 24 hours by default.
+- Extract JPEG, PNG, or WebP frames at a chosen interval.
+- Compare quality by compressing short sections at different quality levels and estimating full file sizes, so you can choose the size-to-quality ratio yourself.
+
+## Privacy
+
+Densio only keeps your files long enough to process and download them. After compression, files remain available for up to 24 hours, then they are deleted.
 
 ## Why use Densio instead of local FFmpeg?
 
-FFmpeg is the encoder inside Densio. Densio adds a fixed web-video policy and a durable service around it.
+Agents do not always work on your most powerful computer. Many people run them on a small VPS, a Mac Mini, or an AI cloud sandbox—environments that are not well suited to CPU-intensive work like video compression.
 
-With local FFmpeg, you choose every codec, preset, CRF, filter, audio rule, container flag, and output path. You also own the process lifetime, retries, cleanup, and result validation. That control is useful for one-off work or unusual formats.
+Densio maintains an up-to-date set of codecs and compression practices battle-tested on real projects. It aims for the best possible compression while staying simple enough for non-technical users.
 
-Densio gives agents three typed workflows: compression, frame extraction, and quality comparison. The server inspects the source, applies the same policy on every machine, keeps long jobs alive, and returns structured results. Agents do not have to invent shell commands or parse an FFmpeg log to find the output.
+## Highest possible compression
 
-Use local FFmpeg when you need exact control over every argument or a quick local preview. Use Densio for repeatable web outputs, agent-driven work, durable remote jobs, and consistent compression across projects.
-
-## Slow on purpose
-
-Densio deliberately chooses slow encodes. VP9 runs with `deadline=best`, H.265 uses `preset=veryslow`, and AV1 uses SVT-AV1 preset 6. These settings favor compression efficiency over turnaround time.
-
-Expect long jobs, especially for large sources and multiple codecs. Densio accepts that cost to pursue the smallest practical output at the selected quality. The durable queue lets the agent disconnect and resume later instead of keeping one local terminal alive for the entire encode.
+Densio chooses the most CPU-intensive compression settings. Encoding takes longer, but produces the smallest practical files while preserving quality.
 
 ## Plans
 
@@ -58,9 +67,19 @@ Every plan supports VP9, H.265, and AV1, with a 30-minute input limit.
 | Pro   |           5,000 |          10 GB | Paid           |
 | Scale |           7,500 |          10 GB | Paid           |
 
-The Free plan includes 30 credits each UTC month and access to every codec. A five-minute 1080p source costs 1 credit per output codec, so the default VP9 and H.265 pair costs 2 credits. At that size, the Free plan covers fifteen default two-codec compressions each month. Image extraction and quality comparison currently cost 0.05 credits each.
+Compression credits are based on video duration, source and output resolution, and the number of output codecs. Each job has a minimum cost of 0.05 credits and is rounded up to the nearest 0.05. VP9, H.265, and AV1 cost the same; each requested codec counts as one output.
 
-Basic, Pro, and Scale are for higher-volume optimization, larger uploads, frequent quality experiments, and paid queue priority. You can also self-host Densio and run the same workflows on your own hardware.
+For a 1920x1080 video kept at its original resolution:
+
+| Video length | One codec | VP9 + H.265 |
+| ------------ | --------: | ----------: |
+| 15 seconds   |      0.05 |        0.10 |
+| 1 minute     |      0.20 |        0.40 |
+| 5 minutes    |      1.00 |        2.00 |
+
+The Free plan includes 30 credits each UTC month and access to every codec. That is enough for up to 300 15-second 1080p videos or 15 five-minute 1080p videos when producing the default VP9 and H.265 outputs. Frame extraction and quality comparison cost 0.05 credits per job.
+
+These estimates assume that the output stays at 1920x1080. 
 
 ## Direct CLI use
 
