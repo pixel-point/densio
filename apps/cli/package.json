@@ -1,6 +1,6 @@
 {
   "name": "densio",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Agent-first video optimization through the Densio API",
   "keywords": [
     "cli",
