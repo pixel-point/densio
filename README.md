@@ -18,6 +18,12 @@ npx skills add pixel-point/densio --skill densio
 Use /densio to compress ./public/hero.mov
 ```
 
+**Advanced prompt:**
+
+```text
+Use /densio to compress ./public/hero.mov. Resize the output to 1280 pixels wide while preserving its aspect ratio. Create VP9 at CRF 40 and H.265 at CRF 28.
+```
+
 **Compare quality**
 
 If you care about the size-to-quality ratio, ask Densio to compare quality. It will compress a few short samples at different quality levels and estimate the full output file sizes, so you can decide which result works for you.
@@ -79,7 +85,7 @@ For a 1920x1080 video kept at its original resolution:
 
 The Free plan includes 30 credits each UTC month and access to every codec. That is enough for up to 300 15-second 1080p videos or 15 five-minute 1080p videos when producing the default VP9 and H.265 outputs. Frame extraction and quality comparison cost 0.05 credits per job.
 
-These estimates assume that the output stays at 1920x1080. 
+These estimates assume that the output stays at 1920x1080.
 
 ## Direct CLI use
 

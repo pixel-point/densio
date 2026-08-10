@@ -43,8 +43,11 @@ Formats are `jpeg`, `png`, and `webp`. The result is a ZIP with a timestamp mani
 
 ## Compare quality
 
+Unless the user requests different or fewer codecs, run separate H.265 and VP9 comparisons because each invocation accepts one codec. Select seven CRFs for each codec from the current `capabilities` response: the advertised default, three values below it, and three above it, all separated by 2. For example, when the advertised defaults are H.265 30 and VP9 42:
+
 ```sh
-npx densio --json compare-quality input.mp4 --codec vp9 --crf 30,36,42
+npx densio --json compare-quality input.mp4 --codec h265 --crf 24,26,28,30,32,34,36
+npx densio --json compare-quality input.mp4 --codec vp9 --crf 36,38,40,42,44,46,48
 npx densio --json compare-quality input.mp4 --crf 28,34,40 --at 01:12.500
 npx densio --json compare-quality input.mp4 --crf 28,34 --frame 172 --duration 3
 ```
