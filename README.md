@@ -319,9 +319,9 @@ when replacing that path is intentional.
 
 ## Publishing the CLI
 
-The public npm package is `densio` and is licensed under AGPL-3.0-only. Before
-the first release, rename the GitHub repository to `pixel-point/densio`, update
-the local `origin` URL manually, and confirm the npm account can publish the
+The public npm package is `densio`, its source repository is
+[`pixel-point/densio`](https://github.com/pixel-point/densio), and it is licensed
+under AGPL-3.0-only. Before publishing, confirm the npm account can publish the
 unscoped package name.
 
 Start from committed feature changes and a clean worktree:
