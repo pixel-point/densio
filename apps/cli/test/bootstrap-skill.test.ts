@@ -23,7 +23,7 @@ it("publishes a stable bootstrap with the canonical activation metadata", async 
 it("exposes only the Densio bootstrap through public skill discovery", async () => {
   const entrypoints = (await readdir(publicSkills, { recursive: true }))
     .filter((path) => path.endsWith("SKILL.md"))
-    .sort();
+    .toSorted();
 
   expect(entrypoints).toEqual(["densio/SKILL.md"]);
 });
