@@ -2,6 +2,7 @@ import {
   CompressionOptionsSchema,
   DEFAULT_COMPRESSION_CODECS,
   type CompressionOptions,
+  type JobDecision,
 } from "@densio/shared";
 import { Effect, Schema } from "effect";
 
@@ -9,6 +10,7 @@ import { compressionCreditUnits } from "../billing/compression-credit-cost.ts";
 import { validateMediaEntitlements } from "../media/inspection/media-entitlement-check.ts";
 import type { MediaInspector } from "../media/inspection/media-inspector.ts";
 import { MediaProcessRunner } from "../media/process/media-process-runner.ts";
+import { requiresFrameRateDecision } from "../media/frame-rate.ts";
 import { resolveVideoDimensions } from "../media/video-filter.ts";
 import { runCompressionWorkflow } from "../media/workflows/compression-workflow.ts";
 import { publishAndRegisterArtifacts } from "./artifact-publication.ts";
@@ -34,6 +36,10 @@ const CompressionAnalysisSchema = Schema.Struct({
   ...analysisIdentityFields,
   audioAnalysis: Schema.Literals(["absent", "silent", "audible"]),
   durationSeconds: positiveDurationSchema,
+  frameRate: Schema.Struct({
+    denominator: Schema.Int.check(Schema.isGreaterThan(0)),
+    numerator: Schema.Int.check(Schema.isGreaterThan(0)),
+  }),
   kind: Schema.Literal("compress"),
 });
 type CompressionAnalysis = typeof CompressionAnalysisSchema.Type;
@@ -53,6 +59,7 @@ const analyze = Effect.fn("CompressionJobHandler.inspect")(function* (
   const analysis = yield* inspectJob(context, job, (inspector, inputFile) =>
     inspectCompression(inspector, job, inputFile, options),
   );
+  if (analysis.kind === "decision-required") return analysis;
   const output = resolveVideoDimensions(analysis.source, options.transform);
   const codecs = options.codecs ?? DEFAULT_COMPRESSION_CODECS;
   return meteredAnalysis(
@@ -86,6 +93,16 @@ const inspectCompression = Effect.fn("CompressionJobHandler.inspectMedia")(funct
       message: "The input does not contain an audio stream to keep.",
     });
   }
+  if (options.frameRate === undefined && requiresFrameRateDecision(media.frameRate)) {
+    return {
+      decision: {
+        kind: "frame-rate",
+        recommended: { maximum: 30, mode: "cap" },
+        source: media.frameRate,
+      } satisfies JobDecision,
+      kind: "decision-required",
+    } as const;
+  }
   const audioAnalysis =
     audioMode === "auto"
       ? yield* inspector.classifyAudio(inputFile, media.audioStreamIndexes)
@@ -96,6 +113,10 @@ const inspectCompression = Effect.fn("CompressionJobHandler.inspectMedia")(funct
     attempt: job.attemptCount,
     audioAnalysis,
     durationSeconds: media.durationSeconds,
+    frameRate: {
+      denominator: media.frameRate.denominator,
+      numerator: media.frameRate.numerator,
+    },
     jobId: job.id,
     kind: "compress",
     source: media.displayDimensions,
@@ -116,9 +137,11 @@ const process = Effect.fn("CompressionJobHandler.execute")(function* (
     executable: context.config.ffmpegPath,
     paths,
     source: analysis.source,
+    sourceFrameRate: analysis.frameRate,
     ...(options.audio === undefined ? {} : { audio: options.audio }),
     ...(options.codecs === undefined ? {} : { codecs: options.codecs }),
     ...(options.crf === undefined ? {} : { crf: options.crf }),
+    ...(options.frameRate === undefined ? {} : { frameRate: options.frameRate }),
     ...(options.transform === undefined ? {} : { transform: options.transform }),
   }).pipe(Effect.provideService(MediaProcessRunner, recordingRunner));
   const published = yield* publishAndRegisterArtifacts(

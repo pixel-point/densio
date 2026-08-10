@@ -9,6 +9,24 @@ import {
 } from "../src/index.ts";
 
 describe("compression options", () => {
+  it("accepts explicit source-preserve and 30 fps cap policies", () => {
+    const decode = Schema.decodeUnknownSync(CompressionOptionsSchema);
+
+    expect(decode({ frameRate: { mode: "preserve" } })).toEqual({
+      frameRate: { mode: "preserve" },
+    });
+    expect(decode({ frameRate: { maximum: 30, mode: "cap" } })).toEqual({
+      frameRate: { maximum: 30, mode: "cap" },
+    });
+  });
+
+  it("rejects unsupported frame-rate policies", () => {
+    const decode = Schema.decodeUnknownSync(CompressionOptionsSchema);
+
+    expect(() => decode({ frameRate: { maximum: 60, mode: "cap" } })).toThrow();
+    expect(() => decode({ frameRate: { mode: "convert" } })).toThrow();
+  });
+
   it("accepts codec CRFs, automatic audio, crop, and proportional scaling", () => {
     const options = {
       codecs: ["vp9", "h265"],

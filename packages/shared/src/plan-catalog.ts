@@ -9,24 +9,28 @@ export type PaidPlan = typeof PaidPlanSchema.Type;
 export const PLAN_CATALOG = Object.freeze({
   basic: Object.freeze({
     maxUploadBytes: 10_000_000_000,
+    maxVideoDurationSeconds: 10_800,
     monthlyCredits: 750,
     queuePriority: 10,
     rank: 1,
   }),
   free: Object.freeze({
     maxUploadBytes: 1_000_000_000,
+    maxVideoDurationSeconds: 1_800,
     monthlyCredits: 30,
     queuePriority: 0,
     rank: 0,
   }),
   scale: Object.freeze({
     maxUploadBytes: 10_000_000_000,
+    maxVideoDurationSeconds: 10_800,
     monthlyCredits: 7_500,
     queuePriority: 30,
     rank: 3,
   }),
   pro: Object.freeze({
     maxUploadBytes: 10_000_000_000,
+    maxVideoDurationSeconds: 10_800,
     monthlyCredits: 5_000,
     queuePriority: 20,
     rank: 2,
@@ -35,6 +39,7 @@ export const PLAN_CATALOG = Object.freeze({
   Plan,
   {
     readonly maxUploadBytes: number;
+    readonly maxVideoDurationSeconds: number;
     readonly monthlyCredits: number;
     readonly queuePriority: number;
     readonly rank: number;

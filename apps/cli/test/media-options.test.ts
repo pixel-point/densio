@@ -16,6 +16,22 @@ import {
 
 afterEach(cleanupCliDirectories);
 
+describe("compression frame-rate options", () => {
+  it("parses explicit compression frame-rate policies", () => {
+    expect(
+      parseCompressionCommand(["video.mp4", "--frame-rate", "preserve"]).options,
+    ).toMatchObject({
+      frameRate: { mode: "preserve" },
+    });
+    expect(parseCompressionCommand(["video.mp4", "--frame-rate", "cap-30"]).options).toMatchObject({
+      frameRate: { maximum: 30, mode: "cap" },
+    });
+    expect(() => parseCompressionCommand(["video.mp4", "--frame-rate", "60"])).toThrow(
+      /frame-rate/i,
+    );
+  });
+});
+
 describe("media option commands", () => {
   it("rejects a non-positive client wait timeout before making requests", () => {
     expect(() => parseCompressionCommand(["video.mp4", "--timeout", "0"])).toThrow(/positive/i);

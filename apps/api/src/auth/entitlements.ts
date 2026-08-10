@@ -1,6 +1,7 @@
 import {
   MEDIA_CODEC_POLICY,
   MEDIA_CODECS,
+  PLAN_CATALOG,
   type MediaCodec,
   type Plan,
   type SubscriptionStatus,
@@ -10,18 +11,19 @@ export type StripeSubscriptionStatus = SubscriptionStatus;
 
 export interface Entitlements {
   readonly plan: Plan;
-  readonly maxVideoDurationSeconds: 1_800;
+  readonly maxVideoDurationSeconds: number;
   readonly allowedCodecs: ReadonlyArray<MediaCodec>;
 }
 
-const ALL_PLAN_CODECS = Object.freeze(
-  MEDIA_CODECS.filter((codec) => MEDIA_CODEC_POLICY[codec].minimumPlan === "free"),
-);
-
 const planEntitlements = (plan: Plan): Entitlements =>
   Object.freeze({
-    allowedCodecs: ALL_PLAN_CODECS,
-    maxVideoDurationSeconds: 1_800,
+    allowedCodecs: Object.freeze(
+      MEDIA_CODECS.filter(
+        (codec) =>
+          PLAN_CATALOG[plan].rank >= PLAN_CATALOG[MEDIA_CODEC_POLICY[codec].minimumPlan].rank,
+      ),
+    ),
+    maxVideoDurationSeconds: PLAN_CATALOG[plan].maxVideoDurationSeconds,
     plan,
   });
 

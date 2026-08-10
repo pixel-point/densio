@@ -64,7 +64,7 @@ it("fails before processing when the analyzed cost exceeds available credits", a
   createJob(database, jobValues("target", 50), { creditPeriodStart: 0, monthlyCredits: 30 });
   const state = { processed: false };
   const processor = JobProcessor.of({
-    analyze: () => Effect.succeed({ creditUnits: 10, data: null }),
+    analyze: () => Effect.succeed({ creditUnits: 10, data: null, kind: "ready" }),
     process: () => Effect.sync(() => (state.processed = true)),
   });
   const cleanup = JobCleanup.of({ cleanup: () => Effect.void });
@@ -133,6 +133,55 @@ it("claims oldest-first and transitions analyze to processing to success", async
   expect(database.db.select().from(jobs).where(eq(jobs.id, "job-older")).get()).toMatchObject({
     resultJson: '{"jobId":"job-older"}',
     state: "succeeded",
+  });
+  database.close();
+});
+
+it("pauses for a durable decision before reserving processing work", async () => {
+  const database = await createTestDatabase();
+  insertJobs(database, [jobValues("job-decision", 10)]);
+  const events: Array<string> = [];
+  const decision = {
+    kind: "frame-rate",
+    recommended: { maximum: 30, mode: "cap" },
+    source: { denominator: 1, framesPerSecond: 60, numerator: 60 },
+  } as const;
+  const processor = JobProcessor.of({
+    analyze: () => Effect.succeed({ decision, kind: "decision-required" }),
+    process: () => Effect.sync(() => events.push("processed")),
+  });
+  const cleanup = JobCleanup.of({
+    cleanup: () => Effect.sync(() => events.push("cleaned")),
+  });
+
+  await runWorkerTest(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const worker = yield* startJobWorker(database, workerOptions);
+        yield* waitUntil(() => readState(database, "job-decision") === "awaiting-decision");
+        yield* worker.stop();
+      }),
+    ),
+    cleanup,
+    processor,
+  );
+
+  expect(database.db.select().from(jobs).where(eq(jobs.id, "job-decision")).get()).toMatchObject({
+    decisionJson: JSON.stringify(decision),
+    leaseExpiresAt: null,
+    leaseOwner: null,
+    progress: 5,
+    state: "awaiting-decision",
+  });
+  expect(database.sqlite.prepare("select outcome from job_attempts").get()).toEqual({
+    outcome: "decision-required",
+  });
+  expect(
+    claimNextJob(database, { leaseDurationMs: 100, now: 50, workerId: "another-worker" }),
+  ).toBeUndefined();
+  expect(events).toEqual([]);
+  expect(requestJobCancellation(database, "job-decision", "user-1", 60)).toMatchObject({
+    state: "canceled",
   });
   database.close();
 });
@@ -508,7 +557,7 @@ const countState = (database: Database, state: Job["state"]) =>
 const readLease = (database: Database, id: string) =>
   database.db.select({ lease: jobs.leaseExpiresAt }).from(jobs).where(eq(jobs.id, id)).get()?.lease;
 
-const metered = (data: Schema.Json) => ({ creditUnits: 5, data });
+const metered = (data: Schema.Json) => ({ creditUnits: 5, data, kind: "ready" as const });
 
 const jobValues = (id: string, createdAt: number) => ({
   createdAt,

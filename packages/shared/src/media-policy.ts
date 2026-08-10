@@ -25,7 +25,7 @@ export const MEDIA_CODEC_POLICY = Object.freeze({
     container: "webm",
     crfRange: Object.freeze({ maximum: 63, minimum: 0 }),
     defaultCrf: 42,
-    minimumPlan: "free",
+    minimumPlan: "basic",
   }),
 } as const);
 

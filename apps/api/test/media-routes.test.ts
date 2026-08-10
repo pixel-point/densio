@@ -13,6 +13,7 @@ import {
   type Plan,
   successEnvelope,
 } from "@densio/shared";
+import { eq } from "drizzle-orm";
 import { Effect, Schema } from "effect";
 import { Hono } from "hono";
 import { afterEach, expect, it } from "vitest";
@@ -154,6 +155,61 @@ it("validates each media request and persists the authenticated Pro plan", async
   expect(decodeProblem(await invalid.json()).code).toBe("INVALID_REQUEST");
 });
 
+it("authenticates, validates, and applies frame-rate decisions", async () => {
+  const harness = await createHarness();
+  const ownerToken = seedAccess(harness.database, "owner", "owner@example.com");
+  const otherToken = seedAccess(harness.database, "other", "other@example.com");
+  insertJob(harness.database, "job-decision", "owner");
+  harness.database.db
+    .update(jobs)
+    .set({
+      decisionJson: JSON.stringify({
+        kind: "frame-rate",
+        recommended: { maximum: 30, mode: "cap" },
+        source: { denominator: 1, framesPerSecond: 60, numerator: 60 },
+      }),
+      progress: 5,
+      state: "awaiting-decision",
+    })
+    .where(eq(jobs.id, "job-decision"))
+    .run();
+
+  const invalid = await postJson(
+    harness.app,
+    "/v1/jobs/job-decision/frame-rate-decision",
+    ownerToken,
+    { frameRate: { maximum: 60, mode: "cap" } },
+  );
+  expect(invalid.status).toBe(400);
+  expect(decodeProblem(await invalid.json()).code).toBe("INVALID_REQUEST");
+
+  const hidden = await postJson(
+    harness.app,
+    "/v1/jobs/job-decision/frame-rate-decision",
+    otherToken,
+    { frameRate: { maximum: 30, mode: "cap" } },
+  );
+  expect(hidden.status).toBe(404);
+
+  const decided = await postJson(
+    harness.app,
+    "/v1/jobs/job-decision/frame-rate-decision",
+    ownerToken,
+    { frameRate: { maximum: 30, mode: "cap" } },
+  );
+  expect(decided.status).toBe(200);
+  expect(decodeStatus(await decided.json()).data).toMatchObject({ state: "queued" });
+
+  const conflicting = await postJson(
+    harness.app,
+    "/v1/jobs/job-decision/frame-rate-decision",
+    ownerToken,
+    { frameRate: { mode: "preserve" } },
+  );
+  expect(conflicting.status).toBe(409);
+  expect(decodeProblem(await conflicting.json()).code).toBe("JOB_STATE_CONFLICT");
+});
+
 it("serves signed artifacts with ETags, safe filenames, and RFC byte ranges", async () => {
   const harness = await createHarness();
   seedAccess(harness.database, "owner", "owner@example.com");
@@ -211,7 +267,11 @@ it("returns injected free capabilities publicly and Pro capabilities to an owner
   const harness = await createHarness();
   const token = seedAccess(harness.database, "owner", "owner@example.com");
   const publicResponse = await harness.app.request("/v1/capabilities");
-  expect(decodeCapabilities(await publicResponse.json()).data.plan).toBe("free");
+  const publicCapabilities = decodeCapabilities(await publicResponse.json()).data;
+  expect(publicCapabilities.plan).toBe("free");
+  expect(publicCapabilities.codecs.find(({ codec }) => codec === "av1")).toMatchObject({
+    minimumPlan: "basic",
+  });
 
   await Effect.runPromise(
     harness.billingService.grantPro({
@@ -226,7 +286,7 @@ it("returns injected free capabilities publicly and Pro capabilities to an owner
   const capabilities = decodeCapabilities(await proResponse.json()).data;
   expect(capabilities.plan).toBe("pro");
   expect(capabilities.codecs.find(({ codec }) => codec === "av1")).toMatchObject({
-    minimumPlan: "free",
+    minimumPlan: "basic",
   });
 });
 
@@ -371,7 +431,7 @@ const capabilitiesForPlan = (plan: Plan): Capabilities => ({
       container: "webm",
       crfRange: { maximum: 63, minimum: 0 },
       defaultCrf: 42,
-      minimumPlan: "free",
+      minimumPlan: "basic",
     },
   ],
   defaults: {

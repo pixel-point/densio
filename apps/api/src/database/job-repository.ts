@@ -53,6 +53,13 @@ interface FailJobOptions {
   readonly workerId: string;
 }
 
+interface PauseJobOptions {
+  readonly decisionJson: string;
+  readonly jobId: string;
+  readonly now: number;
+  readonly workerId: string;
+}
+
 export const createJob = (
   database: Database,
   values: typeof jobs.$inferInsert,
@@ -162,7 +169,11 @@ export const requestJobCancellation = (
       if (job === undefined) return undefined;
       if (["succeeded", "failed", "canceled", "expired"].includes(job.state)) return job;
 
-      if (job.state === "awaiting-upload" || job.state === "queued") {
+      if (
+        job.state === "awaiting-upload" ||
+        job.state === "awaiting-decision" ||
+        job.state === "queued"
+      ) {
         const canceled = transaction
           .update(jobs)
           .set({ completedAt: now, state: "canceled", updatedAt: now })
@@ -236,6 +247,51 @@ export const reserveJobCreditsAndMarkProcessing = (
         .where(eq(jobs.id, job.id))
         .returning()
         .get();
+    },
+    { behavior: "immediate" },
+  );
+
+export const pauseJobForDecision = (
+  database: Database,
+  { decisionJson, jobId, now, workerId }: PauseJobOptions,
+) =>
+  database.db.transaction(
+    (transaction) => {
+      const paused = transaction
+        .update(jobs)
+        .set({
+          decisionJson,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          progress: 5,
+          state: "awaiting-decision",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(jobs.id, jobId),
+            eq(jobs.state, "analyzing"),
+            eq(jobs.leaseOwner, workerId),
+            gt(jobs.leaseExpiresAt, now),
+            isNull(jobs.cancelRequestedAt),
+          ),
+        )
+        .returning()
+        .get();
+      if (paused === undefined) return undefined;
+
+      transaction
+        .update(jobAttempts)
+        .set({ completedAt: now, outcome: "decision-required" })
+        .where(
+          and(
+            eq(jobAttempts.jobId, paused.id),
+            eq(jobAttempts.attempt, paused.attemptCount),
+            eq(jobAttempts.outcome, "running"),
+          ),
+        )
+        .run();
+      return paused;
     },
     { behavior: "immediate" },
   );
@@ -393,7 +449,12 @@ export const recoverExpiredJobs = (database: Database, { maxAttempts, now }: Rec
           return { id: job.id, outcome: "canceled" as const };
         }
 
-        if (job.attemptCount >= maxAttempts) {
+        const interruptedAttemptCount = transaction
+          .select({ attempt: jobAttempts.attempt })
+          .from(jobAttempts)
+          .where(and(eq(jobAttempts.jobId, job.id), eq(jobAttempts.outcome, "interrupted")))
+          .all().length;
+        if (interruptedAttemptCount >= maxAttempts) {
           transaction
             .update(jobs)
             .set({

@@ -14,6 +14,17 @@ export type { MediaCodec } from "./media-policy.ts";
 export const AudioModeSchema = Schema.Literals(["auto", "keep", "remove"]);
 export type AudioMode = typeof AudioModeSchema.Type;
 
+export const FrameRatePolicySchema = Schema.Union([
+  Schema.Struct({ mode: Schema.Literal("preserve") }),
+  Schema.Struct({ maximum: Schema.Literal(30), mode: Schema.Literal("cap") }),
+]);
+export type FrameRatePolicy = typeof FrameRatePolicySchema.Type;
+
+export const FrameRateDecisionRequestSchema = Schema.Struct({
+  frameRate: FrameRatePolicySchema,
+});
+export type FrameRateDecisionRequest = typeof FrameRateDecisionRequestSchema.Type;
+
 export const ImageFormatSchema = Schema.Literals(["jpeg", "png", "webp"]);
 export type ImageFormat = typeof ImageFormatSchema.Type;
 
@@ -84,6 +95,7 @@ export const CompressionOptionsSchema = Schema.Struct({
   ),
   crf: Schema.optionalKey(CompressionCrfSchema),
   audio: Schema.optionalKey(AudioModeSchema),
+  frameRate: Schema.optionalKey(FrameRatePolicySchema),
   transform: Schema.optionalKey(TransformOptionsSchema),
 });
 export type CompressionOptions = typeof CompressionOptionsSchema.Type;

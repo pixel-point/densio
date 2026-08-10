@@ -7,16 +7,30 @@ describe("plan catalog", () => {
   it("defines the four monthly credit plans", () => {
     expect(PLAN_NAMES).toEqual(["free", "basic", "pro", "scale"]);
     expect(PLAN_CATALOG).toEqual({
-      basic: { maxUploadBytes: 10_000_000_000, monthlyCredits: 750, queuePriority: 10, rank: 1 },
-      free: { maxUploadBytes: 1_000_000_000, monthlyCredits: 30, queuePriority: 0, rank: 0 },
+      basic: {
+        maxUploadBytes: 10_000_000_000,
+        maxVideoDurationSeconds: 10_800,
+        monthlyCredits: 750,
+        queuePriority: 10,
+        rank: 1,
+      },
+      free: {
+        maxUploadBytes: 1_000_000_000,
+        maxVideoDurationSeconds: 1_800,
+        monthlyCredits: 30,
+        queuePriority: 0,
+        rank: 0,
+      },
       scale: {
         maxUploadBytes: 10_000_000_000,
+        maxVideoDurationSeconds: 10_800,
         monthlyCredits: 7_500,
         queuePriority: 30,
         rank: 3,
       },
       pro: {
         maxUploadBytes: 10_000_000_000,
+        maxVideoDurationSeconds: 10_800,
         monthlyCredits: 5_000,
         queuePriority: 20,
         rank: 2,

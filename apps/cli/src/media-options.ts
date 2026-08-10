@@ -33,6 +33,7 @@ export const parseCompressionCommand = (argv: ReadonlyArray<string>) => {
       "--audio",
       "--av1-crf",
       "--codec",
+      "--frame-rate",
       "--h265-crf",
       "--vp9-crf",
     ]),
@@ -45,6 +46,7 @@ export const parseCompressionCommand = (argv: ReadonlyArray<string>) => {
     vp9: numberFlag(parsed, "--vp9-crf"),
   });
   const transform = buildTransformOptions(parsed);
+  const frameRate = compressionFrameRate(singleFlag(parsed, "--frame-rate"));
   const options = decodeCliOptions(
     CompressionOptionsSchema,
     {
@@ -53,6 +55,7 @@ export const parseCompressionCommand = (argv: ReadonlyArray<string>) => {
       ...(singleFlag(parsed, "--audio") === undefined
         ? {}
         : { audio: singleFlag(parsed, "--audio") }),
+      ...(frameRate === undefined ? {} : { frameRate }),
       ...(transform === undefined ? {} : { transform }),
     },
     "compress",
@@ -147,3 +150,10 @@ const compactRecord = (record: Readonly<Record<string, number | undefined>>) =>
   Object.fromEntries(
     Object.entries(record).filter((entry): entry is [string, number] => entry[1] !== undefined),
   );
+
+const compressionFrameRate = (value: string | undefined) => {
+  if (value === undefined) return undefined;
+  if (value === "preserve") return { mode: "preserve" as const };
+  if (value === "cap-30") return { maximum: 30 as const, mode: "cap" as const };
+  throw new CliUsageError("--frame-rate must be preserve or cap-30.");
+};

@@ -5,12 +5,27 @@ import {
   ArtifactMetadataSchema,
   CompressionJobRequestSchema,
   ExtractImagesJobRequestSchema,
+  JobDecisionSchema,
   JobResultSchema,
   JobStatusSchema,
   MediaCommandSchema,
   QualityComparisonJobRequestSchema,
   UploadCompletedResponseSchema,
 } from "../src/index.ts";
+
+describe("job decisions", () => {
+  it("defines the canonical frame-rate decision payload", () => {
+    const decode = Schema.decodeUnknownSync(JobDecisionSchema);
+    const decision = {
+      kind: "frame-rate",
+      recommended: { maximum: 30, mode: "cap" },
+      source: { denominator: 1001, framesPerSecond: 59.94005994005994, numerator: 60_000 },
+    };
+
+    expect(decode(decision)).toEqual(decision);
+    expect(() => decode({ kind: "frame-rate", recommended: decision.recommended })).toThrow();
+  });
+});
 
 const artifact = {
   id: "artifact-1",
@@ -129,6 +144,24 @@ describe("job status", () => {
     for (const state of ["awaiting-upload", "queued", "analyzing", "processing"]) {
       expect(decode({ ...base, state, progressPercent: 50 })).toMatchObject({ state });
     }
+  });
+
+  it("requires actionable metadata while awaiting a frame-rate decision", () => {
+    const decode = Schema.decodeUnknownSync(JobStatusSchema);
+    const status = {
+      ...base,
+      decision: {
+        kind: "frame-rate",
+        recommended: { maximum: 30, mode: "cap" },
+        source: { denominator: 1001, framesPerSecond: 59.94005994005994, numerator: 60_000 },
+        submitUrl: "https://media.example.test/v1/jobs/job-1/frame-rate-decision",
+      },
+      progressPercent: 5,
+      state: "awaiting-decision",
+    };
+
+    expect(decode(status)).toEqual(status);
+    expect(() => decode({ ...base, progressPercent: 5, state: "awaiting-decision" })).toThrow();
   });
 
   it("requires a result when a job succeeds", () => {

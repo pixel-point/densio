@@ -1,8 +1,14 @@
-import { MEDIA_CODEC_POLICY, type AudioMode, type MediaCodec } from "@densio/shared";
+import {
+  MEDIA_CODEC_POLICY,
+  type AudioMode,
+  type FrameRatePolicy,
+  type MediaCodec,
+} from "@densio/shared";
 
 import { assertCommandPath, createCommandPlan } from "./command-plan.ts";
 import { MEDIA_CODEC_EXECUTION_POLICY } from "./codec-execution-policy.ts";
 import { MediaPlanError } from "./media-plan-error.ts";
+import { buildFrameRateFilter, type RationalFrameRate } from "./frame-rate.ts";
 import { buildVideoFilters, type TransformOptions, type VideoDimensions } from "./video-filter.ts";
 
 export type { AudioMode, MediaCodec } from "@densio/shared";
@@ -19,7 +25,9 @@ export interface CompressionPlanOptions {
   readonly outputPath: string;
   readonly codec: MediaCodec;
   readonly crf?: number;
+  readonly frameRate?: FrameRatePolicy;
   readonly source: VideoDimensions;
+  readonly sourceFrameRate?: RationalFrameRate;
   readonly audio?: AudioMode;
   readonly audioAnalysis?: AudioAnalysis;
   readonly transform?: TransformOptions;
@@ -32,9 +40,11 @@ export interface DefaultCompressionPlanOptions {
   readonly outputPaths: { readonly vp9: string; readonly h265: string };
   readonly source: VideoDimensions;
   readonly crf?: { readonly vp9?: number; readonly h265?: number };
+  readonly frameRate?: FrameRatePolicy;
   readonly audio?: AudioMode;
   readonly audioAnalysis?: AudioAnalysis;
   readonly transform?: TransformOptions;
+  readonly sourceFrameRate?: RationalFrameRate;
 }
 
 export const buildDefaultCompressionPlans = (options: DefaultCompressionPlanOptions) => [
@@ -59,7 +69,11 @@ export const buildCompressionPlan = (options: CompressionPlanOptions) => {
   const crf = options.crf ?? defaultCrfFor(options.codec);
   assertCrf(options.codec, crf);
   const audio = resolveAudioDecision(options.audio ?? "auto", options.audioAnalysis);
-  const filters = buildVideoFilters(options.source, options.transform);
+  const frameRateFilter = buildFrameRateFilter(options.sourceFrameRate, options.frameRate);
+  const filters = [
+    ...buildVideoFilters(options.source, options.transform),
+    ...(frameRateFilter === undefined ? [] : [frameRateFilter]),
+  ];
   const argv = [
     "-hide_banner",
     "-nostdin",
@@ -95,6 +109,8 @@ const sharedCompressionOptions = (options: DefaultCompressionPlanOptions) => ({
   executable: options.executable ?? "ffmpeg",
   inputPath: options.inputPath,
   source: options.source,
+  ...(options.frameRate === undefined ? {} : { frameRate: options.frameRate }),
+  ...(options.sourceFrameRate === undefined ? {} : { sourceFrameRate: options.sourceFrameRate }),
   audio: options.audio ?? "auto",
   ...(options.audioAnalysis === undefined ? {} : { audioAnalysis: options.audioAnalysis }),
   ...(options.transform === undefined ? {} : { transform: options.transform }),

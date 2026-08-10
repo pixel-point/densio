@@ -49,7 +49,7 @@ it("documents every registered API operation", async () => {
   const document = (await response.json()) as OpenAPIV3_1.Document;
 
   expect(documentedOperations(document)).toEqual(runtimeApiOperations(app));
-  expect(documentedOperations(document)).toHaveLength(21);
+  expect(documentedOperations(document)).toHaveLength(22);
 });
 
 it("documents the exact response status set for every operation", async () => {
@@ -76,6 +76,7 @@ it("documents the exact response status set for every operation", async () => {
     "POST /v1/compress": ["201", "400", "401", "402", "404", "409", "413", "500"],
     "POST /v1/extract-images": ["201", "400", "401", "402", "404", "409", "413", "500"],
     "POST /v1/jobs/{id}/cancel": ["200", "401", "404", "500"],
+    "POST /v1/jobs/{id}/frame-rate-decision": ["200", "400", "401", "404", "409", "500"],
     "PUT /v1/jobs/{id}/upload": ["200", "400", "401", "404", "409", "410", "413", "500"],
   });
 });
@@ -111,6 +112,17 @@ it("describes structured, authenticated, binary, and signed requests", async () 
       content: {
         "application/octet-stream": { schema: { format: "binary", type: "string" } },
       },
+    },
+    security: [{ bearerAuth: [] }],
+  });
+  expect(paths["/v1/jobs/{id}/frame-rate-decision"]?.post).toMatchObject({
+    requestBody: {
+      content: {
+        "application/json": {
+          schema: { required: ["frameRate"], type: "object" },
+        },
+      },
+      required: true,
     },
     security: [{ bearerAuth: [] }],
   });

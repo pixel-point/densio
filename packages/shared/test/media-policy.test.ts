@@ -49,11 +49,11 @@ describe("media codec policy", () => {
     expect(codec).toBe("av1");
   });
 
-  it("makes every codec available on the Free plan", () => {
+  it("reserves AV1 for Basic and higher plans", () => {
     expect(MEDIA_CODECS.map((codec) => MEDIA_CODEC_POLICY[codec].minimumPlan)).toEqual([
       "free",
       "free",
-      "free",
+      "basic",
     ]);
   });
 });

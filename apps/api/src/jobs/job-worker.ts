@@ -1,4 +1,4 @@
-import { PLAN_CATALOG } from "@densio/shared";
+import { PLAN_CATALOG, type JobDecision } from "@densio/shared";
 import { Clock, Context, Deferred, Effect, Fiber, Ref, Schema, type Scope } from "effect";
 
 import { creditsFromUnits, monthlyCreditUnits } from "../billing/credit-units.ts";
@@ -10,6 +10,7 @@ import {
   failJob,
   findJobsByIds,
   isJobCancellationRequested,
+  pauseJobForDecision,
   recoverExpiredJobs,
   renewJobLease,
   reserveJobCreditsAndMarkProcessing,
@@ -31,10 +32,18 @@ class JobCanceled extends Schema.TaggedErrorClass<JobCanceled>()("JobCanceled", 
 
 class JobLeaseLost extends Schema.TaggedErrorClass<JobLeaseLost>()("JobLeaseLost", {}) {}
 
-export interface JobAnalysis {
+export interface ReadyJobAnalysis {
+  readonly kind: "ready";
   readonly creditUnits: number;
   readonly data: Schema.Json;
 }
+
+export interface DecisionRequiredJobAnalysis {
+  readonly kind: "decision-required";
+  readonly decision: JobDecision;
+}
+
+export type JobAnalysis = ReadyJobAnalysis | DecisionRequiredJobAnalysis;
 
 export class JobProcessor extends Context.Service<
   JobProcessor,
@@ -153,6 +162,17 @@ const executeClaimedJob = Effect.fn("JobWorker.executeClaimedJob")(function* (
   workerId: string,
 ) {
   const analysis = yield* processor.analyze(job);
+  if (analysis.kind === "decision-required") {
+    const decisionAt = yield* Clock.currentTimeMillis;
+    const paused = pauseJobForDecision(database, {
+      decisionJson: JSON.stringify(analysis.decision),
+      jobId: job.id,
+      now: decisionAt,
+      workerId,
+    });
+    if (paused === undefined) return yield* claimUnavailable(database, job, workerId);
+    return;
+  }
   const processingAt = yield* Clock.currentTimeMillis;
   const processing = reserveJobCreditsAndMarkProcessing(database, {
     creditUnits: analysis.creditUnits,

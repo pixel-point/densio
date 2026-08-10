@@ -30,7 +30,7 @@ export const buildCapabilities = (
     maxComparisonDurationSeconds: config.maxComparisonSeconds,
     maxExtractionImages: config.maxExtractedImages,
     maxUploadBytes: Math.min(config.maxUploadBytes, PLAN_CATALOG[plan].maxUploadBytes),
-    maxVideoDurationSeconds: 1_800,
+    maxVideoDurationSeconds: PLAN_CATALOG[plan].maxVideoDurationSeconds,
   },
   options: {
     audioModes: ["auto", "keep", "remove"],

@@ -160,6 +160,96 @@ it("reports post-analysis credit exhaustion with billing recovery guidance", asy
   });
 });
 
+it("exposes and idempotently applies an awaited frame-rate decision", async () => {
+  const { database, service } = await createTestContext();
+  const created = await createCompressionJob(service);
+  const decision = {
+    kind: "frame-rate",
+    recommended: { maximum: 30, mode: "cap" },
+    source: { denominator: 1001, framesPerSecond: 59.94005994005994, numerator: 60_000 },
+  };
+  database.db
+    .update(jobs)
+    .set({
+      decisionJson: JSON.stringify(decision),
+      progress: 5,
+      state: "awaiting-decision",
+      updatedAt: NOW + 1,
+    })
+    .where(eq(jobs.id, created.jobId))
+    .run();
+
+  const waiting = await Effect.runPromise(
+    service.status({ correlationId: "request-1", jobId: created.jobId, userId: "user-1" }),
+  );
+  expect(waiting).toMatchObject({
+    decision: {
+      kind: "frame-rate",
+      submitUrl: `https://media.example/v1/jobs/${created.jobId}/frame-rate-decision`,
+    },
+    progressPercent: 5,
+    state: "awaiting-decision",
+  });
+
+  const input = {
+    correlationId: "request-1",
+    frameRate: { maximum: 30, mode: "cap" } as const,
+    jobId: created.jobId,
+    now: NOW + 2,
+    userId: "user-1",
+  };
+  const decided = await Effect.runPromise(service.decideFrameRate(input));
+  const retried = await Effect.runPromise(service.decideFrameRate({ ...input, now: NOW + 3 }));
+
+  expect(decided).toMatchObject({ state: "queued" });
+  expect(retried).toMatchObject({ state: "queued" });
+  expect(database.db.select().from(jobs).where(eq(jobs.id, created.jobId)).get()).toMatchObject({
+    decisionJson: JSON.stringify(decision),
+    optionsJson: '{"frameRate":{"maximum":30,"mode":"cap"}}',
+    state: "queued",
+  });
+
+  const conflict = await Effect.runPromise(
+    Effect.flip(
+      service.decideFrameRate({
+        ...input,
+        frameRate: { mode: "preserve" },
+        now: NOW + 4,
+      }),
+    ),
+  );
+  expect(conflict).toMatchObject({ _tag: "JobStateConflict", state: "queued" });
+});
+
+it("rejects a decision for a job whose frame-rate policy was preselected", async () => {
+  const { service } = await createTestContext();
+  const created = await Effect.runPromise(
+    service.create({
+      now: NOW,
+      options: { frameRate: { maximum: 30, mode: "cap" } },
+      plan: "free",
+      source: { bytes: 5, filename: "input.mp4" },
+      userId: "user-1",
+      workflow: "compress",
+    }),
+  );
+
+  const error = await Effect.runPromise(
+    Effect.flip(
+      service.decideFrameRate({
+        correlationId: "request-1",
+        frameRate: { maximum: 30, mode: "cap" },
+        jobId: created.jobId,
+        now: NOW + 1,
+        userId: "user-1",
+      }),
+    ),
+  );
+
+  expect(error).toBeInstanceOf(JobStateConflict);
+  expect(error).toMatchObject({ state: "awaiting-upload" });
+});
+
 it("streams the declared upload and queues the job exactly once", async () => {
   const { database, service } = await createTestContext();
   const created = await createCompressionJob(service);

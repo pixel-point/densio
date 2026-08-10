@@ -1,10 +1,16 @@
-import { JobStatusSchema, successEnvelope, type ProblemDetails } from "@densio/shared";
+import {
+  FrameRateDecisionRequestSchema,
+  JobStatusSchema,
+  successEnvelope,
+  type FrameRatePolicy,
+  type ProblemDetails,
+} from "@densio/shared";
 import { Schema } from "effect";
 
 import { authorizationHeaders } from "./authentication.ts";
-import { numberFlag, parseCommandArguments } from "./command-options.ts";
+import { decodeCliOptions, numberFlag, parseCommandArguments } from "./command-options.ts";
 import { CliProblemError, CliUsageError } from "./cli-errors.ts";
-import { requestJson } from "./http-client.ts";
+import { jsonRequest, requestJson } from "./http-client.ts";
 import { emitProgress, emitSuccess, formatJobStatus } from "./render.ts";
 import { CLI_EXIT_CODES } from "./output.ts";
 import { pollUntilComplete } from "./polling.ts";
@@ -25,6 +31,9 @@ export const waitForJob = async (
     decide: (response) => {
       emitProgress(runtime, response.data);
       if (response.data.state === "succeeded") return { kind: "complete", value: response };
+      if (response.data.state === "awaiting-decision") {
+        return { kind: "complete", value: response };
+      }
       if (response.data.state === "failed") throw new CliProblemError(response.data.problem);
       if (response.data.state === "canceled") {
         throw new CliProblemError(response.data.problem ?? terminalProblem("canceled", jobId));
@@ -46,6 +55,10 @@ export const waitForJob = async (
 export const runJobsCommand = async (argv: ReadonlyArray<string>, runtime: CliRuntime) => {
   const parsed = parseCommandArguments(argv, new Set(["--timeout"]), new Set());
   const [command, jobId, ...extra] = parsed.positionals;
+  if (command === "decide-frame-rate" && jobId !== undefined && extra.length === 1) {
+    await decideFrameRate(runtime, jobId, extra[0] ?? "", numberFlag(parsed, "--timeout"));
+    return;
+  }
   if (
     (command !== "get" && command !== "wait" && command !== "cancel") ||
     jobId === undefined ||
@@ -71,6 +84,42 @@ export const runJobsCommand = async (argv: ReadonlyArray<string>, runtime: CliRu
     decodeJobStatus,
   );
   emitSuccess(runtime, response, formatJobStatus(response.data));
+};
+
+const decideFrameRate = async (
+  runtime: CliRuntime,
+  jobId: string,
+  value: string,
+  timeoutSeconds?: number,
+) => {
+  if (timeoutSeconds !== undefined && timeoutSeconds <= 0) {
+    throw new CliUsageError("--timeout must be positive.");
+  }
+  const headers = await authorizationHeaders(runtime);
+  const frameRate = parseFrameRatePolicy(value);
+  const path = `/v1/jobs/${encodeURIComponent(jobId)}/frame-rate-decision`;
+  await requestJson(runtime, path, jsonRequest("POST", { frameRate }, headers), decodeJobStatus);
+  const response = await waitForJob(
+    runtime,
+    jobId,
+    `/v1/jobs/${encodeURIComponent(jobId)}`,
+    timeoutSeconds,
+  );
+  emitSuccess(runtime, response, formatJobStatus(response.data));
+};
+
+const parseFrameRatePolicy = (value: string): FrameRatePolicy => {
+  const frameRate =
+    value === "preserve"
+      ? { mode: "preserve" as const }
+      : value === "cap-30"
+        ? { maximum: 30 as const, mode: "cap" as const }
+        : undefined;
+  if (frameRate === undefined) {
+    throw new CliUsageError("Frame-rate decision must be preserve or cap-30.");
+  }
+  return decodeCliOptions(FrameRateDecisionRequestSchema, { frameRate }, "jobs decide-frame-rate")
+    .frameRate;
 };
 
 const terminalProblem = (state: "canceled" | "expired", jobId: string): ProblemDetails => ({

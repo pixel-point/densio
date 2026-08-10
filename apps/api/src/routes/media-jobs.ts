@@ -1,6 +1,7 @@
 import {
   CompressionJobRequestSchema,
   ExtractImagesJobRequestSchema,
+  FrameRateDecisionRequestSchema,
   JobCreatedResponseSchema,
   JobStatusSchema,
   QualityComparisonJobRequestSchema,
@@ -136,6 +137,24 @@ const cancellationDocumentation = describeRoute({
   summary: "Cancel a job",
   tags: ["Media jobs"],
 });
+const frameRateDecisionDocumentation = describeRoute({
+  operationId: "submitFrameRateDecision",
+  parameters: [pathParameter("id", "Job identifier.")],
+  requestBody: jsonRequest(FrameRateDecisionRequestSchema),
+  responses: {
+    "200": successResponse("The frame-rate decision was accepted.", JobStatusSchema),
+    ...problemResponses(
+      invalidRequestProblemDescriptor,
+      authRequiredProblemDescriptor,
+      jobNotFoundProblemDescriptor,
+      jobStateProblemDescriptor,
+      internalErrorProblemDescriptor,
+    ),
+  },
+  security: bearerSecurity,
+  summary: "Submit a frame-rate decision",
+  tags: ["Media jobs"],
+});
 
 type MediaJobRequest =
   | CompressionJobRequest
@@ -157,9 +176,35 @@ export const createMediaJobRoutes = (dependencies: MediaJobRouteDependencies) =>
   registerExtractionRoute(routes, dependencies);
   registerComparisonRoute(routes, dependencies);
   registerUploadRoute(routes, dependencies);
+  registerFrameRateDecisionRoute(routes, dependencies);
   registerStatusRoute(routes, dependencies);
   registerCancellationRoute(routes, dependencies);
   return routes;
+};
+
+const registerFrameRateDecisionRoute = (routes: Hono, dependencies: MediaJobRouteDependencies) => {
+  routes.post(
+    "/v1/jobs/:id/frame-rate-decision",
+    frameRateDecisionDocumentation,
+    async (context) => {
+      const correlationId = beginRequest(context, dependencies.createCorrelationId);
+      const now = dependencies.now();
+      const program = Effect.gen(function* () {
+        const input = yield* decodeRequestJson(context.req.raw, FrameRateDecisionRequestSchema);
+        const identity = yield* authenticateRequest(context.req.raw, dependencies.authService, now);
+        return yield* dependencies.jobService.decideFrameRate({
+          correlationId,
+          frameRate: input.frameRate,
+          jobId: context.req.param("id"),
+          now,
+          userId: identity.userId,
+        });
+      });
+      return runRouteEffect(context, correlationId, program, (status) =>
+        context.json(decodeStatusEnvelope(successEnvelopeInput(status, correlationId))),
+      );
+    },
+  );
 };
 
 const registerCompressionRoute = (routes: Hono, dependencies: MediaJobRouteDependencies) => {

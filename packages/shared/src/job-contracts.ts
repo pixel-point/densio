@@ -5,12 +5,15 @@ import {
   IdentifierSchema,
   IsoTimestampSchema,
   PlanSchema,
+  PositiveFiniteSchema,
+  PositiveIntegerSchema,
 } from "./common-contracts.ts";
 import { JobResultSchema } from "./media-results.ts";
 import {
   CompareQualityOptionsSchema,
   CompressionOptionsSchema,
   ExtractImagesOptionsSchema,
+  FrameRatePolicySchema,
 } from "./media-options.ts";
 import { ProblemDetailsSchema } from "./problem-details.ts";
 
@@ -43,6 +46,7 @@ export type JobWorkflow = typeof JobWorkflowSchema.Type;
 
 export const JobStateSchema = Schema.Literals([
   "awaiting-upload",
+  "awaiting-decision",
   "queued",
   "analyzing",
   "processing",
@@ -63,10 +67,31 @@ const JobStatusBaseSchema = Schema.Struct({
   updatedAt: IsoTimestampSchema,
 });
 
+export const JobDecisionSchema = Schema.Struct({
+  kind: Schema.Literal("frame-rate"),
+  recommended: FrameRatePolicySchema,
+  source: Schema.Struct({
+    denominator: PositiveIntegerSchema,
+    framesPerSecond: PositiveFiniteSchema,
+    numerator: PositiveIntegerSchema,
+  }),
+});
+export type JobDecision = typeof JobDecisionSchema.Type;
+
 const ActiveJobStatusSchema = Schema.Struct({
   ...JobStatusBaseSchema.fields,
   state: Schema.Literals(["awaiting-upload", "queued", "analyzing", "processing"]),
   progressPercent: ProgressPercentSchema,
+});
+
+const AwaitingDecisionJobStatusSchema = Schema.Struct({
+  ...JobStatusBaseSchema.fields,
+  state: Schema.Literal("awaiting-decision"),
+  progressPercent: Schema.Literal(5),
+  decision: Schema.Struct({
+    ...JobDecisionSchema.fields,
+    submitUrl: HttpUrlSchema,
+  }),
 });
 
 const SucceededJobStatusSchema = Schema.Struct({
@@ -98,6 +123,7 @@ const ExpiredJobStatusSchema = Schema.Struct({
 
 export const JobStatusSchema = Schema.Union([
   ActiveJobStatusSchema,
+  AwaitingDecisionJobStatusSchema,
   SucceededJobStatusSchema,
   FailedJobStatusSchema,
   CanceledJobStatusSchema,

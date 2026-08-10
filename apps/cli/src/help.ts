@@ -10,6 +10,7 @@ Commands:
   extract-images <video>        Extract interval images into a ZIP archive
   compare-quality <video>       Compare codec CRFs at a source position
   jobs get|wait|cancel           Inspect, resume, or cancel asynchronous jobs
+  jobs decide-frame-rate        Resume a job with cap-30 or preserve
   artifacts download            Download and SHA-256 verify an artifact
   billing subscribe PLAN|portal Open Stripe Checkout or Customer Portal
   skill                          Retrieve the current Densio skill bundle
@@ -30,6 +31,7 @@ Compression options:
   --h265-crf N                 H.265 CRF 0-51
   --av1-crf N                  AV1 CRF 0-63
   --audio auto|keep|remove     Audio policy (default: auto)
+  --frame-rate preserve|cap-30 Preselect high-frame-rate handling
 
 Extraction options:
   --interval SECONDS           Positive fractional interval (default: 1)

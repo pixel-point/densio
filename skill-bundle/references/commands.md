@@ -32,6 +32,8 @@ npx densio --json compress input.mp4 --codec av1 --av1-crf 42
 
 Audio policy is `--audio auto|keep|remove`. `auto` keeps only detected audible audio. `keep` fails if no audio track exists; `remove` always omits it.
 
+Frame-rate policy is `--frame-rate preserve|cap-30`. When omitted, sources at or below 30 fps proceed unchanged. A source above 30 fps pauses after upload and inspection so the user can choose; Densio never reduces it without that consent. `cap-30` maps rates below 50 fps to 30, then prefers a clean integer-divisor cadence for higher rates (for example, 50 to 25 and rates around 60 to about 30) without ever exceeding 30. `preserve` keeps the source cadence.
+
 ## Extract frames
 
 ```sh
@@ -75,6 +77,8 @@ Transform, `--no-wait`, `--timeout`, and `--idempotency-key` flags apply to all 
 npx densio --json compress input.mp4 --no-wait --idempotency-key task-123
 npx densio --json jobs get JOB_ID
 npx densio --json jobs wait JOB_ID --timeout 900
+npx densio --json jobs decide-frame-rate JOB_ID cap-30
+npx densio --json jobs decide-frame-rate JOB_ID preserve
 npx densio --json jobs cancel JOB_ID
 ```
 
@@ -93,6 +97,6 @@ npx densio --json artifacts download 'SIGNED_URL' --output ./video.webm --sha256
 # Add --force only when replacing an existing destination is intentional.
 ```
 
-Use the paid plan the user requested. Present the returned Stripe URL; do not claim billing changed until a later capabilities or billing response confirms the selected plan. Media jobs initially reserve 0.05 credits. Compression automatically adjusts that reservation after inspection based on duration, average input/output resolution, and output codec count, rounded up to 0.05 credits; a five-minute 1080p source costs 1 credit per output codec. No quote or confirmation step interrupts processing.
+Use the paid plan the user requested. Present the returned Stripe URL; do not claim billing changed until a later capabilities or billing response confirms the selected plan. Media jobs initially reserve 0.05 credits. Compression automatically adjusts that reservation after inspection and any required frame-rate decision based on duration, average input/output resolution, and output codec count, rounded up to 0.05 credits; a five-minute 1080p source costs 1 credit per output codec. There is no quote-confirmation step.
 
 Before the final encode after comparison, ask whether the user wants only the compared codec or the default VP9 + H.265 compatibility pair. Do not infer that choice from “web optimized.”

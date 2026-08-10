@@ -39,6 +39,16 @@ export const emitStatusEvent = (
 ) => runtime.writeStderr(runtime.json ? `${JSON.stringify(event)}\n` : humanText);
 
 export const formatJobStatus = (status: JobStatus) => {
+  if (status.state === "awaiting-decision") {
+    const framesPerSecond = status.decision.source.framesPerSecond.toFixed(2);
+    return [
+      `${status.id} awaits a frame-rate decision.`,
+      `Detected ${framesPerSecond} fps; 30 fps is recommended for most web video.`,
+      `densio jobs decide-frame-rate ${status.id} cap-30`,
+      `densio jobs decide-frame-rate ${status.id} preserve`,
+      "",
+    ].join("\n");
+  }
   if (status.state !== "succeeded") return `${status.id} ${status.state}.\n`;
   if (status.result.kind === "compress") {
     const links = status.result.artifacts

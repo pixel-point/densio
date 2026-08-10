@@ -59,7 +59,7 @@ describe("capabilities", () => {
         {
           codec: "av1",
           container: "webm",
-          minimumPlan: "free",
+          minimumPlan: "basic",
           defaultCrf: 42,
           crfRange: { minimum: 0, maximum: 63 },
         },
@@ -83,7 +83,7 @@ describe("capabilities", () => {
     expect(Schema.decodeUnknownSync(CapabilitiesSchema)(capabilities)).toEqual(capabilities);
   });
 
-  it("rejects capabilities that advertise a paid AV1 restriction", () => {
+  it("rejects capabilities that advertise AV1 on Free", () => {
     const decode = Schema.decodeUnknownSync(CapabilitiesSchema);
 
     expect(() =>
@@ -96,7 +96,7 @@ describe("capabilities", () => {
           {
             codec: "av1",
             container: "webm",
-            minimumPlan: "pro",
+            minimumPlan: "free",
             defaultCrf: 42,
             crfRange: { minimum: 0, maximum: 63 },
           },

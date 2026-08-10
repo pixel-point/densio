@@ -93,6 +93,33 @@ export const resetFinalizingUpload = ({ db }: Database, jobId: string, now: numb
     .returning()
     .get();
 
+export const requeueFrameRateDecision = (
+  { db }: Database,
+  input: {
+    readonly jobId: string;
+    readonly now: number;
+    readonly optionsJson: string;
+    readonly userId: string;
+  },
+) =>
+  db
+    .update(jobs)
+    .set({
+      optionsJson: input.optionsJson,
+      state: "queued",
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        eq(jobs.id, input.jobId),
+        eq(jobs.userId, input.userId),
+        eq(jobs.kind, "compress"),
+        eq(jobs.state, "awaiting-decision"),
+      ),
+    )
+    .returning()
+    .get();
+
 export const expireAwaitingUpload = (
   { db }: Database,
   input: { readonly jobId: string; readonly now: number; readonly userId: string },

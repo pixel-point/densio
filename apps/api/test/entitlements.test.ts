@@ -63,15 +63,18 @@ describe("resolveEntitlements", () => {
     });
 
     expect(entitlements).toEqual(SCALE_ENTITLEMENTS);
-    expect(entitlements.maxVideoDurationSeconds).toBe(1_800);
+    expect(entitlements.maxVideoDurationSeconds).toBe(10_800);
     expect(entitlements.allowedCodecs).toContain("av1");
   });
 
-  it("gives every tier the same codecs and global duration ceiling", () => {
+  it("reserves AV1 and longer inputs for every paid tier", () => {
     expect(FREE_ENTITLEMENTS.maxVideoDurationSeconds).toBe(1_800);
-    expect(FREE_ENTITLEMENTS.allowedCodecs).toContain("av1");
-    expect(BASIC_ENTITLEMENTS.allowedCodecs).toEqual(FREE_ENTITLEMENTS.allowedCodecs);
-    expect(PRO_ENTITLEMENTS.allowedCodecs).toEqual(FREE_ENTITLEMENTS.allowedCodecs);
-    expect(SCALE_ENTITLEMENTS.allowedCodecs).toEqual(FREE_ENTITLEMENTS.allowedCodecs);
+    expect(BASIC_ENTITLEMENTS.maxVideoDurationSeconds).toBe(10_800);
+    expect(PRO_ENTITLEMENTS.maxVideoDurationSeconds).toBe(10_800);
+    expect(SCALE_ENTITLEMENTS.maxVideoDurationSeconds).toBe(10_800);
+    expect(FREE_ENTITLEMENTS.allowedCodecs).toEqual(["vp9", "h265"]);
+    expect(BASIC_ENTITLEMENTS.allowedCodecs).toEqual(["vp9", "h265", "av1"]);
+    expect(PRO_ENTITLEMENTS.allowedCodecs).toEqual(["vp9", "h265", "av1"]);
+    expect(SCALE_ENTITLEMENTS.allowedCodecs).toEqual(["vp9", "h265", "av1"]);
   });
 });

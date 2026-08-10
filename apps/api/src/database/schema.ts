@@ -155,6 +155,7 @@ export const jobs = sqliteTable(
     state: text("state", {
       enum: [
         "awaiting-upload",
+        "awaiting-decision",
         "queued",
         "analyzing",
         "processing",
@@ -183,6 +184,7 @@ export const jobs = sqliteTable(
     leaseExpiresAt: integer("lease_expires_at"),
     errorCode: text("error_code"),
     errorJson: text("error_json"),
+    decisionJson: text("decision_json"),
     resultJson: text("result_json"),
     cancelRequestedAt: integer("cancel_requested_at"),
     createdAt: integer("created_at").notNull(),
@@ -230,7 +232,9 @@ export const jobAttempts = sqliteTable(
     workerId: text("worker_id").notNull(),
     startedAt: integer("started_at").notNull(),
     completedAt: integer("completed_at"),
-    outcome: text("outcome", { enum: ["running", "succeeded", "failed", "interrupted"] }).notNull(),
+    outcome: text("outcome", {
+      enum: ["running", "succeeded", "failed", "interrupted", "decision-required"],
+    }).notNull(),
     errorCode: text("error_code"),
   },
   (table) => [uniqueIndex("job_attempts_job_attempt_unique").on(table.jobId, table.attempt)],

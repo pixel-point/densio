@@ -42,8 +42,9 @@ Use /densio and extract images from ./public/hero.mov
 
 ## Features
 
-- Compress to VP9/WebM and H.265/MP4 by default, or request AV1/WebM explicitly.
+- Compress to VP9/WebM and H.265/MP4 by default. Basic and higher plans can request AV1/WebM explicitly.
 - Preserve source resolution or crop and resize by width or height.
+- Detect sources above 30 fps and ask whether to preserve their cadence or cap it for typical web delivery.
 - Detect audible audio automatically, keep it, or remove audio entirely.
 - Extract JPEG, PNG, or WebP frames at a chosen interval.
 - Compare quality by compressing short sections at different quality levels and estimating full file sizes, so you can choose the size-to-quality ratio yourself.
@@ -64,7 +65,7 @@ Densio chooses the most CPU-intensive compression settings. Encoding takes longe
 
 ## Plans
 
-Every plan supports VP9, H.265, and AV1, with a 30-minute input limit.
+Every plan supports VP9 and H.265. AV1 requires Basic or higher. Free inputs are limited to 30 minutes; Basic, Pro, and Scale inputs can be up to 180 minutes.
 
 | Plan  | Monthly credits | Maximum upload | Queue priority |
 | ----- | --------------: | -------------: | -------------- |
@@ -83,7 +84,7 @@ For a 1920x1080 video kept at its original resolution:
 | 1 minute     |      0.20 |        0.40 |
 | 5 minutes    |      1.00 |        2.00 |
 
-The Free plan includes 30 credits each UTC month and access to every codec. That is enough for up to 300 15-second 1080p videos or 15 five-minute 1080p videos when producing the default VP9 and H.265 outputs. Frame extraction and quality comparison cost 0.05 credits per job.
+The Free plan includes 30 credits each UTC month and access to both default codecs, VP9 and H.265. That is enough for up to 300 15-second 1080p videos or 15 five-minute 1080p videos when producing both default outputs. Frame extraction and quality comparison cost 0.05 credits per job.
 
 These estimates assume that the output stays at 1920x1080.
 
@@ -95,11 +96,12 @@ The skill is the main interface for agents, but the CLI also works directly:
 npx densio --help
 npx densio capabilities --json
 npx densio compress ./public/hero.mov --json
+npx densio compress ./public/hero.mov --frame-rate cap-30 --json
 npx densio extract-images ./public/hero.mov --interval 1 --format webp --json
 npx densio compare-quality ./public/hero.mov --codec vp9 --crf 34,38,42 --at 00:05.000 --json
 ```
 
-The CLI defaults to `https://api.densio.sh`. Pass `--api-url` explicitly when using a local or self-hosted API. Media commands wait by default; `--no-wait` returns a job ID and resume command.
+The CLI defaults to `https://api.densio.sh`. Pass `--api-url` explicitly when using a local or self-hosted API. Media commands wait by default; `--no-wait` returns a job ID and resume command. Compression inspects the uploaded source before encoding. If it exceeds 30 fps and no `--frame-rate preserve|cap-30` policy was supplied, the job returns an actionable decision with commands for preserving the source or applying the recommended web cap.
 
 ## Self-hosting
 

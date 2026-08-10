@@ -30,7 +30,8 @@ it("reports exact defaults and plan-specific upload limits through the shared sc
     plan: "free",
   });
   expect(basic.limits.maxUploadBytes).toBe(10_000_000_000);
-  expect(free.codecs.find(({ codec }) => codec === "av1")?.minimumPlan).toBe("free");
+  expect(basic.limits.maxVideoDurationSeconds).toBe(10_800);
+  expect(free.codecs.find(({ codec }) => codec === "av1")?.minimumPlan).toBe("basic");
 });
 
 it("uses the configured comparison duration as the advertised option maximum", () => {

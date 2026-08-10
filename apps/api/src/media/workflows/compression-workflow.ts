@@ -1,12 +1,14 @@
 import {
   DEFAULT_COMPRESSION_CODECS,
   type AudioMode,
+  type FrameRatePolicy,
   type MediaCodec,
   type TransformOptions,
 } from "@densio/shared";
 import { Effect } from "effect";
 
 import { buildCompressionPlan, type AudioAnalysis } from "../compression-plan.ts";
+import type { RationalFrameRate } from "../frame-rate.ts";
 import { MEDIA_CODEC_EXECUTION_POLICY } from "../codec-execution-policy.ts";
 import type { VideoDimensions } from "../video-filter.ts";
 import type { JobStoragePaths } from "../../storage/workspace.ts";
@@ -29,8 +31,10 @@ export interface CompressionWorkflowOptions {
   readonly codecs?: ReadonlyArray<MediaCodec>;
   readonly crf?: CompressionCrfs;
   readonly executable?: string;
+  readonly frameRate?: FrameRatePolicy;
   readonly paths: JobStoragePaths;
   readonly source: VideoDimensions;
+  readonly sourceFrameRate?: RationalFrameRate;
   readonly transform?: TransformOptions;
 }
 
@@ -64,6 +68,10 @@ const executeCompressionWorkflow = Effect.fn("MediaWorkflow.executeCompression")
       audio: options.audio ?? "auto",
       ...(options.audioAnalysis === undefined ? {} : { audioAnalysis: options.audioAnalysis }),
       ...(options.crf?.[codec] === undefined ? {} : { crf: options.crf[codec] }),
+      ...(options.frameRate === undefined ? {} : { frameRate: options.frameRate }),
+      ...(options.sourceFrameRate === undefined
+        ? {}
+        : { sourceFrameRate: options.sourceFrameRate }),
       ...(options.transform === undefined ? {} : { transform: options.transform }),
     }),
   );

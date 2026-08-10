@@ -48,7 +48,7 @@ export const positiveDurationSchema = Schema.Finite.check(Schema.isGreaterThan(0
 export const meteredAnalysis = (
   data: Schema.Json,
   creditUnits = MINIMUM_JOB_CREDIT_UNITS,
-): JobAnalysis => ({ creditUnits, data });
+): JobAnalysis => ({ creditUnits, data, kind: "ready" });
 
 const decodeJobResult = Schema.decodeUnknownEffect(JobResultSchema);
 

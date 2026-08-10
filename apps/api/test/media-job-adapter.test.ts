@@ -199,8 +199,60 @@ it("analyzes audible audio and retains it in both default outputs", async () => 
   context.database.close();
 });
 
-it("allows AV1 for a free job", async () => {
+it("requires a decision for an omitted high frame-rate policy before encoding", async () => {
+  const context = await createContext("compress", {}, { duration: 6, frameRate: "31/1" });
+  const analysis = await analyzeProcessor(context);
+
+  expect(analysis).toEqual({
+    decision: {
+      kind: "frame-rate",
+      recommended: { maximum: 30, mode: "cap" },
+      source: { denominator: 1, framesPerSecond: 31, numerator: 31 },
+    },
+    kind: "decision-required",
+  });
+  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(1);
+  expect(context.database.db.select().from(artifacts).all()).toHaveLength(0);
+  context.database.close();
+});
+
+it("continues automatically when an omitted frame-rate policy is already at 30 fps", async () => {
+  const context = await createContext("compress", {}, { duration: 6, frameRate: "30/1" });
+  const analysis = await analyzeProcessor(context);
+
+  expect(analysis.kind).toBe("ready");
+  context.database.close();
+});
+
+it("applies an explicit rational cadence cap to every compression output", async () => {
+  const context = await createContext(
+    "compress",
+    { frameRate: { maximum: 30, mode: "cap" } },
+    { duration: 6, frameRate: "60000/1001" },
+  );
+  const result = Schema.decodeUnknownSync(JobResultSchema)(await runProcessor(context));
+
+  expect(result.kind).toBe("compress");
+  if (result.kind !== "compress") throw new Error("Expected compression result.");
+  expect(result.commands).toHaveLength(2);
+  result.commands.forEach((command) => {
+    expect(command.arguments).toContain("fps=30000/1001");
+  });
+  context.database.close();
+});
+
+it("rejects AV1 for a free job before encoding", async () => {
   const context = await createContext("compress", { codecs: ["av1"] }, { duration: 6 });
+  const error = await Effect.runPromise(Effect.flip(processorProgram(context)));
+
+  expect(error).toMatchObject({ code: "CODEC_NOT_ENTITLED" });
+  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(1);
+  expect(context.database.db.select().from(artifacts).all()).toHaveLength(0);
+  context.database.close();
+});
+
+it("allows AV1 for a Basic job", async () => {
+  const context = await createContext("compress", { codecs: ["av1"] }, { duration: 6 }, "basic");
   const result = Schema.decodeUnknownSync(JobResultSchema)(await runProcessor(context));
 
   expect(result).toMatchObject({ artifacts: [{ codec: "av1" }], kind: "compress" });
@@ -225,6 +277,7 @@ it.each([
     ).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 }))),
   );
 
+  if (analysis.kind !== "ready") throw new Error("Expected ready analysis.");
   expect(analysis.creditUnits).toBe(expected);
   expect(analysis.data).toMatchObject({ kind: "compress" });
   context.database.close();
@@ -232,7 +285,7 @@ it.each([
 
 it.each([
   ["free", 1_800.01],
-  ["pro", 1_800.01],
+  ["pro", 10_800.01],
 ] as const)("enforces the %s duration limit", async (plan, duration) => {
   const context = await createContext("compress", {}, { duration }, plan);
 
@@ -240,6 +293,14 @@ it.each([
 
   expect(error).toMatchObject({ code: "DURATION_LIMIT_EXCEEDED" });
   expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(1);
+  context.database.close();
+});
+
+it("allows a paid job above the Free duration limit", async () => {
+  const context = await createContext("compress", {}, { duration: 1_800.01 }, "pro");
+  const result = Schema.decodeUnknownSync(JobResultSchema)(await runProcessor(context));
+
+  expect(result.kind).toBe("compress");
   context.database.close();
 });
 
@@ -252,6 +313,7 @@ it("rejects analysis from a different job attempt", async () => {
         const processor = makeMediaJobProcessor(context.database, context.config, runner);
         return Effect.gen(function* () {
           const analysis = yield* processor.analyze(context.job);
+          if (analysis.kind !== "ready") return yield* Effect.die("Expected ready analysis.");
           return yield* Effect.flip(
             processor.process({ ...context.job, attemptCount: 2 }, analysis.data),
           );
@@ -286,6 +348,13 @@ it.each([
 
 const runProcessor = (context: TestContext) => Effect.runPromise(processorProgram(context));
 
+const analyzeProcessor = (context: TestContext) =>
+  Effect.runPromise(
+    MediaProcessRunner.use((runner) =>
+      makeMediaJobProcessor(context.database, context.config, runner).analyze(context.job),
+    ).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 }))),
+  );
+
 const processorProgram = (context: TestContext) =>
   Effect.gen(function* () {
     yield* TestClock.setTime(NOW);
@@ -293,6 +362,7 @@ const processorProgram = (context: TestContext) =>
       const processor = makeMediaJobProcessor(context.database, context.config, runner);
       return Effect.gen(function* () {
         const analysis = yield* processor.analyze(context.job);
+        if (analysis.kind !== "ready") return yield* Effect.die("Expected ready analysis.");
         return yield* processor.process(context.job, analysis.data);
       });
     });
@@ -312,7 +382,7 @@ const createContext = async (
   kind: typeof jobs.$inferInsert.kind,
   options: Schema.Json,
   source: Schema.Json,
-  plan: "free" | "pro" = "free",
+  plan: "free" | "basic" | "pro" = "free",
 ): Promise<TestContext> => {
   const root = await mkdtemp(join(tmpdir(), "densio-media-job-"));
   temporaryRoots.push(root);
@@ -366,7 +436,7 @@ const artifactPath = (context: TestContext, filename: string) =>
 const jobValues = (
   kind: typeof jobs.$inferInsert.kind,
   options: Schema.Json,
-  plan: "free" | "pro",
+  plan: "free" | "basic" | "pro",
 ) => ({
   attemptCount: 1,
   createdAt: NOW,

@@ -18,7 +18,7 @@ const source = await readSource(inputPath);
 if (argv.includes("-show_format") && argv.includes("-show_streams")) {
   const streams = [
     {
-      avg_frame_rate: "24/1",
+      avg_frame_rate: source.frameRate ?? "24/1",
       codec_type: "video",
       height: source.height,
       index: 0,

@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, expect, it } from "vitest";
 
 import { migrateDatabase, openDatabase } from "../src/database/database.ts";
+import { requeueFrameRateDecision } from "../src/database/job-lifecycle-repository.ts";
 import {
   claimNextJob,
   cancelClaimedJob,
@@ -13,6 +14,7 @@ import {
   createJob,
   failJob,
   isJobCancellationRequested,
+  pauseJobForDecision,
   renewJobLease,
   recoverExpiredJobs,
   requestJobCancellation,
@@ -294,11 +296,17 @@ it("requeues interrupted leases but terminally fails exhausted attempts", async 
     .insert(users)
     .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
     .run();
-  database.db.insert(jobs).values(jobValues("job-retry", 10)).run();
   database.db.insert(jobs).values(jobValues("job-exhausted", 20)).run();
+  claimNextJob(database, { leaseDurationMs: 10, now: 10, workerId: "worker-0" });
+  expect(recoverExpiredJobs(database, { maxAttempts: 2, now: 21 })).toEqual({
+    canceled: [],
+    failed: [],
+    requeued: ["job-exhausted"],
+  });
+
+  database.db.insert(jobs).values(jobValues("job-retry", 10)).run();
   claimNextJob(database, { leaseDurationMs: 10, now: 30, workerId: "worker-1" });
   claimNextJob(database, { leaseDurationMs: 10, now: 31, workerId: "worker-2" });
-  database.db.update(jobs).set({ attemptCount: 2 }).where(eq(jobs.id, "job-exhausted")).run();
 
   expect(recoverExpiredJobs(database, { maxAttempts: 2, now: 50 })).toEqual({
     canceled: [],
@@ -314,6 +322,47 @@ it("requeues interrupted leases but terminally fails exhausted attempts", async 
     state: "failed",
   });
 
+  database.close();
+});
+
+it("does not count a decision pause against interrupted-attempt recovery", async () => {
+  const database = await createTestDatabase();
+  database.db
+    .insert(users)
+    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
+    .run();
+  database.db.insert(jobs).values(jobValues("job-decision", 10)).run();
+  claimNextJob(database, { leaseDurationMs: 10, now: 20, workerId: "worker-1" });
+  pauseJobForDecision(database, {
+    decisionJson: JSON.stringify({
+      kind: "frame-rate",
+      recommended: { maximum: 30, mode: "cap" },
+      source: { denominator: 1, framesPerSecond: 60, numerator: 60 },
+    }),
+    jobId: "job-decision",
+    now: 25,
+    workerId: "worker-1",
+  });
+  requeueFrameRateDecision(database, {
+    jobId: "job-decision",
+    now: 26,
+    optionsJson: '{"frameRate":{"maximum":30,"mode":"cap"}}',
+    userId: "user-1",
+  });
+  claimNextJob(database, { leaseDurationMs: 10, now: 30, workerId: "worker-2" });
+
+  expect(recoverExpiredJobs(database, { maxAttempts: 2, now: 41 })).toEqual({
+    canceled: [],
+    failed: [],
+    requeued: ["job-decision"],
+  });
+
+  claimNextJob(database, { leaseDurationMs: 10, now: 42, workerId: "worker-3" });
+  expect(recoverExpiredJobs(database, { maxAttempts: 2, now: 53 })).toEqual({
+    canceled: [],
+    failed: ["job-decision"],
+    requeued: [],
+  });
   database.close();
 });
 

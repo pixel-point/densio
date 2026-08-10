@@ -1,17 +1,20 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  CompressionOptionsSchema,
+  JobDecisionSchema,
   JobResultSchema,
   PLAN_CATALOG,
   type JobSource,
   type JobStatus,
   type JobWorkflow,
+  type FrameRatePolicy,
   type Plan,
 } from "@densio/shared";
 import { Effect, Predicate, Schema } from "effect";
 
 import type { Database } from "../database/database.ts";
-import { findOwnedJob } from "../database/job-lifecycle-repository.ts";
+import { findOwnedJob, requeueFrameRateDecision } from "../database/job-lifecycle-repository.ts";
 import { createJob, requestJobCancellation } from "../database/job-repository.ts";
 import { jobs } from "../database/schema.ts";
 import { makeProblem, toProblemDetails } from "../errors/problem-details.ts";
@@ -27,6 +30,7 @@ import {
   JobIdempotencyConflict,
   JobNotFound,
   JobRepositoryError,
+  JobStateConflict,
   JobUploadLimitExceeded,
 } from "./job-errors.ts";
 import { makeJobUploadService } from "./job-upload-service.ts";
@@ -64,6 +68,11 @@ interface OwnedJobInput {
   readonly correlationId: string;
   readonly jobId: string;
   readonly userId: string;
+}
+
+interface FrameRateDecisionInput extends OwnedJobInput {
+  readonly frameRate: FrameRatePolicy;
+  readonly now: number;
 }
 
 export const makeJobService = (database: Database, config: JobServiceConfig) => {
@@ -145,7 +154,45 @@ const makeOwnedJobOperations = (database: Database, config: JobServiceConfig) =>
   const status = Effect.fn("JobService.status")(function* (input: OwnedJobInput) {
     const job = yield* tryJobRepository("find-status", () => findOwnedJob(database, input));
     if (job === undefined) return yield* new JobNotFound();
-    return yield* toJobStatus(job, input.correlationId);
+    return yield* toJobStatus(job, input.correlationId, config);
+  });
+
+  const decideFrameRate = Effect.fn("JobService.decideFrameRate")(function* (
+    input: FrameRateDecisionInput,
+  ) {
+    const existing = yield* tryJobRepository("find-frame-rate-decision", () =>
+      findOwnedJob(database, input),
+    );
+    if (existing === undefined) return yield* new JobNotFound();
+    if (existing.kind !== "compress") {
+      return yield* new JobStateConflict({ state: existing.state });
+    }
+    if (existing.state !== "awaiting-decision") {
+      if (yield* matchesResolvedFrameRateDecision(existing, input.frameRate)) {
+        return yield* toJobStatus(existing, input.correlationId, config);
+      }
+      return yield* new JobStateConflict({ state: existing.state });
+    }
+    yield* decodeStoredDecision(existing.decisionJson);
+    const options = yield* decodeStoredCompressionOptions(existing.optionsJson);
+    const updated = yield* tryJobRepository("submit-frame-rate-decision", () =>
+      requeueFrameRateDecision(database, {
+        jobId: input.jobId,
+        now: input.now,
+        optionsJson: JSON.stringify({ ...options, frameRate: input.frameRate }),
+        userId: input.userId,
+      }),
+    );
+    if (updated !== undefined) return yield* toJobStatus(updated, input.correlationId, config);
+
+    const current = yield* tryJobRepository("refetch-frame-rate-decision", () =>
+      findOwnedJob(database, input),
+    );
+    if (current === undefined) return yield* new JobNotFound();
+    if (yield* matchesResolvedFrameRateDecision(current, input.frameRate)) {
+      return yield* toJobStatus(current, input.correlationId, config);
+    }
+    return yield* new JobStateConflict({ state: current.state });
   });
 
   const cancel = Effect.fn("JobService.cancel")(function* (
@@ -161,15 +208,16 @@ const makeOwnedJobOperations = (database: Database, config: JobServiceConfig) =>
       const paths = yield* makeJobStoragePaths(config.mediaRoot, job.id);
       yield* cleanupJobWorkspace(paths);
     }
-    return yield* toJobStatus(job, input.correlationId);
+    return yield* toJobStatus(job, input.correlationId, config);
   });
 
-  return { cancel, status };
+  return { cancel, decideFrameRate, status };
 };
 
 const toJobStatus = Effect.fn("JobService.toStatus")(function* (
   job: typeof jobs.$inferSelect,
   correlationId: string,
+  config: JobServiceConfig,
 ) {
   const base = {
     createdAt: new Date(job.createdAt).toISOString(),
@@ -201,12 +249,57 @@ const toJobStatus = Effect.fn("JobService.toStatus")(function* (
       state: "expired" as const,
     } satisfies JobStatus;
   }
+  if (job.state === "awaiting-decision") {
+    return {
+      ...base,
+      decision: {
+        ...(yield* decodeStoredDecision(job.decisionJson)),
+        submitUrl: new URL(
+          `/v1/jobs/${job.id}/frame-rate-decision`,
+          config.publicBaseUrl,
+        ).toString(),
+      },
+      progressPercent: 5 as const,
+      state: "awaiting-decision" as const,
+    } satisfies JobStatus;
+  }
   return {
     ...base,
     progressPercent: job.progress,
     state: job.state,
   } satisfies JobStatus;
 });
+
+const decodeStoredCompressionOptions = (value: string) =>
+  Schema.decodeUnknownEffect(Schema.fromJsonString(CompressionOptionsSchema))(value).pipe(
+    Effect.mapError(
+      (cause) => new JobRepositoryError({ cause, operation: "decode-compression-options" }),
+    ),
+  );
+
+const decodeStoredDecision = (value: string | null) => {
+  if (value === null) {
+    return Effect.fail(
+      new JobRepositoryError({ cause: "missing-decision", operation: "decode-decision" }),
+    );
+  }
+  return Schema.decodeUnknownEffect(Schema.fromJsonString(JobDecisionSchema))(value).pipe(
+    Effect.mapError((cause) => new JobRepositoryError({ cause, operation: "decode-decision" })),
+  );
+};
+
+const matchesResolvedFrameRateDecision = Effect.fn("JobService.matchesResolvedFrameRateDecision")(
+  function* (job: typeof jobs.$inferSelect, frameRate: FrameRatePolicy) {
+    if (job.decisionJson === null) return false;
+    yield* decodeStoredDecision(job.decisionJson);
+    const options = yield* decodeStoredCompressionOptions(job.optionsJson);
+    return sameFrameRatePolicy(options.frameRate, frameRate);
+  },
+);
+
+const sameFrameRatePolicy = (left: FrameRatePolicy | undefined, right: FrameRatePolicy) =>
+  left?.mode === right.mode &&
+  (left.mode !== "cap" || (right.mode === "cap" && left.maximum === right.maximum));
 
 const decodeStoredResult = Effect.fn("JobService.decodeResult")(function* (value: string | null) {
   if (value === null) {

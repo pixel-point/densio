@@ -207,6 +207,106 @@ describe("compression audio decisions", () => {
   });
 });
 
+describe("compression frame-rate decisions", () => {
+  it("preserves cadence unless a cap is selected", () => {
+    const plan = buildCompressionPlan({
+      codec: "vp9",
+      frameRate: { mode: "preserve" },
+      inputPath: "input.mp4",
+      outputPath: "output.webm",
+      source,
+      sourceFrameRate: { denominator: 1, numerator: 60 },
+      audio: "remove",
+    });
+
+    expect(plan.argv).not.toContain("-vf");
+  });
+
+  it("caps exact 60 fps at 30 fps without changing duration", () => {
+    const plan = buildCompressionPlan({
+      codec: "vp9",
+      frameRate: { maximum: 30, mode: "cap" },
+      inputPath: "input.mp4",
+      outputPath: "output.webm",
+      source,
+      sourceFrameRate: { denominator: 1, numerator: 60 },
+      audio: "remove",
+    });
+
+    expectCommandSequence(plan.argv, "-vf", "fps=30/1");
+  });
+
+  it("retains NTSC cadence when capping 60000/1001 fps", () => {
+    const plan = buildCompressionPlan({
+      codec: "h265",
+      frameRate: { maximum: 30, mode: "cap" },
+      inputPath: "input.mp4",
+      outputPath: "output.mp4",
+      source,
+      sourceFrameRate: { denominator: 1001, numerator: 60_000 },
+      audio: "remove",
+    });
+
+    expectCommandSequence(plan.argv, "-vf", "fps=30000/1001");
+  });
+
+  it("uses 30 fps below the high-cadence families and clean divisors above them", () => {
+    const cases = [
+      { expected: "fps=30/1", sourceFrameRate: { denominator: 1, numerator: 31 } },
+      { expected: "fps=30/1", sourceFrameRate: { denominator: 1, numerator: 40 } },
+      { expected: "fps=25/1", sourceFrameRate: { denominator: 1, numerator: 50 } },
+      { expected: "fps=5997/200", sourceFrameRate: { denominator: 100, numerator: 5_997 } },
+      { expected: "fps=30/1", sourceFrameRate: { denominator: 100, numerator: 6_001 } },
+    ];
+
+    cases.forEach(({ expected, sourceFrameRate }) => {
+      const plan = buildCompressionPlan({
+        codec: "vp9",
+        frameRate: { maximum: 30, mode: "cap" },
+        inputPath: "input.mp4",
+        outputPath: "output.webm",
+        source,
+        sourceFrameRate,
+        audio: "remove",
+      });
+
+      expectCommandSequence(plan.argv, "-vf", expected);
+    });
+  });
+
+  it("does not upsample a source already at the cap", () => {
+    const plan = buildCompressionPlan({
+      codec: "vp9",
+      frameRate: { maximum: 30, mode: "cap" },
+      inputPath: "input.mp4",
+      outputPath: "output.webm",
+      source,
+      sourceFrameRate: { denominator: 1, numerator: 30 },
+      audio: "remove",
+    });
+
+    expect(plan.argv).not.toContain("-vf");
+  });
+
+  it("applies the temporal cap after crop and scale filters", () => {
+    const plan = buildCompressionPlan({
+      codec: "vp9",
+      frameRate: { maximum: 30, mode: "cap" },
+      inputPath: "input.mp4",
+      outputPath: "output.webm",
+      source,
+      sourceFrameRate: { denominator: 1, numerator: 60 },
+      transform: {
+        crop: { aspectRatio: "16:9", kind: "aspect-ratio" },
+        scale: { width: 1280 },
+      },
+      audio: "remove",
+    });
+
+    expectCommandSequence(plan.argv, "-vf", "crop=1920:1080:0:0,scale=1280:-2,fps=30/1");
+  });
+});
+
 describe("compression command safety", () => {
   it("keeps paths as argv entries and safely quotes the diagnostic command", () => {
     const plan = buildCompressionPlan({
