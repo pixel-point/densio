@@ -1,9 +1,10 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 
 import { expect, it } from "vitest";
 
-const canonicalSkill = new URL("../../../skills/densio/SKILL.md", import.meta.url);
-const bootstrapSkill = new URL("../../../skills/densio-bootstrap/SKILL.md", import.meta.url);
+const canonicalSkill = new URL("../../../skill-bundle/entrypoint.md", import.meta.url);
+const bootstrapSkill = new URL("../../../skills/densio/SKILL.md", import.meta.url);
+const publicSkills = new URL("../../../skills/", import.meta.url);
 const frontmatter = (markdown: string) => markdown.match(/^---\n[\s\S]*?\n---/)?.[0];
 
 it("publishes a stable bootstrap with the canonical activation metadata", async () => {
@@ -17,4 +18,12 @@ it("publishes a stable bootstrap with the canonical activation metadata", async 
   expect(bootstrap).toContain("`data.files`");
   expect(bootstrap).toContain("only once per invocation");
   expect(bootstrap).toContain("remembered or cached Densio instructions");
+});
+
+it("exposes only the Densio bootstrap through public skill discovery", async () => {
+  const entrypoints = (await readdir(publicSkills, { recursive: true }))
+    .filter((path) => path.endsWith("SKILL.md"))
+    .sort();
+
+  expect(entrypoints).toEqual(["densio/SKILL.md"]);
 });
