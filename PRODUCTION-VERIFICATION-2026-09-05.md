@@ -8,13 +8,12 @@ pushed to `main`, and redeployed. R2 and Stripe test configuration were correcte
 The final application commit is `480b1a8`; subsequent report-only commits do not
 change the application.
 
-**One release blocker remains:** npm still serves `densio@0.1.4`. The prepared
-`0.2.0` package passed its publishing dry run. Publication is now authorized and
-npm authentication works, but the configured granular token has `bypass_2fa: false`;
-the actual publish attempt was rejected with `EOTP`. A real `npx densio@latest --json skill` request
-retrieves the new skill content through the old CLI, which drops `cliVersion` and
-`references` from the response. Therefore the public npm bootstrap is not yet a
-passing journey. Production verification used the built `0.2.0` CLI.
+**The public CLI release is complete:** `densio@0.2.0` is published as npm's
+`latest`. A fresh-cache `npx` installation returned the required CLI/skill version
+metadata, all six reference documents matched the repository, and a production
+login → upload → compression → verified download journey passed. The earlier npm
+authentication/2FA blocker is resolved. No known release blocker remains from this
+verification scope.
 
 ## Scope and boundaries
 
@@ -33,7 +32,7 @@ passing journey. Production verification used the built `0.2.0` CLI.
 | ID       | Finding                                                                                                                                                           | Resolution                                                                                                                                                                                                                                                                                    |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | PROD-001 | The organization migration intentionally rejects a populated legacy schema. Production contained three users, 53 terminal jobs, and one active test subscription. | Used the explicitly authorized Densio-only database reset with a recoverable backup. The previously registered base email signed in again and compressed a video. The exact legacy test subscription was verified and canceled without invoice or proration.                                  |
-| PROD-002 | Local CLI was 0.1.3, npm latest was 0.1.4, and npm publishing authentication was absent.                                                                          | Released source 0.2.0 with the required script and pushed it. Publication dry run passed. After authorization and token setup, all checks passed again, but npm rejected publication with `EOTP`: token metadata confirms `bypass_2fa: false`. npm latest remains 0.1.4.                      |
+| PROD-002 | Local CLI was 0.1.3, npm latest was 0.1.4, and npm publishing authentication was absent.                                                                          | Released source 0.2.0 with the required script and pushed it. After an initial `EOTP` rejection, the user replaced the token with publishing 2FA bypass enabled. All release checks passed; 0.2.0 is now npm latest. Fresh npm bootstrap and production account/media checks passed.          |
 | PROD-003 | Production had no managed-storage configuration.                                                                                                                  | Provisioned three dedicated R2 buckets, public domain, CORS, lifecycle policies, restricted runtime credentials, a zone-specific purge token, and the encryption key configuration.                                                                                                           |
 | PROD-004 | Default local Node was 25.8.1; the Homebrew pnpm launcher delegated versioning to npm and failed on `workspace:*`.                                                | Used isolated Node 22.18.0 and Corepack-managed pnpm 11.7.0. The required release script then worked. No application workaround was added.                                                                                                                                                    |
 | PROD-005 | Local disk exhaustion interrupted temporary Node extraction.                                                                                                      | Removed only this run's incomplete download. Initial complete validation ran in a disposable server container with separate files, no production credentials, and constrained resources. Later local checks also passed.                                                                      |
@@ -71,7 +70,7 @@ passing journey. Production verification used the built `0.2.0` CLI.
 | Visibility and recovery             | Public withdrawal reached private readiness with old URLs returning 404; authenticated private download passed. Republishing retained the exact URLs and bytes. The final cycle passed without manual purge.                                                                                                                                   |
 | Customer storage                    | Real R2 connection validated multipart upload/readback/abort/deletion and private denial. Direct source upload, export, verified download and credential-version rotation passed.                                                                                                                                                              |
 | Disconnect and cleanup              | Forget/disconnect preserved customer objects and erased saved connection credentials. After verifying preservation, this run removed only its isolated test prefix and purged those exact URLs.                                                                                                                                                |
-| Runtime skill                       | Built CLI 0.2.0 returned the current skill version and reference metadata. Requested command, organization, storage, HLS and workflow reference contents/hashes matched the repository. Public npm bootstrap remains blocked as described above.                                                                                               |
+| Runtime skill                       | Published CLI 0.2.0 was installed with a fresh npm cache. Bootstrap retained CLI/skill versions and the reference index; all six reference contents/hashes matched the repository. Stale version requests returned `SKILL_VERSION_CHANGED` with exit 5 and empty stdout.                                                                       |
 | Other applications                  | All 25 unrelated container IDs were unchanged. No unrelated deployment was performed.                                                                                                                                                                                                                                                          |
 
 ## Account compatibility and backup
@@ -108,8 +107,8 @@ checking test mode, customer identity, email and legacy user metadata.
 - Two ready managed videos remain for inspection: `681d28d4-ebd4-4173-b860-c64c2997ed79` (VP9/H.265) and `1a8a2d6b-ab4a-4d84-a25e-53c592b3b222` (10-bit AV1).
 - Public bucket contains their three verified objects; private and staging buckets are empty. The HLS sample and customer export are deleted/forgotten; the customer connection is disconnected.
 - Test CLI sessions were logged out; temporary credential copies, hosted checkout/portal URLs, and the canary environment were removed. Active deployment credentials and the protected rollback backup remain intact.
-- Final Basic balance: 749.70 credits available, 0.30 used, zero reserved. Managed storage uses 987,552 bytes with zero reserved, transient, or cleanup-pending bytes.
-- Final processing state: seven successful jobs, two ready sources and one deleted source. Temporary artifacts retain their normal automatic expiry.
+- Final Basic balance after the npm release check: 749.65 credits available, 0.35 used, zero reserved. Managed storage uses 987,552 bytes with zero reserved, transient, or cleanup-pending bytes.
+- Processing state before the npm follow-up: seven successful jobs, two ready sources and one deleted source. The follow-up added one successful job and one source that was subsequently deleted. Temporary artifacts retain their normal automatic expiry.
 - Storage state: eight successful transfers and one intentional canceled transfer from forgetting the export; no pending/retrying transfers. Two ready videos and two deleted videos.
 
 ## Release history and operational notes
@@ -122,11 +121,18 @@ checking test mode, customer identity, email and legacy user metadata.
 - Local test commands explicitly pinned the API origin, disposable credentials and organization. Production checks were separate from deterministic unit/integration/E2E tests. Scheduled synthetic commands were not run.
 - No fresh-agent discovery evaluation or long-duration load/retention soak is claimed by this report.
 
-## To complete the public CLI release
+## Published CLI verification
 
-Enable publishing's 2FA bypass on the granular npm token, or replace the configured
-token with one that has it enabled. The user has explicitly authorized publishing
-the reviewed `densio@0.2.0` package. Then run `scripts/publish-cli.sh` under Node 22.18/Corepack pnpm 11.7 with a
-clean working tree, verify npm's new latest version, and repeat the fresh `npx`
-bootstrap and an account journey. This is the only known outstanding release
-blocker; it is not counted as a pass above.
+- Published `densio@0.2.0` through `scripts/publish-cli.sh`, following the successful dry run. The script passed lint, formatting, all 1,125 tests, typechecks, build, archive allowlist, isolated package install, and executable help checks under Node 22.18.0 / pnpm 11.7.0.
+- npm confirmed `latest = 0.2.0`. Registry archive SHA-1 is `21f4002f1412a17360573fcaf6fe3225f483b62e`, matching the locally tested archive.
+- Bootstrap ran through `npx --yes densio@latest` outside the source repository with a fresh npm cache and disposable credentials. Subsequent commands pinned `densio@0.2.0`, the production API origin, and the test organization.
+- Skill version: `sha256:0d702c368944e9ab38dff2ff9f3ee23d91bcf69d17e51f7dffdb8828eeb3c09f`. All six reference documents matched their hashes and repository contents. A deliberately stale version returned `SKILL_VERSION_CHANGED`, exit 5, and no stdout.
+- Existing alias +1 completed a fresh email-confirmed login. Auth status and organization discovery returned its existing owner membership. Disposable credentials were written with mode 600.
+- The browser tool reported `ERR_BLOCKED_BY_CLIENT` when displaying the confirmation page. The confirmation request still completed: CLI polling succeeded and authenticated API requests verified the session. This follow-up therefore verifies login completion, but does not claim that the confirmation page rendered in the in-app browser.
+- Uploaded source `201af89f-6942-459b-947b-a59162d87d0f` (856,908 bytes, six seconds, 640×360, 24 fps). Job `638d8197-545b-4c8e-a779-253d0ee704e9` succeeded and charged 0.05 credits.
+- Downloaded VP9/Opus (332,917 bytes) and H.265/AAC (356,028 bytes). Independent SHA-256 and byte checks, FFprobe frame counts (144 each), and complete FFmpeg decoding passed. Audio was retained. Container durations were 6.024 and 6.016 seconds; an initial scratch check used an overly strict 20 ms duration tolerance, so verification instead counted the complete video frames and decoded both streams.
+- Exact upload and job retries retained their original IDs and billing receipt. Basic balance remained 749.65 available, 0.35 used, and zero reserved after retry.
+- Published CLI also downloaded both variants of the existing managed R2 video `681d28d4-ebd4-4173-b860-c64c2997ed79`; independent byte/hash checks passed.
+- Deleted only the follow-up's two temporary artifacts and source; descriptors confirmed `deleted`. Existing managed videos remain available. Logout revoked the session, subsequent auth status was unauthenticated, and the disposable credentials file was removed.
+- Local output evidence is under `/private/tmp/densio-production-20260905/npm-release-verification/output`; managed-download evidence is in the adjacent `managed-output` directory. No bearer credentials or signed URLs are included in this report.
+- Final production check: `/ready` returned 200; `densio-api-14` was running, healthy, with zero restarts on image `densio-api:b231e581b3a44b0372ea50b0fa3c7d4221f012a3`. CLI publication required no application changes or server redeployment.
