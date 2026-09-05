@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { Body, Container, Head, Heading, Html, Preview, Section, Text } from "react-email";
+import { Container, Head, Heading, Html, Preview, Section, Text } from "react-email";
 import { emailStyles, emailTheme } from "../theme.ts";
+import { EmailBody } from "./email-body.tsx";
 import { EmailDivider } from "./email-divider.tsx";
 
 interface EmailLayoutProps {
@@ -22,14 +23,7 @@ export const EmailLayout = ({ preview, heading, notice, children }: EmailLayoutP
       `}</style>
     </Head>
     <Preview>{preview}</Preview>
-    <Body
-      style={{
-        backgroundColor: emailTheme.colors.canvas,
-        fontFamily: emailTheme.fontFamily,
-        margin: 0,
-        padding: 0,
-      }}
-    >
+    <EmailBody>
       <Container
         className="email-container"
         style={{ maxWidth: "640px", margin: "0 auto", padding: "64px 16px 24px" }}
@@ -75,6 +69,6 @@ export const EmailLayout = ({ preview, heading, notice, children }: EmailLayoutP
           </Section>
         </Section>
       </Container>
-    </Body>
+    </EmailBody>
   </Html>
 );

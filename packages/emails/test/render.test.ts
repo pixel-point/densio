@@ -5,6 +5,41 @@ import {
   renderStorageRetentionEmail,
 } from "../src/index.ts";
 
+it.each([
+  {
+    name: "sign-in confirmation",
+    render: () =>
+      renderSignInConfirmationEmail({ verificationUrl: "https://api.example.test/confirm" }),
+  },
+  {
+    name: "organization invitation",
+    render: () =>
+      renderOrganizationInvitationEmail({
+        name: "Example Studio",
+        acceptanceUrl: "https://api.example.test/invitation",
+      }),
+  },
+  {
+    name: "storage retention",
+    render: () =>
+      renderStorageRetentionEmail({
+        organizationName: "Example Studio",
+        deadline: 1_800_000_000_000,
+      }),
+  },
+])("gives $name a full-width white background without body styles", async ({ render }) => {
+  const { html } = await render();
+  const bodyContent = html.match(/<body\b[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? "";
+  const outerTable = bodyContent.match(/<table\b[^>]*>/i)?.[0] ?? "";
+  const outerCell = bodyContent.match(/<td\b[^>]*>/i)?.[0] ?? "";
+
+  expect(outerTable).toContain('width="100%"');
+  expect(outerTable).not.toContain("max-width");
+  expect(outerTable).toMatch(/background-color:\s*#ffffff/i);
+  expect(outerTable).toMatch(/bgcolor="#ffffff"/i);
+  expect(outerCell).toMatch(/background-color:\s*#ffffff/i);
+});
+
 it("renders sign-in HTML and plain text with the exact action URL and company footer", async () => {
   const verificationUrl = "https://api.example.test/v1/auth/confirm?token=example&next=cli";
   const email = await renderSignInConfirmationEmail({ verificationUrl });
