@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, test } from "vitest";
+import { supportsS3ObjectVersions } from "../src/storage/objects/s3-versioning.ts";
 import { makeS3ObjectStore } from "../src/storage/objects/s3-object-store.ts";
 
 const servers: ReturnType<typeof createServer>[] = [];
@@ -92,4 +93,75 @@ test("small package objects use one signed PUT with delivery metadata", async ()
   );
   expect(requests).toEqual(["PUT"]);
   store.close();
+});
+
+test.each([true, false])(
+  "S3 object version capability %s applies to writes, reads, copies and deletion",
+  async (supportsObjectVersions) => {
+    const versionId = "provider-object-version";
+    const endpoint = await fixtureServer((request, response) => {
+      const url = new URL(request.url ?? "/", "http://fixture.invalid");
+      const copySource = request.headers["x-amz-copy-source"];
+      if (copySource)
+        expect(String(copySource).includes("versionId=")).toBe(supportsObjectVersions);
+      if (["HEAD", "GET", "DELETE"].includes(request.method ?? ""))
+        expect(url.searchParams.get("versionId")).toBe(supportsObjectVersions ? versionId : null);
+      const body = copySource
+        ? '<CopyPartResult><ETag>"copy"</ETag></CopyPartResult>'
+        : request.method === "POST"
+          ? '<CompleteMultipartUploadResult><ETag>"complete"</ETag></CompleteMultipartUploadResult>'
+          : request.method === "GET"
+            ? "video"
+            : "";
+      response.writeHead(200, {
+        "content-length": request.method === "HEAD" ? "5" : String(Buffer.byteLength(body)),
+        "content-type": "video/webm",
+        "x-amz-version-id": versionId,
+        etag: '"fixture"',
+      });
+      request.resume();
+      response.end(body);
+    });
+    const store = makeS3ObjectStore(
+      { endpoint, region: "auto", bucket: "fixture-bucket", prefix: "", pathStyle: true },
+      { accessKeyId: "fixture", secretAccessKey: "fixture-secret" },
+      { allowedOrigins: [endpoint], supportsObjectVersions },
+    );
+    const version = supportsObjectVersions ? { versionId } : {};
+    const metadata = {
+      filename: "video.webm",
+      mediaType: "video/webm",
+      public: false,
+      sha256: "digest",
+    };
+    expect(await store.put("video.webm", metadata, Buffer.from("video"), 5)).toEqual(version);
+    expect(await store.complete("video.webm", "upload", [])).toEqual(version);
+    const head = await store.head("video.webm", versionId);
+    expect(head?.versionId).toBe(supportsObjectVersions ? versionId : undefined);
+    const object = await store.read("video.webm", undefined, versionId);
+    expect(object.versionId).toBe(supportsObjectVersions ? versionId : undefined);
+    const chunks = [];
+    for await (const chunk of object.body) chunks.push(Buffer.from(chunk));
+    expect(Buffer.concat(chunks).toString()).toBe("video");
+    expect(
+      await store.copyPart("copy.webm", "upload", 1, {
+        bucket: "fixture-bucket",
+        key: "video.webm",
+        versionId,
+        start: 0,
+        end: 4,
+      }),
+    ).toBe('"copy"');
+    await store.remove("video.webm", versionId);
+    store.close();
+  },
+);
+
+test.each([
+  ["https://account.r2.cloudflarestorage.com", false],
+  ["https://account.eu.r2.cloudflarestorage.com", false],
+  ["https://s3.us-east-1.amazonaws.com", true],
+  ["https://account.r2.cloudflarestorage.com.example.org", true],
+])("object version capability for %s is %s", (endpoint, supported) => {
+  expect(supportsS3ObjectVersions(endpoint)).toBe(supported);
 });

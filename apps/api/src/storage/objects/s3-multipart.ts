@@ -13,11 +13,13 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { ObjectStore } from "./object-store.ts";
 import { missingObject, objectRequestOptions, providerFailure } from "./s3-client.ts";
 import { assertStorageEndpoint, resolveStorageAddress } from "./endpoint-policy.ts";
+import { s3ObjectVersion, s3VersionResult } from "./s3-versioning.ts";
 
 export const multipartOperations = (
   client: S3Client,
   bucket: string,
   allowedOrigins: readonly string[],
+  versioned: boolean,
 ): Pick<
   ObjectStore,
   | "createMultipart"
@@ -30,7 +32,7 @@ export const multipartOperations = (
   | "abort"
   | "signPart"
 > => ({
-  put: (...args) => putObject(client, bucket, ...args),
+  put: (...args) => putObject(client, bucket, versioned, ...args),
   createMultipart: (...args) => createMultipart(client, bucket, ...args),
   listMultipart: (key, signal) => listMultipart(client, bucket, key, signal),
   uploadPart: async (key, uploadId, partNumber, body, bytes, signal) => {
@@ -50,7 +52,7 @@ export const multipartOperations = (
     if (!result.ETag) return providerFailure(undefined);
     return result.ETag;
   },
-  copyPart: (...args) => copyPart(client, bucket, ...args),
+  copyPart: (...args) => copyPart(client, bucket, versioned, ...args),
   listParts: (key, uploadId, signal) => listParts(client, bucket, key, uploadId, signal),
   complete: async (key, uploadId, parts, signal) => {
     const result = await client
@@ -66,7 +68,7 @@ export const multipartOperations = (
         objectRequestOptions(signal),
       )
       .catch(providerFailure);
-    return result.VersionId === undefined ? {} : { versionId: result.VersionId };
+    return s3VersionResult(versioned, result.VersionId);
   },
   abort: async (key, uploadId, signal) => {
     await client
@@ -174,11 +176,12 @@ const listParts = async (
 const copyPart = async (
   client: S3Client,
   bucket: string,
+  versioned: boolean,
   ...args: Parameters<ObjectStore["copyPart"]>
 ) => {
   const [key, uploadId, partNumber, source, signal] = args;
-
-  const sourcePath = `${encodeURIComponent(source.bucket)}/${source.key.split("/").map(encodeURIComponent).join("/")}${source.versionId ? `?versionId=${encodeURIComponent(source.versionId)}` : ""}`;
+  const versionId = s3ObjectVersion(versioned, source.versionId);
+  const sourcePath = `${encodeURIComponent(source.bucket)}/${source.key.split("/").map(encodeURIComponent).join("/")}${versionId ? `?versionId=${encodeURIComponent(versionId)}` : ""}`;
   const result = await client
     .send(
       new UploadPartCopyCommand({
@@ -199,6 +202,7 @@ const copyPart = async (
 const putObject = async (
   client: S3Client,
   bucket: string,
+  versioned: boolean,
   ...args: Parameters<ObjectStore["put"]>
 ) => {
   const [key, metadata, body, bytes, signal] = args;
@@ -219,7 +223,7 @@ const putObject = async (
       objectRequestOptions(signal),
     )
     .catch(providerFailure);
-  return result.VersionId === undefined ? {} : { versionId: result.VersionId };
+  return s3VersionResult(versioned, result.VersionId);
 };
 
 const createMultipart = async (
