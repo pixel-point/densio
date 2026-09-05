@@ -1,3 +1,4 @@
+import { makeOrganizationInvitationLinks } from "../src/organizations/organization-invitation-link.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,6 +49,7 @@ it("drains due email and stops without waiting for the next poll", async () => {
             pollIntervalMs: 60_000,
             retryBaseMs: 1_000,
           },
+          makeOrganizationInvitationLinks(OUTBOX_ENCRYPTION_KEY, "https://media.example"),
         );
         yield* waitUntil(() => database.db.select().from(emailOutbox).get()?.status === "sent");
         yield* supervisor.stop();

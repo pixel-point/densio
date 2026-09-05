@@ -1,3 +1,5 @@
+import { makeOrganizationInvitationLinkService } from "../src/organizations/organization-invitation-link-service.ts";
+import { makeOrganizationInvitationLinks } from "../src/organizations/organization-invitation-link.ts";
 import { Effect, Schema } from "effect";
 import { Hono } from "hono";
 import {
@@ -130,6 +132,10 @@ it("lets only the addressed recipient discover and accept invitations", async ()
       authService: fixture.authService,
       organizationService: makeOrganizationService(fixture.database),
       invitationService: makeOrganizationInvitationService(fixture.database),
+      invitationLinkService: makeOrganizationInvitationLinkService(
+        fixture.database,
+        makeOrganizationInvitationLinks("0123456789abcdef".repeat(4), "https://api.example.test"),
+      ),
       now: () => organizationNow,
       createCorrelationId: () => "invitation-route",
       maxCreatesPerDay: 10,

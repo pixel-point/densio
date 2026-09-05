@@ -18,7 +18,7 @@ import {
   verifyTokenSecret,
 } from "./opaque-token.ts";
 import type { MagicLinkSealer } from "./magic-link-secret.ts";
-import { provisionOrganization } from "../organizations/organization-provisioning.ts";
+import { registerVerifiedUser } from "./user-registration.ts";
 import { findDefaultOrganizationId } from "../database/organization-membership-repository.ts";
 
 export interface AuthConfig {
@@ -376,22 +376,7 @@ const issueSession = (
   email: string,
   input: { readonly config: AuthConfig; readonly now: number },
 ): AuthenticatedTokens => {
-  const existingUser = transaction.select().from(users).where(eq(users.email, email)).get();
-  const userId = existingUser?.id ?? randomUUID();
-  if (existingUser === undefined) {
-    transaction
-      .insert(users)
-      .values({ createdAt: input.now, email, id: userId, updatedAt: input.now })
-      .run();
-    provisionOrganization(transaction, {
-      userId,
-      email,
-      now: input.now,
-      name: "My organization",
-      isDefault: true,
-      correlationId: `registration-${userId}`,
-    });
-  }
+  const userId = registerVerifiedUser(transaction, email, input.now).id;
 
   const accessToken = createOpaqueToken();
   const refreshToken = createOpaqueToken();

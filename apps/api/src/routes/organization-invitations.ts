@@ -10,6 +10,10 @@ import { Effect } from "effect";
 import { Hono } from "hono";
 import type { OrganizationInvitationService } from "../organizations/organization-invitation-service.ts";
 import {
+  createOrganizationInvitationLinkRoutes,
+  type OrganizationInvitationLinkRouteDependencies,
+} from "./organization-invitation-links.ts";
+import {
   authenticateRequest,
   beginRequest,
   decodeRequestJson,
@@ -26,7 +30,8 @@ import {
   type OrganizationRouteDependencies,
 } from "./organization-route-support.ts";
 
-export interface OrganizationInvitationRouteDependencies extends OrganizationRouteDependencies {
+export interface OrganizationInvitationRouteDependencies
+  extends OrganizationRouteDependencies, OrganizationInvitationLinkRouteDependencies {
   readonly invitationService: OrganizationInvitationService;
   readonly maxInvitationsPerHour: number;
 }
@@ -40,6 +45,7 @@ export const createOrganizationInvitationRoutes = (
   dependencies: OrganizationInvitationRouteDependencies,
 ) => {
   const routes = new Hono();
+  routes.route("/", createOrganizationInvitationLinkRoutes(dependencies));
   registerRecipientRoutes(routes, dependencies);
   registerOrganizationList(routes, dependencies);
   registerCreate(routes, dependencies);

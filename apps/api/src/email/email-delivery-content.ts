@@ -1,11 +1,15 @@
-import { storageRetentionEmail } from "./storage-retention-email.ts";
+import { storageRetentionEmailInput } from "./storage-retention-email.ts";
+import {
+  renderSignInConfirmationEmail,
+  renderOrganizationInvitationEmail,
+  renderStorageRetentionEmail,
+} from "@densio/emails";
 import { eq } from "drizzle-orm";
 import type { Database } from "../database/database.ts";
 import { authChallenges } from "../database/schema.ts";
 import { deliverableInvitation } from "../database/organization-invitation-repository.ts";
 import type { MagicLinkOpener } from "../auth/magic-link-secret.ts";
-import { renderMagicLinkEmail } from "../auth/magic-link-email.ts";
-import { renderOrganizationInvitationEmail } from "./organization-invitation-email.ts";
+import type { OrganizationInvitationLinks } from "../organizations/organization-invitation-link.ts";
 import { decodeEmailOutboxPayload } from "./email-outbox-payload.ts";
 import type { OutboxEmail } from "./email-outbox-repository.ts";
 
@@ -14,23 +18,27 @@ export const emailDeliveryContent = (
   email: OutboxEmail,
   now: number,
   openMagicLink: MagicLinkOpener,
+  invitationLinks: OrganizationInvitationLinks,
 ) => {
   const payload = decodeEmailOutboxPayload(email.payloadJson);
   if (payload.kind === "storage-retention") {
-    const content = storageRetentionEmail(database, email.recipient, payload, now);
-    return content
-      ? { ...content, idempotencyKey: `storage-retention-email-${email.id}` }
+    const input = storageRetentionEmailInput(database, email.recipient, payload, now);
+    return input
+      ? {
+          render: () => renderStorageRetentionEmail(input),
+          idempotencyKey: `storage-retention-email-${email.id}`,
+        }
       : undefined;
   }
   if (payload.kind === "organization-invitation") {
     const record = deliverableInvitation(database.db, payload.invitationId, now);
     if (record === undefined || record.invitation.email !== email.recipient) return undefined;
     return {
-      ...renderOrganizationInvitationEmail({
-        name: record.organization.name,
-        invitationId: record.invitation.id,
-        expiresAt: record.invitation.expiresAt,
-      }),
+      render: () =>
+        renderOrganizationInvitationEmail({
+          name: record.organization.name,
+          acceptanceUrl: invitationLinks.url(record.invitation),
+        }),
       idempotencyKey: `organization-invitation-email-${email.id}`,
     };
   }
@@ -52,10 +60,10 @@ export const emailDeliveryContent = (
     recipient: email.recipient,
   });
   return {
-    ...renderMagicLinkEmail({
-      verificationUrl,
-      expiresInMinutes: Math.max(1, Math.ceil((challenge.expiresAt - now) / 60_000)),
-    }),
+    render: () =>
+      renderSignInConfirmationEmail({
+        verificationUrl,
+      }),
     idempotencyKey: `auth-email-${email.id}`,
   };
 };

@@ -203,7 +203,7 @@ const registerConfirmationRoute = (routes: Hono, dependencies: AuthRouteDependen
       context.html(`<!doctype html>
 <html lang="en">
   <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Login confirmed</title></head>
-  <body><main><h1>Login confirmed</h1><p>You can return to the Densio CLI.</p></main></body>
+  <body><main><h1>Login confirmed</h1><p>You can close this page and continue in Densio.</p></main></body>
 </html>`),
     );
   });

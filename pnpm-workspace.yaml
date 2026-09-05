@@ -4,8 +4,10 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  "@tailwindcss/oxide": true
   esbuild: true
   msgpackr-extract: true
+  sharp: true
 minimumReleaseAgeExclude:
   - "@typescript/native-preview-darwin-arm64@7.0.0-dev.20260703.1"
   - "@typescript/native-preview-darwin-x64@7.0.0-dev.20260703.1"

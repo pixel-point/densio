@@ -16,6 +16,7 @@ export const joinOrganization = async (
   ownerCredentials: string,
   memberCredentials: string,
   organizationId: string,
+  invitationEmail?: Promise<{ readonly text: string; readonly html: string }>,
 ) => {
   const before = decodeAuthStatus(
     JSON.parse((await runCli(apiUrl, memberCredentials, ["auth", "status"])).stdout),
@@ -37,13 +38,13 @@ export const joinOrganization = async (
       ).stdout,
     ),
   ).data;
-  const accepted = decodeInvitationAcceptance(
-    JSON.parse(
-      (await runCli(apiUrl, memberCredentials, ["invitations", "accept", invitation.invitationId]))
-        .stdout,
-    ),
+  await (invitationEmail === undefined
+    ? acceptInvitationWithCli(apiUrl, memberCredentials, invitation.invitationId)
+    : acceptInvitationFromEmail(apiUrl, invitationEmail));
+  const joined = decodeOrganization(
+    JSON.parse((await runCli(apiUrl, memberCredentials, ["orgs", "get", organizationId])).stdout),
   ).data;
-  expect(accepted.membership.organizationId).toBe(organizationId);
+  expect(joined.membership).toMatchObject({ organizationId, role: "member" });
   const after = decodeAuthStatus(
     JSON.parse((await runCli(apiUrl, memberCredentials, ["auth", "status"])).stdout),
   ).data;
@@ -55,6 +56,38 @@ export const joinOrganization = async (
     organizationId,
     memberDefault: before.defaultOrganizationId,
   };
+};
+
+const acceptInvitationWithCli = async (apiUrl: string, credentials: string, invitationId: string) =>
+  decodeInvitationAcceptance(
+    JSON.parse((await runCli(apiUrl, credentials, ["invitations", "accept", invitationId])).stdout),
+  );
+
+const acceptInvitationFromEmail = async (
+  apiUrl: string,
+  nextEmail: Promise<{ readonly text: string; readonly html: string }>,
+) => {
+  const email = await nextEmail;
+  const link = email.text.split("\n").find((line) => line.startsWith("http"));
+  if (link === undefined) throw new Error("Invitation email contained no acceptance URL.");
+  const url = new URL(link);
+  expect(url.origin).toBe(apiUrl);
+  expect(url.pathname).toBe("/v1/organization-invitations/confirm");
+  expect(email.html).toContain(`href="${link}"`);
+  expect(email.html).toContain("Accept invitation");
+  expect(email.text).not.toMatch(/npx|densio invitations accept/);
+  const page = await fetch(url);
+  expect(page.status).toBe(200);
+  const html = await page.text();
+  expect(html).toContain('action="/v1/organization-invitations/confirm"');
+  const token = html.match(/name="token" value="([^"]+)"/)?.[1];
+  if (token === undefined) throw new Error("Invitation page contained no confirmation form.");
+  const result = await fetch(new URL(url.pathname, apiUrl), {
+    method: "POST",
+    body: new URLSearchParams({ token }),
+  });
+  expect(result.status).toBe(200);
+  expect(await result.text()).toContain("Invitation accepted");
 };
 
 type Team = Awaited<ReturnType<typeof joinOrganization>> & { outsiderCredentials: string };

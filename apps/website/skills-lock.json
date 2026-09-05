@@ -1,0 +1,10 @@
+{
+  "skills": {
+    "git-commit": {
+      "source": "github/awesome-copilot"
+    },
+    "tailwind-design-system": {
+      "source": "wshobson/agents"
+    }
+  }
+}

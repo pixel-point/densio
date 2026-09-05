@@ -1,0 +1,42 @@
+import type { Metadata } from "next";
+import NextLink from "next/link";
+import config from "@/configs/website-config";
+import { MENUS } from "@/constants/menus";
+import { Providers } from "@/contexts";
+
+import { Button } from "@/components/ui/button";
+import Footer from "@/components/footer";
+import Header from "@/components/header";
+
+export const metadata: Metadata = {
+  title: `Page Not Found | ${config.projectName}`,
+  description: "Sorry, the page you are looking for does not exist or has been moved.",
+};
+
+export default function NotFound() {
+  return (
+    <>
+      <Providers>
+        <Header menuItems={MENUS.header} />
+        <main className="flex grow">
+          <section className="not-found flex grow items-center justify-center px-5 py-20 md:px-8">
+            <div className="flex max-w-md flex-col items-center justify-center md:max-w-lg">
+              <h1 className="text-8xl leading-none font-semibold tracking-tighter text-foreground md:text-9xl md:leading-none">
+                <span className="sr-only">Error</span>404
+                <span className="sr-only">: Page Not Found</span>
+              </h1>
+              <p className="mt-2.5 text-center text-base leading-normal tracking-tight text-foreground md:text-lg md:leading-normal">
+                We know this isn&apos;t where you intended to land, but we hope you have some fun
+                while you&apos;re here.
+              </p>
+              <Button className="mt-6 xl:mt-8" asChild>
+                <NextLink href="/">Go to homepage</NextLink>
+              </Button>
+            </div>
+          </section>
+        </main>
+        <Footer menuItems={MENUS.footer.main} socialItems={MENUS.footer.social} />
+      </Providers>
+    </>
+  );
+}

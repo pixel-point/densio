@@ -1,0 +1,32 @@
+{
+  "name": "@densio/emails",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --packages=external --platform=node --format=esm --outfile=dist/index.js && tsgo --project tsconfig.build.json",
+    "dev": "email dev --dir src/emails --port 3001",
+    "test": "vitest run",
+    "test:fast": "vitest run",
+    "typecheck": "tsgo --noEmit --project tsconfig.json --pretty false"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-email": "6.9.3"
+  },
+  "devDependencies": {
+    "@react-email/ui": "6.9.3",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

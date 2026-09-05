@@ -21,7 +21,7 @@ describe("taggedGmailAddress", () => {
 describe("gmailSearchQuery", () => {
   it("restricts results to recent messages for the recipient and subject", () => {
     expect(gmailSearchQuery("synthetics+run@gmail.com")).toBe(
-      'to:synthetics+run@gmail.com subject:"Confirm your Densio CLI login" newer_than:1d',
+      'to:synthetics+run@gmail.com subject:"Confirm your sign-in to Densio" newer_than:1d',
     );
   });
 });

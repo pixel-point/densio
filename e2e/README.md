@@ -45,7 +45,8 @@ Repeat in a signed-in session, with multiple organizations, with a requested 10-
 
 ## Confidence boundary
 
-The journey also verifies verified-email invitation acceptance, unchanged defaults, cross-organization
+The journey also verifies invitation acceptance through the delivered email's browser link and
+confirmation form, CLI acceptance when rejoining, unchanged defaults, cross-organization
 denial, shared organization credits, owner-only billing, and admitted work surviving creator removal.
 
 This suite proves Densio's local orchestration, persistence, HTTP contracts, CLI behavior, webhook

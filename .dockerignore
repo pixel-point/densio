@@ -3,6 +3,7 @@
 !package.json
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
+!tsconfig.base.json
 
 !apps/
 !apps/api/
@@ -13,6 +14,13 @@
 !apps/api/drizzle/**
 
 !packages/
+!packages/emails/
+!packages/emails/package.json
+!packages/emails/THIRD_PARTY_NOTICES.md
+!packages/emails/tsconfig.json
+!packages/emails/tsconfig.build.json
+!packages/emails/src/
+!packages/emails/src/**
 !packages/shared/
 !packages/shared/package.json
 !packages/shared/src/

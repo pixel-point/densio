@@ -114,8 +114,10 @@ invalid selections fail instead of falling back. `orgs use ORG_ID` changes local
 
 All members can process, spend shared credits, and manage media. Owners/admins manage ordinary
 members and invitations; only owners manage admins, billing, ownership transfer, and closure.
-Use `orgs invitations create EMAIL --role member` and recipient `invitations accept ID`.
-Invite acceptance requires the verified recipient email. Removing a member revokes their
+Use `orgs invitations create EMAIL --role member` to send an invitation email. The recipient
+opens its signed link and confirms acceptance in the browser; new accounts register there.
+The authenticated `invitations accept ID` command remains available for automation. Links
+expire after seven days and verify only the invited email and membership. Removing a member revokes their
 download grants, but admitted jobs and media remain with the organization.
 
 `billing subscribe PLAN --idempotency-key KEY` creates or recovers an organization checkout.

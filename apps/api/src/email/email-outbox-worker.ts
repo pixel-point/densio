@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 
 import type { Database } from "../database/database.ts";
 import type { MagicLinkOpener } from "../auth/magic-link-secret.ts";
+import type { OrganizationInvitationLinks } from "../organizations/organization-invitation-link.ts";
 import { claimNextEmail, markEmailFailed, markEmailSent } from "./email-outbox-repository.ts";
 import { emailDeliveryContent } from "./email-delivery-content.ts";
 
@@ -38,6 +39,7 @@ export const deliverNextEmail = Effect.fn("EmailOutboxWorker.deliverNextEmail")(
   readonly database: Database;
   readonly now: number;
   readonly openMagicLink: MagicLinkOpener;
+  readonly invitationLinks: OrganizationInvitationLinks;
   readonly sender: EmailSender;
 }) {
   const email = yield* tryStorage("claim", () =>
@@ -47,20 +49,24 @@ export const deliverNextEmail = Effect.fn("EmailOutboxWorker.deliverNextEmail")(
 
   const delivery = yield* Effect.match(
     Effect.try({
-      try: () => emailDeliveryContent(input.database, email, input.now, input.openMagicLink),
+      try: () =>
+        emailDeliveryContent(
+          input.database,
+          email,
+          input.now,
+          input.openMagicLink,
+          input.invitationLinks,
+        ),
       catch: () => new EmailSendError({ providerCode: "invalid-outbox-secret", retryable: false }),
     }).pipe(
-      Effect.flatMap((content) => {
-        if (content === undefined)
-          return Effect.fail(
-            new EmailSendError({ providerCode: "notification-no-longer-valid", retryable: false }),
-          );
-        return input.sender.send({
+      Effect.flatMap(renderDelivery),
+      Effect.flatMap((content) =>
+        input.sender.send({
           ...content,
           from: input.config.from,
           to: email.recipient,
-        });
-      }),
+        }),
+      ),
     ),
     {
       onFailure: (error) => ({ error, kind: "failed" as const }),
@@ -86,6 +92,21 @@ export const deliverNextEmail = Effect.fn("EmailOutboxWorker.deliverNextEmail")(
   );
   if (retryAt !== undefined) return { kind: "retry-scheduled" as const, retryAt };
   return { kind: "failed" as const };
+});
+
+const renderDelivery = Effect.fn("EmailOutboxWorker.renderDelivery")(function* (
+  delivery: ReturnType<typeof emailDeliveryContent>,
+) {
+  if (delivery === undefined)
+    return yield* new EmailSendError({
+      providerCode: "notification-no-longer-valid",
+      retryable: false,
+    });
+  const content = yield* Effect.tryPromise({
+    try: delivery.render,
+    catch: () => new EmailSendError({ providerCode: "email-render-failed", retryable: false }),
+  });
+  return { ...content, idempotencyKey: delivery.idempotencyKey };
 });
 
 const tryStorage = Effect.fn("EmailOutboxWorker.tryStorage")(

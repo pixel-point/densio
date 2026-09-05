@@ -30,7 +30,7 @@ export const taggedGmailAddress = (email: string, tag: string) => {
 };
 
 export const gmailSearchQuery = (recipient: string) =>
-  `to:${recipient} subject:"Confirm your Densio CLI login" newer_than:1d`;
+  `to:${recipient} subject:"Confirm your sign-in to Densio" newer_than:1d`;
 
 export const verificationUrlFromMessage = (message: GmailMessage) =>
   message.payload === undefined

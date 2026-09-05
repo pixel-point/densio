@@ -173,6 +173,8 @@ const authenticate = async (
     "Email delivery timed out.",
   );
   expect(message.to).toBe(emailAddress);
+  expect(message.html).toContain("Access your account");
+  expect(message.html).toContain("Continue");
   const verificationUrl = message.text.split("\n").find((line) => line.startsWith("http"));
   if (verificationUrl === undefined) throw new Error("Email contained no verification URL.");
   const confirmation = await fetch(verificationUrl);
@@ -207,6 +209,7 @@ const joinTeammate = async (
     ownerCredentials,
     memberCredentials,
     organizationId,
+    email.nextEmail("member@densio.test"),
   );
   return { ...member, outsiderCredentials };
 };
@@ -532,6 +535,7 @@ const deleteRemoteResources = async (
 };
 
 interface CapturedEmail {
+  readonly html: string;
   readonly text: string;
   readonly to: string;
 }
@@ -547,7 +551,10 @@ const captureEmail = () => {
   };
   const sender: EmailSender = {
     send: Effect.fn("E2EEmailSender.send")((message) =>
-      Effect.sync(() => mailbox(message.to).resolve({ text: message.text, to: message.to })),
+      Effect.sync(() => {
+        mailbox(message.to).resolve({ html: message.html, text: message.text, to: message.to });
+        mailboxes.delete(message.to);
+      }),
     ),
   };
   return { nextEmail: (email: string) => mailbox(email).promise, sender };

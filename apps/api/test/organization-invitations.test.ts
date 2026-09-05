@@ -1,3 +1,4 @@
+import { makeOrganizationInvitationLinks } from "../src/organizations/organization-invitation-link.ts";
 import { Effect } from "effect";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
@@ -174,7 +175,7 @@ describe("invitation revocation and delivery", () => {
     ).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "invitation-revoked" })]));
   });
 
-  it("delivers escaped invitation instructions through the existing durable outbox", async () => {
+  it("delivers an invitation acceptance link through the existing durable outbox", async () => {
     expect(createOrganizationInvitation).toBeDefined();
     const fixture = setup();
     const invite = createOrganizationInvitation(fixture.database, inviteInput(fixture));
@@ -190,6 +191,10 @@ describe("invitation revocation and delivery", () => {
           retryBaseMs: 1_000,
         },
         openMagicLink: makeMagicLinkOpener("0123456789abcdef".repeat(4)),
+        invitationLinks: makeOrganizationInvitationLinks(
+          "0123456789abcdef".repeat(4),
+          "https://api.example.test",
+        ),
         sender: {
           send: (input) => {
             deliveries.push(input);
@@ -199,7 +204,13 @@ describe("invitation revocation and delivery", () => {
       }),
     );
     expect(outcome).toEqual({ kind: "sent" });
-    expect(deliveries[0]?.text).toContain(`invitations accept ${invite.id}`);
+    expect(deliveries[0]?.text).toContain(
+      makeOrganizationInvitationLinks("0123456789abcdef".repeat(4), "https://api.example.test").url(
+        invite,
+      ),
+    );
+    expect(deliveries[0]?.text).not.toContain("npx");
+    expect(deliveries[0]?.html).toContain("<h1");
     expect(deliveries[0]?.to).toBe("outsider@example.test");
   });
 });

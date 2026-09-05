@@ -24,6 +24,16 @@ const organizationsReference = fileURLToPath(
   new URL("../../../skill-bundle/references/organizations.md", import.meta.url),
 );
 
+it("describes browser invitation acceptance and preserves authenticated automation", async () => {
+  const reference = await readFile(organizationsReference, "utf8");
+  expect(CLI_HELP).toContain("invitation link to accept in the browser");
+  expect(CLI_HELP).toContain("Accept as the authenticated recipient");
+  expect(reference).toContain("signed invitation link");
+  expect(reference).toContain("Opening the link does not accept");
+  expect(reference).toContain("invitations accept INVITATION_ID");
+  expect(reference).toContain("never ask recipients to paste the email link into chat");
+});
+
 it("documents explicit 10-bit requests, matching comparison depth, and verification failures", async () => {
   const [commands, errors, skill] = await Promise.all([
     commandReferences(),

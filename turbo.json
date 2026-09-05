@@ -10,6 +10,10 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "@densio/website#build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", "public/sitemap*.xml", "public/robots.txt"]
+    },
     "@densio/api#build": {
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/skill-bundle/**"],
       "dependsOn": ["^build"],

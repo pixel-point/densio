@@ -13,6 +13,7 @@ RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
+COPY packages/emails/package.json packages/emails/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
@@ -20,11 +21,14 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 
 COPY apps/api/src apps/api/src
 COPY apps/api/drizzle apps/api/drizzle
+COPY tsconfig.base.json ./
+COPY packages/emails/tsconfig.json packages/emails/tsconfig.build.json packages/emails/
+COPY packages/emails/src packages/emails/src
 COPY packages/shared/src packages/shared/src
 # Include every on-demand reference alongside the bootstrap entrypoint.
 COPY skill-bundle/ skill-bundle/
 
-RUN pnpm --filter @densio/api build
+RUN pnpm --filter @densio/emails build && pnpm --filter @densio/api build
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 
@@ -34,6 +38,7 @@ WORKDIR /app
 
 COPY --from=build --chown=node:node /workspace/apps/api/dist/ ./dist/
 COPY --from=build --chown=node:node /workspace/apps/api/drizzle/ ./drizzle/
+COPY --chown=node:node packages/emails/THIRD_PARTY_NOTICES.md ./licenses/react-email-matte.md
 
 RUN mkdir -p /app/data && chown node:node /app/data
 

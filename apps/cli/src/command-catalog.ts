@@ -173,7 +173,7 @@ const BASE_COMMAND_CATALOG = {
   },
   "orgs invitations create": {
     usage: "EMAIL",
-    description: "Invite a verified-email recipient; requires --role.",
+    description: "Email an invitation link to accept in the browser; requires --role.",
     options: [role],
   },
   "orgs invitations revoke": {
@@ -188,7 +188,8 @@ const BASE_COMMAND_CATALOG = {
   },
   "invitations accept": {
     usage: "INVITATION_ID",
-    description: "Join an organization without changing local or server defaults.",
+    description:
+      "Accept as the authenticated recipient; email links also support browser acceptance. Defaults stay unchanged.",
     options: [],
   },
   "orgs audit-events": {

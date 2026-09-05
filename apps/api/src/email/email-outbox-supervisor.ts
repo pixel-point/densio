@@ -2,6 +2,7 @@ import { Clock, Deferred, Effect, Fiber, Ref, type Scope } from "effect";
 
 import type { Database } from "../database/database.ts";
 import type { MagicLinkOpener } from "../auth/magic-link-secret.ts";
+import type { OrganizationInvitationLinks } from "../organizations/organization-invitation-link.ts";
 import {
   deliverNextEmail,
   type EmailOutboxWorkerConfig,
@@ -21,12 +22,19 @@ export const startEmailOutboxSupervisor = Effect.fn("EmailOutboxSupervisor.start
   sender: EmailSender,
   openMagicLink: MagicLinkOpener,
   config: EmailOutboxSupervisorConfig,
+  invitationLinks: OrganizationInvitationLinks,
 ): Effect.fn.Return<EmailOutboxSupervisor, never, Scope.Scope> {
   const stopping = yield* Ref.make(false);
   const stopSignal = yield* Deferred.make<void>();
-  const fiber = yield* runLoop(database, sender, openMagicLink, config, stopping, stopSignal).pipe(
-    Effect.forkScoped({ startImmediately: true }),
-  );
+  const fiber = yield* runLoop(
+    database,
+    sender,
+    openMagicLink,
+    config,
+    invitationLinks,
+    stopping,
+    stopSignal,
+  ).pipe(Effect.forkScoped({ startImmediately: true }));
   const stop = Effect.fn("EmailOutboxSupervisor.stop")(function* () {
     yield* Ref.set(stopping, true);
     yield* Deferred.succeed(stopSignal, undefined);
@@ -40,12 +48,20 @@ const runLoop = Effect.fn("EmailOutboxSupervisor.runLoop")(function* (
   sender: EmailSender,
   openMagicLink: MagicLinkOpener,
   config: EmailOutboxSupervisorConfig,
+  invitationLinks: OrganizationInvitationLinks,
   stopping: Ref.Ref<boolean>,
   stopSignal: Deferred.Deferred<void>,
 ) {
   while (!(yield* Ref.get(stopping))) {
     const now = yield* Clock.currentTimeMillis;
-    const outcome = yield* deliverNextEmail({ config, database, now, openMagicLink, sender }).pipe(
+    const outcome = yield* deliverNextEmail({
+      config,
+      database,
+      now,
+      openMagicLink,
+      invitationLinks,
+      sender,
+    }).pipe(
       Effect.catch(() =>
         Effect.logError("Email outbox iteration failed.").pipe(
           Effect.as({ kind: "idle" as const }),

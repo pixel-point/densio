@@ -1,3 +1,4 @@
+import { makeOrganizationInvitationLinks } from "../src/organizations/organization-invitation-link.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +19,10 @@ import {
 
 const NOW = 1_800_000_000_000;
 const OUTBOX_ENCRYPTION_KEY = "0123456789abcdef".repeat(4);
+const invitationLinks = makeOrganizationInvitationLinks(
+  OUTBOX_ENCRYPTION_KEY,
+  "https://media.example",
+);
 const openMagicLink = makeMagicLinkOpener(OUTBOX_ENCRYPTION_KEY);
 const sealMagicLink = makeMagicLinkSealer(OUTBOX_ENCRYPTION_KEY);
 const databases: Array<Database> = [];
@@ -60,6 +65,7 @@ it("renders and sends a magic link before marking the email sent", async () => {
       database,
       now: NOW,
       openMagicLink,
+      invitationLinks,
       sender,
     }),
   );
@@ -68,16 +74,51 @@ it("renders and sends a magic link before marking the email sent", async () => {
   expect(deliveries).toEqual([
     expect.objectContaining({
       from: "Media API <login@example.com>",
-      subject: "Confirm your Densio CLI login",
+      subject: "Confirm your sign-in to Densio",
       to: "agent@example.com",
     }),
   ]);
   expect(deliveries[0]?.html).toContain("https://media.example/v1/auth/confirm?token=secret");
+  expect(deliveries[0]?.html).toContain("Access your account");
+  expect(deliveries[0]?.html).toContain("<h1");
+  expect(deliveries[0]?.text).toContain("If the button above does not work");
   expect(readEmail(database)).toMatchObject({
     payloadJson: null,
     lastError: null,
     sentAt: NOW,
     status: "sent",
+  });
+});
+
+it.each(["expired", "confirmed"])("does not deliver a %s sign-in request", async (state) => {
+  const database = await createTestDatabase();
+  seedEmail(database);
+  database.db
+    .update(authChallenges)
+    .set(state === "expired" ? { expiresAt: NOW } : { status: "confirmed" })
+    .run();
+  const deliveries: Parameters<EmailSender["send"]>[0][] = [];
+  const outcome = await Effect.runPromise(
+    deliverNextEmail({
+      config: workerConfig,
+      database,
+      now: NOW,
+      openMagicLink,
+      invitationLinks,
+      sender: {
+        send: (email) => {
+          deliveries.push(email);
+          return Effect.void;
+        },
+      },
+    }),
+  );
+  expect(outcome).toEqual({ kind: "failed" });
+  expect(deliveries).toHaveLength(0);
+  expect(readEmail(database)).toMatchObject({
+    payloadJson: null,
+    lastError: "notification-no-longer-valid",
+    status: "failed",
   });
 });
 
@@ -90,7 +131,14 @@ it("schedules bounded retries without persisting provider error details", async 
   };
 
   const outcome = await Effect.runPromise(
-    deliverNextEmail({ config: workerConfig, database, now: NOW, openMagicLink, sender }),
+    deliverNextEmail({
+      config: workerConfig,
+      database,
+      now: NOW,
+      openMagicLink,
+      invitationLinks,
+      sender,
+    }),
   );
 
   expect(outcome).toEqual({ kind: "retry-scheduled", retryAt: NOW + 1_000 });
@@ -115,7 +163,14 @@ it("permanently fails and scrubs a corrupt payload without calling the sender", 
   };
 
   const outcome = await Effect.runPromise(
-    deliverNextEmail({ config: workerConfig, database, now: NOW, openMagicLink, sender }),
+    deliverNextEmail({
+      config: workerConfig,
+      database,
+      now: NOW,
+      openMagicLink,
+      invitationLinks,
+      sender,
+    }),
   );
 
   expect(outcome).toEqual({ kind: "failed" });

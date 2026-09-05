@@ -401,6 +401,7 @@ export type {
 } from "./organization-contracts.ts";
 export {
   OrganizationInvitationCreateRequestSchema,
+  OrganizationInvitationLinkRequestSchema,
   OrganizationInvitationStateSchema,
   OrganizationInvitationSchema,
   OrganizationInvitationListQuerySchema,

@@ -13,6 +13,9 @@ export const OrganizationInvitationCreateRequestSchema = Schema.Struct({
 });
 export type OrganizationInvitationCreateRequest =
   typeof OrganizationInvitationCreateRequestSchema.Type;
+export const OrganizationInvitationLinkRequestSchema = Schema.Struct({
+  token: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+});
 export const OrganizationInvitationStateSchema = Schema.Literals([
   "pending",
   "accepted",

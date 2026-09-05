@@ -64,7 +64,7 @@ it("documents every registered API operation", async () => {
   const document = (await response.json()) as OpenAPIV3_1.Document;
 
   expect(documentedOperations(document)).toEqual(runtimeApiOperations(app));
-  expect(documentedOperations(document)).toHaveLength(52);
+  expect(documentedOperations(document)).toHaveLength(54);
 });
 
 it("documents the exact response status set for every operation", async () => {
@@ -132,6 +132,18 @@ it("describes structured, authenticated, binary, and signed requests", async () 
   expect(paths["/v1/auth/confirm"]?.get?.parameters).toEqual([
     expect.objectContaining({ in: "query", name: "token", required: true }),
   ]);
+  expect(paths["/v1/organization-invitations/confirm"]?.get).toMatchObject({
+    parameters: [expect.objectContaining({ in: "query", name: "token", required: true })],
+    security: [],
+  });
+  expect(paths["/v1/organization-invitations/confirm"]?.post).toMatchObject({
+    requestBody: {
+      required: true,
+      content: { "application/x-www-form-urlencoded": { schema: { required: ["token"] } } },
+    },
+    responses: { "200": { content: { "text/html": { schema: { type: "string" } } } } },
+    security: [],
+  });
   expect(paths["/v1/billing/webhook"]?.post?.parameters).toEqual([
     expect.objectContaining({ in: "header", name: "stripe-signature", required: true }),
   ]);
@@ -520,6 +532,7 @@ const expectedOperationStatuses = {
   "GET /v1/auth/status": ["200", "401", "500"],
   "GET /v1/capabilities": ["200", "500"],
   "GET /v1/organization-invitations": ["200", "400", "401", "500"],
+  "GET /v1/organization-invitations/confirm": ["200", "400", "404", "409", "410", "500"],
   "GET /v1/organizations": ["200", "400", "401", "500"],
   "GET /v1/organizations/{organizationId}": ["200", "401", "404", "500"],
   "GET /v1/organizations/{organizationId}/artifacts/{artifactId}": [
@@ -641,6 +654,7 @@ const expectedOperationStatuses = {
   "POST /v1/auth/poll": ["200", "400", "409", "410", "413", "500"],
   "POST /v1/auth/refresh": ["200", "400", "401", "413", "500"],
   "POST /v1/billing/webhook": ["200", "400", "500", "502", "503"],
+  "POST /v1/organization-invitations/confirm": ["200", "400", "404", "409", "410", "413", "500"],
   "POST /v1/organization-invitations/{invitationId}/accept": [
     "200",
     "401",

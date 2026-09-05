@@ -42,6 +42,8 @@ import { makeSourceStoragePaths } from "./storage/source-workspace.ts";
 import { makeOrganizationService } from "./organizations/organization-service.ts";
 import { makeOrganizationDeletionService } from "./organizations/organization-deletion-service.ts";
 import { makeOrganizationInvitationService } from "./organizations/organization-invitation-service.ts";
+import { makeOrganizationInvitationLinks } from "./organizations/organization-invitation-link.ts";
+import { makeOrganizationInvitationLinkService } from "./organizations/organization-invitation-link-service.ts";
 
 export interface ApplicationProviders {
   readonly emailSender: EmailSender;
@@ -111,6 +113,7 @@ const startRuntime = Effect.fn("Application.start")(function* (
     providers.emailSender,
     makeMagicLinkOpener(config.authOutboxEncryptionKey),
     config.email,
+    makeOrganizationInvitationLinks(config.authOutboxEncryptionKey, config.publicBaseUrl),
   );
   const artifacts = yield* startArtifactCleanupSupervisor(database, {
     intervalMs: config.artifactCleanupIntervalMs,
@@ -403,6 +406,10 @@ const organizationRouteDependencies = (
   authService,
   organizationService: makeOrganizationService(database),
   invitationService: makeOrganizationInvitationService(database),
+  invitationLinkService: makeOrganizationInvitationLinkService(
+    database,
+    makeOrganizationInvitationLinks(config.authOutboxEncryptionKey, config.publicBaseUrl),
+  ),
   maxInvitationsPerHour: config.organizationMaxInvitationsPerHour,
   maxCreatesPerDay: config.organizationMaxCreatesPerDay,
   publicBaseUrl: config.publicBaseUrl,
