@@ -1,6 +1,6 @@
 # Email deployment verification — 2026-09-05
 
-## Spark dark-mode investigation — unresolved
+## Spark dark-mode fix — verified
 
 The user's Spark on Mac screenshot of the 22:12 message confirms that deployment
 `ab8da66` did **not** resolve the reported appearance. That message was sent after
@@ -8,17 +8,20 @@ the deployment. Its white background and dark text both appear transformed into
 a dark background and light text. This points to client color adjustment; it is
 not evidence that the white background was absent from the delivered HTML.
 
-A second candidate adds `color-scheme: only light` to the document and canvas,
+Fix `3f0c495f5b23c4239132f43629314a76a56c86dd` adds `color-scheme: only light` to the document and canvas,
 the legacy supported-color-schemes declaration, and scoped dark-mode rules for
 white table backgrounds, dark text, blue links, and contrasting action buttons.
 The [CSS Color Adjustment specification](https://drafts.csswg.org/css-color-adjust-1/#color-scheme-prop)
-defines `only` as the opt-out from automatic color-scheme overrides. Spark's
-actual handling still requires verification in the user's app.
+defines `only` as the opt-out from automatic color-scheme overrides. The user
+confirmed that the new preview works in Spark on Mac and authorized deployment.
 
 - Three new regression cases failed before the candidate and passed afterward. All 1,158 tests, workspace typechecks, formatting, scoped lint, and the build passed under Node 22.18.0 / Corepack pnpm 11.7.0. Full `pnpm check` still fails on the 12 existing website lint errors below.
 - With the browser reporting `prefers-color-scheme: dark`, all three candidate templates computed a white canvas and `#2C2B31` heading. The sign-in button and its nested text computed black background and white text, including WebKit text-fill color. Browser rendering is not a substitute for Spark validation.
 - Sent **Densio — Spark white background preview** to `lnikell+1@gmail.com` at **22:35 Paris / 20:35 UTC**. Resend accepted message `b87407ca-4de2-4f8e-87dd-270a01525595`; it appeared in Gmail. The preview contains explanatory test copy and a public website link, with no login token or account operation.
-- The candidate is not deployed. Production remains `ab8da66` while awaiting the user's Spark result. The earlier background issue must remain open until that result is known.
+- The user verified the 22:35 preview in Spark on Mac: "yep this fix worked". The second candidate resolves the reported background issue in the user's client.
+- Deployed that exact verified source revision with `prime-server/bin/deploy densio 3f0c495f5b23c4239132f43629314a76a56c86dd`. The production image built successfully; the replacement became healthy before the old container stopped. `densio-api-17` is healthy with zero restarts, and public `/ready` returns HTTP 200.
+- Confirmed the deployed API bundle contains the light-only declaration, dark-mode rules, canvas selectors, and button contrast rules. Database integrity remains `ok`; no migration or reset was performed. All 15 unrelated containers retained their IDs, and the FFmpeg mount remains read-only.
+- Deployment evidence is `/private/tmp/densio-email-deployment-20260905/dark-deploy.log`, `dark-ready.json`, and `dark-containers-before.txt` / `dark-containers-after.txt`.
 - Candidate validation logs are `/private/tmp/densio-email-deployment-20260905/dark-*.log`; the inert preview is `email-background-previews/spark-light-preview.html` in the same directory.
 
 ## First white-background attempt — insufficient in Spark
