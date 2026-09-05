@@ -1,4 +1,5 @@
 import type { StorageCredentials, StorageLocation } from "@densio/shared";
+import type { IncomingMessage } from "node:http";
 import type { storageConnections } from "../../database/video-storage-schema.ts";
 import type { ObjectStore } from "../objects/object-store.ts";
 import { makeS3ObjectStore } from "../objects/s3-object-store.ts";
@@ -63,14 +64,34 @@ export const verifyConnectionAccess = async (
 ) => {
   if (config.verifyAccess) return config.verifyAccess(url, publicRead, bytes, signal);
   const response = await readPublicObject(url, "GET", "bytes=0-0", config.allowedOrigins, signal);
-  const valid = publicRead
-    ? response.statusCode === 206 && response.headers["content-range"] === `bytes 0-0/${bytes}`
-    : response.statusCode === 403 || response.statusCode === 404;
-  response.destroy();
+  const valid = await Promise.resolve()
+    .then(() =>
+      publicRead
+        ? response.statusCode === 206 && response.headers["content-range"] === `bytes 0-0/${bytes}`
+        : deniesAnonymousRead(response),
+    )
+    .finally(() => response.destroy());
   if (!valid)
     throw storageFailure(
       publicRead ? "STORAGE_PUBLIC_DELIVERY_REQUIRED" : "STORAGE_PRIVATE_STAGING_REQUIRED",
     );
+};
+const deniesAnonymousRead = async (response: IncomingMessage) => {
+  if (response.statusCode === 403 || response.statusCode === 404) return true;
+  if (response.statusCode !== 400) return false;
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of response) {
+    bytes += chunk.length;
+    if (bytes > 1024) return false;
+    chunks.push(Buffer.from(chunk));
+  }
+  // R2 reports missing authorization as this S3 error with HTTP 400.
+  const body = Buffer.concat(chunks).toString("utf8");
+  return (
+    body.includes("<Code>InvalidArgument</Code>") &&
+    body.includes("<Message>Authorization</Message>")
+  );
 };
 export const anonymousStorageUrl = (location: StorageLocation, key: string) => {
   const endpoint = new URL(location.endpoint);

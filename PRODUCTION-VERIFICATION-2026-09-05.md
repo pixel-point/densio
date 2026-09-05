@@ -36,7 +36,7 @@ an object version returned by R2. R2 returns `x-amz-version-id` identities but d
 not implement S3 version-addressed operations. The fix disables version addressing
 for R2 endpoints on writes, reads, copies, and deletion, including persisted retry
 state. Ordinary S3 version handling remains enabled. Local HTTP regression testing
-failed before the fix and passed afterward. Full `pnpm format`, `pnpm check`, and `pnpm build` passed; redeployment pending. The fixed live adapter completed multipart create/upload/complete, HEAD, exact readback and deletion.
+failed before the fix and passed afterward. Full `pnpm format`, `pnpm check`, and `pnpm build` passed; deployed as `9dc1452`. Existing video/HLS transfers recovered without re-encoding. The fixed live adapter completed multipart create/upload/complete, HEAD, exact readback and deletion.
 
 ## Verification ledger
 
@@ -94,3 +94,22 @@ must be completed before this release is considered verified.
 - Mac `/tmp` is a symlink. The CLI correctly rejected artifact writes through it (`ARTIFACT_OUTPUT_UNSAFE`). Resuming the same completed jobs into canonical `/private/tmp` paths succeeded without another encode or charge.
 - Hosted Stripe checkout displayed Sandbox and used the authorized 4242 test card. Basic status: active Stripe entitlement, 750 monthly credits, 0.05 used, 0 reserved after initial compression.
 - Before invitation, alias +2 received `ORGANIZATION_NOT_FOUND`; after acceptance it could read the shared source. Member portal creation returned `ORGANIZATION_OWNER_REQUIRED` (403).
+
+### PROD-008: R2 anonymous authorization response
+
+Customer-storage validation rejected the private R2 staging bucket because R2
+returns HTTP 400 with `InvalidArgument` / `Authorization` for unsigned requests.
+Validation previously accepted only 403/404. Added bounded recognition of that
+specific S3 authorization error; unrelated 400 errors, oversized bodies, 200/206,
+and server errors still fail. Local HTTP test failed before the fix and passed
+afterward. Full formatting, typecheck, lint, 1,123 tests and build passed; deployment pending.
+
+### Additional verified behavior
+
+- Pro upgrade confirmed by API: 5,000 monthly credits, 0.30 used, zero reserved. Hosted portal downgrade to Basic completed; API readback pending.
+- Billing contact changed to alias +2 independently of owner login.
+- Removing alias +2 invalidated its artifact grant (404). Replaying its accepted invitation returned 409 and did not restore membership.
+- Legacy Stripe subscription was verified as test mode, matched the original email/customer, and canceled without invoice or proration. No other subscription was changed by this cleanup.
+- HLS is ready at its public URL, with `application/vnd.apple.mpegurl`, CORS `*`, HEVC Main10 rendition and shared AAC track.
+- Private stored-video download passed using fresh CLI grants.
+- Python urllib requests to the public hostname receive Cloudflare browser-integrity error 1010. Node/CLI requests and the server delivery verifier succeed; browser verification remains pending. This is recorded separately from R2 storage failures.
