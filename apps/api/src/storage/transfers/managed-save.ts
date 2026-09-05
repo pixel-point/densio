@@ -10,17 +10,21 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { storageObjects, storageTransfers, videos } from "../../database/video-storage-schema.ts";
 import { storageUsage } from "../../videos/storage-policy.ts";
-import { publicObjectUrl } from "../../videos/video-catalog.ts";
 import { storageFailure } from "../storage-errors.ts";
 import { requireActiveConnection } from "../connections/connection-catalog.ts";
 import { prepareObject, transferObject, type TransferSource } from "./object-transfer.ts";
 import type { TransferContext } from "./transfer-context.ts";
+import {
+  verifyTransferredPublicFiles,
+  type TransferredStorageFile,
+} from "./public-file-delivery.ts";
 
 export const deliverStoredVideo = async (context: TransferContext) => {
   const video = reserveVideoCapacity(context);
   const variants = videoStorageFiles(context.database.db, video.id);
   const destination = await context.config.resolveTarget(video.targetId, video.visibility);
   const staged = await stageManagedVariants(context, video, variants);
+  const transferred: TransferredStorageFile[] = [];
   for (const variant of variants) {
     reserveVideoCapacity(context);
     const existing = context.database.db
@@ -50,24 +54,14 @@ export const deliverStoredVideo = async (context: TransferContext) => {
           ? { path: "", expiresAt: 0 }
           : await variantInput(context, variant)),
     );
-    if (video.visibility === "public") {
-      const url = publicObjectUrl(video.publicOrigin ?? "", key);
-      await context.config.verifyPublic(
-        url,
-        variant.bytes,
-        variant.mediaType,
-        context.signal,
-        variant.kind === "hls",
-      );
-      context.database.db
-        .update(storageObjects)
-        .set({ publicUrl: url })
-        .where(eq(storageObjects.id, object.id))
-        .run();
-    }
-    context.assertActive();
-    activateStorageFile(context.database.db, variant, verified.id);
+    transferred.push({ file: variant, objectId: verified.id });
   }
+  if (video.visibility === "public")
+    await verifyTransferredPublicFiles(context, video, transferred);
+  context.assertActive();
+  transferred.forEach(({ file, objectId }) =>
+    activateStorageFile(context.database.db, file, objectId),
+  );
   await cleanTransferStaging(context);
   reserveVideoCapacity(context);
   context.assertActive();

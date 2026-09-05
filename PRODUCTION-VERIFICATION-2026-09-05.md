@@ -113,3 +113,20 @@ afterward. Full formatting, typecheck, lint, 1,123 tests and build passed; deplo
 - HLS is ready at its public URL, with `application/vnd.apple.mpegurl`, CORS `*`, HEVC Main10 rendition and shared AAC track.
 - Private stored-video download passed using fresh CLI grants.
 - Python urllib requests to the public hostname receive Cloudflare browser-integrity error 1010. Node/CLI requests and the server delivery verifier succeed; browser verification remains pending. This is recorded separately from R2 storage failures.
+
+### PROD-009: Cached 404 after public restoration
+
+After public → private → public, R2 contained the correct bytes and the server's
+verification passed, but another Cloudflare location still returned a cached 404.
+An exact-URL purge restored correct bytes. Added batched managed URL purge after
+all output writes and before public verification/readiness, for both initial saves
+and visibility changes. Regression tests simulate negative caching and a failed
+purge, then recover the same transfer. Customer CDN configuration remains customer
+owned. Full formatting, typecheck, lint, 1,125 tests and build passed; deployment pending.
+
+### PROD-010: Cloudflare browser TTL overrides media policy
+
+Live public responses advertise `max-age=14400`, overriding Densio's stored
+`max-age=60`. This violates the application's bounded public-withdrawal policy.
+A Cloudflare rule must respect origin browser cache headers for media.densio.sh.
+Configuration fix and readback pending.

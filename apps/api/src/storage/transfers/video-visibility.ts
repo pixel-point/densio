@@ -12,11 +12,14 @@ import { StorageVisibilitySchema } from "@densio/shared";
 import { and, eq, ne } from "drizzle-orm";
 import { Schema } from "effect";
 import { storageObjects, storageTransfers, videos } from "../../database/video-storage-schema.ts";
-import { publicObjectUrl } from "../../videos/video-catalog.ts";
 import { storageFailure } from "../storage-errors.ts";
 import { prepareObject, transferObject } from "./object-transfer.ts";
 import { removeStoredObject } from "./object-deletion.ts";
 import type { TransferContext } from "./transfer-context.ts";
+import {
+  verifyTransferredPublicFiles,
+  type TransferredStorageFile,
+} from "./public-file-delivery.ts";
 
 const VisibilityIntent = Schema.Struct({ visibility: StorageVisibilitySchema });
 export const changeStoredVisibility = async (context: TransferContext) => {
@@ -31,7 +34,7 @@ export const changeStoredVisibility = async (context: TransferContext) => {
   if (!video) throw storageFailure("VIDEO_NOT_FOUND");
   const target = await context.config.resolveTarget(video.targetId, intent.visibility);
   const variants = videoStorageFiles(context.database.db, video.id);
-  const replacements: { file: StorageFile; objectId: string }[] = [];
+  const replacements: TransferredStorageFile[] = [];
   for (const variant of variants) {
     const source = context.database.db
       .select()
@@ -61,25 +64,12 @@ export const changeStoredVisibility = async (context: TransferContext) => {
       target: sourceTarget,
       object: source,
     });
-    if (intent.visibility === "public") {
-      const url = publicObjectUrl(video.publicOrigin ?? "", key);
-      await context.config.verifyPublic(
-        url,
-        variant.bytes,
-        variant.mediaType,
-        context.signal,
-        variant.kind === "hls",
-      );
-      context.database.db
-        .update(storageObjects)
-        .set({ publicUrl: url })
-        .where(eq(storageObjects.id, object.id))
-        .run();
-    }
     context.assertActive();
     rebindObjectInputs(context.database.db, source, verified);
     replacements.push({ file: variant, objectId: verified.id });
   }
+  if (intent.visibility === "public")
+    await verifyTransferredPublicFiles(context, video, replacements);
   const obsolete = context.database.db
     .select()
     .from(storageObjects)
