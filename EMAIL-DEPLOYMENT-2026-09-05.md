@@ -1,11 +1,35 @@
 # Email deployment verification — 2026-09-05
 
-## Result
+## White-background follow-up
+
+After the initial Gmail verification, the user reported a gray background in
+Spark. The initial verification did not establish Spark compatibility.
+
+Deployed fix `ab8da6643f9d35a6a7d09d810381c4d6365e8640`. All three templates now use
+a shared `EmailBody` with an explicit `#FFFFFF` background on the full-width
+presentation table and its cell, plus the table's legacy `bgcolor` fallback.
+Previously, React Email's generated outer table was transparent: the body and
+its cell carried white CSS, but the table itself had neither background CSS nor
+a `bgcolor` attribute. This fixes that markup gap; it does not prove which Spark
+processing or appearance setting caused the reported gray background.
+The approach follows [Litmus's background-color testing](https://www.litmus.com/blog/background-colors-html-email).
+
+- Added three regression cases covering sign-in, invitation, and storage messages. All three failed on the missing table background before the fix, then passed.
+- Ran `pnpm format`, `pnpm check`, scoped lint, `pnpm format:check`, and `pnpm build` under Node 22.18.0 / Corepack pnpm 11.7.0 in isolated validation containers. All workspace typechecks and 1,155 tests passed. Build, formatting, and scoped lint passed. Full `pnpm check` still exits 1 on the same 12 pre-existing website lint errors documented below.
+- Rendered the compiled email package with inert data. All three messages retained a full-width white canvas inside a gray host after stripping the document body and head, and again after also stripping every inline style. The latter verifies the HTML background fallback. These are controlled browser checks, not Spark emulation.
+- The production Docker build and rollout succeeded. `densio-api-16` runs the exact fix revision, healthy with zero restarts; `/ready` returns HTTP 200. Densio database integrity is `ok`; all 15 unrelated containers retained their IDs. No data migration or reset was needed.
+- A fresh sign-in email to `lnikell+1@gmail.com` reached `sent` on its first attempt with no last error. Gmail's rendered DOM confirmed the new outer table has `bgcolor="#FFFFFF"`, a computed white background, and `width="100%"`; earlier messages in the same thread retain their transparent outer tables.
+- Clicking the new Continue button showed **Login confirmed** and authenticated the existing account with its original default organization. Verification used the previously downloaded published CLI 0.2.0 bundle directly after the local `npx` wrapper reported `densio: command not found`. The disposable session was revoked and its credential file removed.
+- Spark is not installed on this Mac, so visual confirmation in the user's Spark version and appearance mode remains pending. Previously delivered messages retain their original HTML; check the new message to evaluate this fix.
+- Follow-up logs are `/private/tmp/densio-email-deployment-20260905/background-*.log`; inert previews are in the `email-background-previews` subdirectory. No secrets or signed links are included here.
+
+## Initial deployment result
 
 Pulled `main` to `3c39ebb42649760b9802cfc3e0d3bdf3b1b079c3` and deployed that exact
 revision using `/Users/alex/Projects/prime-server/bin/deploy densio <SHA>`.
-The redesigned emails and browser invitation acceptance work in production.
-No application fixes were needed during this verification.
+The redesigned emails rendered in Gmail and browser invitation acceptance worked
+in production. The Spark background issue was reported afterward and is addressed
+in the follow-up above.
 
 Production runs `densio-api-15`, image
 `densio-api:3c39ebb42649760b9802cfc3e0d3bdf3b1b079c3`. Its final state was running,
