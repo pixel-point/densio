@@ -12,6 +12,7 @@ export const ActionButton = ({
   readonly variant?: "outline" | "solid";
 }) => (
   <Button
+    className={`email-button-${variant}`}
     href={href}
     style={{
       backgroundColor: variant === "solid" ? "#000000" : emailTheme.colors.background,

@@ -5,7 +5,7 @@ import {
   renderStorageRetentionEmail,
 } from "../src/index.ts";
 
-it.each([
+const emailCases = [
   {
     name: "sign-in confirmation",
     render: () =>
@@ -27,17 +27,35 @@ it.each([
         deadline: 1_800_000_000_000,
       }),
   },
-])("gives $name a full-width white background without body styles", async ({ render }) => {
-  const { html } = await render();
-  const bodyContent = html.match(/<body\b[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? "";
-  const outerTable = bodyContent.match(/<table\b[^>]*>/i)?.[0] ?? "";
-  const outerCell = bodyContent.match(/<td\b[^>]*>/i)?.[0] ?? "";
+];
 
-  expect(outerTable).toContain('width="100%"');
-  expect(outerTable).not.toContain("max-width");
-  expect(outerTable).toMatch(/background-color:\s*#ffffff/i);
-  expect(outerTable).toMatch(/bgcolor="#ffffff"/i);
-  expect(outerCell).toMatch(/background-color:\s*#ffffff/i);
+it.each(emailCases)(
+  "gives $name a full-width white background without body styles",
+  async ({ render }) => {
+    const { html } = await render();
+    const bodyContent = html.match(/<body\b[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? "";
+    const outerTable = bodyContent.match(/<table\b[^>]*>/i)?.[0] ?? "";
+    const outerCell = bodyContent.match(/<td\b[^>]*>/i)?.[0] ?? "";
+
+    expect(outerTable).toContain('width="100%"');
+    expect(outerTable).not.toContain("max-width");
+    expect(outerTable).toMatch(/background-color:\s*#ffffff/i);
+    expect(outerTable).toMatch(/bgcolor="#ffffff"/i);
+    expect(outerCell).toMatch(/background-color:\s*#ffffff/i);
+  },
+);
+
+it.each(emailCases)("keeps $name's light palette explicit in dark mode", async ({ render }) => {
+  const { html } = await render();
+
+  expect(html).toContain('<meta name="color-scheme" content="only light"');
+  expect(html).toContain('<meta name="supported-color-schemes" content="light"');
+  expect(html.match(/<table\b[^>]*>/i)?.[0]).toContain("color-scheme:only light");
+  expect(html).toContain("@media (prefers-color-scheme: dark)");
+  expect(html).toMatch(/\.email-canvas[^{}]*\{[^}]*background-color:\s*#ffffff\s*!important/i);
+  expect(html).toMatch(/\.email-canvas p[^{}]*\{[^}]*color:\s*#2c2b31\s*!important/i);
+  expect(html).toMatch(/\.email-button-solid[^{}]*\{[^}]*color:\s*#ffffff\s*!important/i);
+  expect(html).toMatch(/\.email-canvas a[^{}]*\{[^}]*color:\s*#2d69ec\s*!important/i);
 });
 
 it("renders sign-in HTML and plain text with the exact action URL and company footer", async () => {

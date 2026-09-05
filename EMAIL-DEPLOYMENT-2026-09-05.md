@@ -1,6 +1,27 @@
 # Email deployment verification — 2026-09-05
 
-## White-background follow-up
+## Spark dark-mode investigation — unresolved
+
+The user's Spark on Mac screenshot of the 22:12 message confirms that deployment
+`ab8da66` did **not** resolve the reported appearance. That message was sent after
+the deployment. Its white background and dark text both appear transformed into
+a dark background and light text. This points to client color adjustment; it is
+not evidence that the white background was absent from the delivered HTML.
+
+A second candidate adds `color-scheme: only light` to the document and canvas,
+the legacy supported-color-schemes declaration, and scoped dark-mode rules for
+white table backgrounds, dark text, blue links, and contrasting action buttons.
+The [CSS Color Adjustment specification](https://drafts.csswg.org/css-color-adjust-1/#color-scheme-prop)
+defines `only` as the opt-out from automatic color-scheme overrides. Spark's
+actual handling still requires verification in the user's app.
+
+- Three new regression cases failed before the candidate and passed afterward. All 1,158 tests, workspace typechecks, formatting, scoped lint, and the build passed under Node 22.18.0 / Corepack pnpm 11.7.0. Full `pnpm check` still fails on the 12 existing website lint errors below.
+- With the browser reporting `prefers-color-scheme: dark`, all three candidate templates computed a white canvas and `#2C2B31` heading. The sign-in button and its nested text computed black background and white text, including WebKit text-fill color. Browser rendering is not a substitute for Spark validation.
+- Sent **Densio — Spark white background preview** to `lnikell+1@gmail.com` at **22:35 Paris / 20:35 UTC**. Resend accepted message `b87407ca-4de2-4f8e-87dd-270a01525595`; it appeared in Gmail. The preview contains explanatory test copy and a public website link, with no login token or account operation.
+- The candidate is not deployed. Production remains `ab8da66` while awaiting the user's Spark result. The earlier background issue must remain open until that result is known.
+- Candidate validation logs are `/private/tmp/densio-email-deployment-20260905/dark-*.log`; the inert preview is `email-background-previews/spark-light-preview.html` in the same directory.
+
+## First white-background attempt — insufficient in Spark
 
 After the initial Gmail verification, the user reported a gray background in
 Spark. The initial verification did not establish Spark compatibility.
@@ -20,7 +41,7 @@ The approach follows [Litmus's background-color testing](https://www.litmus.com/
 - The production Docker build and rollout succeeded. `densio-api-16` runs the exact fix revision, healthy with zero restarts; `/ready` returns HTTP 200. Densio database integrity is `ok`; all 15 unrelated containers retained their IDs. No data migration or reset was needed.
 - A fresh sign-in email to `lnikell+1@gmail.com` reached `sent` on its first attempt with no last error. Gmail's rendered DOM confirmed the new outer table has `bgcolor="#FFFFFF"`, a computed white background, and `width="100%"`; earlier messages in the same thread retain their transparent outer tables.
 - Clicking the new Continue button showed **Login confirmed** and authenticated the existing account with its original default organization. Verification used the previously downloaded published CLI 0.2.0 bundle directly after the local `npx` wrapper reported `densio: command not found`. The disposable session was revoked and its credential file removed.
-- Spark is not installed on this Mac, so visual confirmation in the user's Spark version and appearance mode remains pending. Previously delivered messages retain their original HTML; check the new message to evaluate this fix.
+- Spark is not available through this environment's Mac app controls. The user's later screenshot confirmed that this attempt remained dark in Spark; see the investigation above.
 - Follow-up logs are `/private/tmp/densio-email-deployment-20260905/background-*.log`; inert previews are in the `email-background-previews` subdirectory. No secrets or signed links are included here.
 
 ## Initial deployment result
@@ -28,8 +49,8 @@ The approach follows [Litmus's background-color testing](https://www.litmus.com/
 Pulled `main` to `3c39ebb42649760b9802cfc3e0d3bdf3b1b079c3` and deployed that exact
 revision using `/Users/alex/Projects/prime-server/bin/deploy densio <SHA>`.
 The redesigned emails rendered in Gmail and browser invitation acceptance worked
-in production. The Spark background issue was reported afterward and is addressed
-in the follow-up above.
+in production. The Spark background issue was reported afterward; subsequent
+attempts and their limitations are recorded above.
 
 Production runs `densio-api-15`, image
 `densio-api:3c39ebb42649760b9802cfc3e0d3bdf3b1b079c3`. Its final state was running,

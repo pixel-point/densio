@@ -12,10 +12,35 @@ interface EmailLayoutProps {
 }
 
 export const EmailLayout = ({ preview, heading, notice, children }: EmailLayoutProps) => (
-  <Html lang="en">
+  <Html lang="en" style={{ colorScheme: "only light" }}>
     <Head>
-      <meta name="color-scheme" content="light" />
+      <meta name="color-scheme" content="only light" />
+      <meta name="supported-color-schemes" content="light" />
       <style>{`
+        :root { color-scheme: only light; supported-color-schemes: light; }
+        @media (prefers-color-scheme: dark) {
+          .email-canvas, .email-canvas table, .email-canvas td {
+            background-color: ${emailTheme.colors.canvas} !important;
+          }
+          .email-canvas p, .email-canvas h1 {
+            color: ${emailTheme.colors.text} !important;
+            -webkit-text-fill-color: ${emailTheme.colors.text} !important;
+          }
+          .email-canvas a {
+            color: #2D69EC !important;
+            -webkit-text-fill-color: #2D69EC !important;
+          }
+          .email-canvas .email-button-solid, .email-canvas .email-button-solid * {
+            background-color: #000000 !important;
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+          }
+          .email-canvas .email-button-outline, .email-canvas .email-button-outline * {
+            background-color: ${emailTheme.colors.background} !important;
+            color: ${emailTheme.colors.text} !important;
+            -webkit-text-fill-color: ${emailTheme.colors.text} !important;
+          }
+        }
         @media (max-width: 600px) {
           .email-container > tbody > tr > td { padding-top: 24px !important; }
           .email-content > tbody > tr > td, .email-footer > tbody > tr > td { padding-left: 24px !important; padding-right: 24px !important; }
