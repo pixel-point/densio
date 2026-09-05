@@ -1,132 +1,130 @@
 # Production release verification — 2026-09-05
 
-## Scope
+## Result
 
-Release all pending Densio changes to `main`, deploy to `api.densio.sh` through
-`/Users/alex/Projects/prime-server`, and verify real account, organization, billing,
-media, and runtime skill workflows. This report records evidence and limitations;
-pending checks are not passes.
+The new Densio API is deployed and the production journeys below passed. Three
+application defects were reproduced, fixed with regression tests, committed,
+pushed to `main`, and redeployed. R2 and Stripe test configuration were corrected.
+The final application commit is `480b1a8`; subsequent report-only commits do not
+change the application.
 
-## Deployment boundaries
+**One release blocker remains:** npm still serves `densio@0.1.4`. The prepared
+`0.2.0` package passed its publishing dry run, but npm authentication and explicit
+publication approval are pending. A real `npx densio@latest --json skill` request
+retrieves the new skill content through the old CLI, which drops `cliVersion` and
+`references` from the response. Therefore the public npm bootstrap is not yet a
+passing journey. Production verification used the built `0.2.0` CLI.
 
-- SSH target: `primeui@91.98.176.194`.
-- Densio Compose project: `densio`; service: `api`.
-- Densio state: `/home/primeui/apps/densio/data`.
-- Existing release: `75d6d07380f855de588a4f67a9b8853ba15d3e4c`.
-- Other applications and Traefik must retain their containers and data.
-- No broad Docker cleanup, shared database modification, or edge deployment.
-- Secrets, database contents, login tokens, and signed URLs are excluded from this report.
+## Scope and boundaries
 
-## Findings
+- Source repository: `/Users/alex/Projects/densio`; all original pending work was committed and pushed to `main`.
+- Deployment setup: `/Users/alex/Projects/prime-server`; its tracked working tree remains unchanged. Runtime secrets are in its protected, ignored Densio environment file.
+- Host: `primeui@91.98.176.194`; Compose project `densio`, service `api`.
+- API: `https://api.densio.sh`; media: `https://media.densio.sh`.
+- Active database/media directory: `/home/primeui/apps/densio/data`.
+- All 25 unrelated application containers retained their original container IDs. No other application database, bucket, or deployment was modified.
+- The independent SiteOS search indexer restarted during this session with the same container ID and an existing restart count above 300. This task did not restart or modify it.
+- No broad Docker cleanup, shared database modification, edge deployment, or live Stripe payment occurred.
+- Secrets, authentication tokens, database contents, and signed URLs are excluded from this report.
 
-| ID       | Finding                                                                                                                                                                       | Action / status                                                                                                                                                                                                                                                              |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PROD-001 | Organization migration refuses a nonempty legacy database. Production has three users, 53 terminal jobs, and one active test subscription. No jobs are running.               | Completed Densio-only cutover with intact protected backup. Previously registered email signed in and completed compression. Legacy test subscription cleanup pending.                                                                                                       |
-| PROD-002 | Local CLI source is version 0.1.3 while npm latest is 0.1.4; local npm publishing authentication is absent.                                                                   | Prepared and pushed CLI 0.2.0 through the release script. Full publishing dry run passed under isolated Node 22.18.0/Corepack pnpm 11.7.0. Awaiting npm authentication and explicit npm publication approval.                                                                |
-| PROD-006 | Stripe test portal allows cancellation but disables plan updates.                                                                                                             | Enabled price changes for the three configured Densio test products, preserved cancellation, and disabled quantity changes. Read-back confirmed the settings. Basic checkout and upgrade to Pro completed in the hosted sandbox portal; Basic webhook entitlement confirmed. |
-| PROD-003 | Production has no `STORAGE_CONFIG_JSON`. Stripe test mode, active monthly USD prices (Basic $9 / Pro $29 / Scale $59), and the enabled Densio webhook were verified directly. | User explicitly authorized Cloudflare R2 provisioning. Configured three dedicated buckets, media.densio.sh, lifecycle and CORS policies, restricted runtime and purge tokens. Basic provider round trip passed. Temporary provisioning token revoked.                        |
-| PROD-005 | The Mac ran out of disk space during temporary Node extraction.                                                                                                               | Removed only this run’s incomplete download. Moved validation to a disposable server container (8 CPUs, 12 GB limit).                                                                                                                                                        |
-| PROD-004 | Default local Node is 25.8.1 and Corepack is absent from PATH.                                                                                                                | Validation runs in an isolated Node 22.18.0 container with Corepack pnpm 11.7.0, no production credentials, a separate filesystem, and the read-only FFmpeg mount.                                                                                                           |
+## Findings and fixes
 
-### PROD-007: R2 object version incompatibility
-
-Real managed saves and HLS hosting reached successful encoding, then retried with
-`STORAGE_PROVIDER_UNAVAILABLE`. A live adapter probe isolated HTTP 501 on HEAD with
-an object version returned by R2. R2 returns `x-amz-version-id` identities but does
-not implement S3 version-addressed operations. The fix disables version addressing
-for R2 endpoints on writes, reads, copies, and deletion, including persisted retry
-state. Ordinary S3 version handling remains enabled. Local HTTP regression testing
-failed before the fix and passed afterward. Full `pnpm format`, `pnpm check`, and `pnpm build` passed; deployed as `9dc1452`. Existing video/HLS transfers recovered without re-encoding. The fixed live adapter completed multipart create/upload/complete, HEAD, exact readback and deletion.
+| ID       | Finding                                                                                                                                                           | Resolution                                                                                                                                                                                                                                                                                    |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PROD-001 | The organization migration intentionally rejects a populated legacy schema. Production contained three users, 53 terminal jobs, and one active test subscription. | Used the explicitly authorized Densio-only database reset with a recoverable backup. The previously registered base email signed in again and compressed a video. The exact legacy test subscription was verified and canceled without invoice or proration.                                  |
+| PROD-002 | Local CLI was 0.1.3, npm latest was 0.1.4, and npm publishing authentication was absent.                                                                          | Released source version 0.2.0 using the required script and pushed it. Full publication dry run passed. Actual npm publication remains blocked on login and approval; the old npm bootstrap omits required metadata.                                                                          |
+| PROD-003 | Production had no managed-storage configuration.                                                                                                                  | Provisioned three dedicated R2 buckets, public domain, CORS, lifecycle policies, restricted runtime credentials, a zone-specific purge token, and the encryption key configuration.                                                                                                           |
+| PROD-004 | Default local Node was 25.8.1; the Homebrew pnpm launcher delegated versioning to npm and failed on `workspace:*`.                                                | Used isolated Node 22.18.0 and Corepack-managed pnpm 11.7.0. The required release script then worked. No application workaround was added.                                                                                                                                                    |
+| PROD-005 | Local disk exhaustion interrupted temporary Node extraction.                                                                                                      | Removed only this run's incomplete download. Initial complete validation ran in a disposable server container with separate files, no production credentials, and constrained resources. Later local checks also passed.                                                                      |
+| PROD-006 | Stripe's test portal disabled plan changes.                                                                                                                       | Enabled price changes for the three existing Densio test products, retained cancellation, and disabled quantity changes. Basic checkout, Pro upgrade, Basic downgrade, cancellation scheduling, and renewal were exercised in the hosted sandbox UI.                                          |
+| PROD-007 | R2 returns `x-amz-version-id` identities but rejects version-addressed S3 requests with HTTP 501. Managed saves stalled after uploading.                          | Commit `9dc1452` suppresses version addressing for R2 writes, reads, copies, and deletion, including persisted retry state. Standard S3 version handling is preserved. Existing video/HLS transfers recovered without another encode or charge.                                               |
+| PROD-008 | Private R2 endpoints return HTTP 400 with `InvalidArgument` / `Authorization` for anonymous requests; validation only accepted 403/404.                           | Commit `e291aa2` recognizes that specific, bounded authorization response. Unrelated errors, oversized bodies, and readable responses still fail. The original connection then validated successfully.                                                                                        |
+| PROD-009 | After public → private → public, another Cloudflare location could retain a cached 404 even though origin bytes and the server-side check were correct.           | Commit `480b1a8` purges managed URLs in batches after writes and before public verification/readiness, for initial publication and visibility changes. Regression tests cover cached misses and failed-purge recovery. The repeated production cycle succeeded automatically.                 |
+| PROD-010 | Cloudflare changed the stored browser TTL from 60 seconds to four hours, invalidating Densio's withdrawal timing.                                                 | Added a rule for exactly `media.densio.sh`: respect origin browser TTL, use origin edge cache headers and bypass when absent, and disable stale serving while revalidating. Live responses now preserve `max-age=60, s-maxage=86400, must-revalidate`; missing-object responses bypass cache. |
+| PROD-011 | Cloudflare Browser Integrity Check rejected ordinary Python downloads with error 1010.                                                                            | Disabled that check only for the public media hostname. Python downloads now return 200 with matching bytes/hash; API and other hostnames retain their settings.                                                                                                                              |
 
 ## Verification ledger
 
-| Check                                                    | Result                                                                                      |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Initial host health and unrelated container inventory    | Passed; Densio and all healthchecked services healthy.                                      |
-| Densio scope, database size, and active jobs             | Passed; read-only inspection, no active jobs.                                               |
-| Frozen dependency installation                           | Passed with frozen lockfile, Node 22.18 / pnpm 11.7.                                        |
-| Root formatting and `pnpm check`                         | Passed again with storage fix: 1,115 tests, typechecks, lint, formatting.                   |
-| Workspace build and packaged CLI dry run                 | Passed; npm publication pending authorization/login.                                        |
-| Production Docker image build                            | Passed for 1ea28df; fix image pending.                                                      |
-| Densio backup and cutover                                | Passed. Backup path below.                                                                  |
-| Existing email login                                     | Passed; same email, new Free organization, completed compression.                           |
-| Fresh alias registration and email delivery              | Passed +1 and +2 login emails; invitation email delivered.                                  |
-| Default Free compression and downloaded media            | Passed VP9/Opus + H.265/AAC; sizes and SHA-256 verified.                                    |
-| Stripe test checkout, webhook, plan change, portal       | Basic checkout/webhook and portal Pro upgrade passed; remaining checks pending.             |
-| Organization edit, invitations, roles and isolation      | Rename, invite, accept, shared access, outsider denial and member billing denial passed.    |
-| Prepared sources, comparison, extraction, AV1, trim, HLS | All six encodings succeeded; advanced artifact inspection and durable HLS delivery pending. |
-| Runtime skill version and references                     | Served CLI 0.2.0 and reference hashes match source; npm bootstrap pending.                  |
-| Final health, logs, and unrelated container comparison   | Pending.                                                                                    |
+| Check                               | Result and evidence                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Toolchain and frozen dependencies   | Passed with Node 22.18.0, pnpm 11.7.0, and `pnpm install --frozen-lockfile`.                                                                                                                                                                                                                                                                   |
+| Formatting, typechecks, tests, lint | Final `pnpm format` and `pnpm check` passed: 1,125 tests across 191 files, typechecks, lint, and formatting verification.                                                                                                                                                                                                                      |
+| Build and package                   | `pnpm build` passed after the fixes. CLI 0.2.0 publishing dry run passed lint, format, tests, typechecks, build, pack, package install and help checks.                                                                                                                                                                                        |
+| Regression evidence                 | R2 version test, R2 anonymous-denial test, and cached-miss tests failed before their respective fixes and passed afterward. Tests use controlled local provider boundaries.                                                                                                                                                                    |
+| Production container                | Each actual Docker image built and deployed successfully. Latest implementation container was healthy with zero restarts; `/ready` returned 200.                                                                                                                                                                                               |
+| Database integrity                  | Final SQLite `integrity_check` returned `ok`. Seven jobs succeeded; no queued/processing jobs or retrying transfers remained.                                                                                                                                                                                                                  |
+| Existing email account              | Previously registered `lnikell@gmail.com` confirmed a real login email and completed VP9/H.265 compression.                                                                                                                                                                                                                                    |
+| New registrations                   | `lnikell+1@gmail.com` and `lnikell+2@gmail.com` registered through real delivered magic links. Session refresh worked during the extended run.                                                                                                                                                                                                 |
+| Organization behavior               | Rename, invitation email delivery, acceptance, shared-source access, removal, reinvitation, role promotion, audit listing, ownership transfer and restoration passed.                                                                                                                                                                          |
+| Isolation and roles                 | An outsider received 404; members and admins received 403 for owner-only billing actions. A removed member's grant returned 404 and stayed invalid after reinvitation. Replaying the old invitation returned 409.                                                                                                                              |
+| Organization closure                | Deleted the empty alias +2 organization. It reached `deleted` automatically and its default selection moved to the remaining membership. The configured cleanup cadence is ten minutes.                                                                                                                                                        |
+| Billing                             | Hosted Sandbox checkout with the authorized 4242 card activated Basic through the webhook. Pro upgrade produced 5,000 monthly credits; downgrade restored Basic. Billing contact changed independently of owner login. Cancellation at period end and renewal both worked; final test subscription is active Basic with cancellation disabled. |
+| Source reuse and guards             | Repeating the upload key recovered the same source. Free AV1 returned `PLAN_ENTITLEMENT_REQUIRED`; a 0.01-credit guard rejected the exact 0.05-credit quote before admission.                                                                                                                                                                  |
+| Free compression                    | Six-second, 640×360, 24 fps input produced VP9/Opus and H.265/AAC, with audible audio retained. Independent FFprobe and SHA-256 checks passed.                                                                                                                                                                                                 |
+| Advanced compression                | AV1 output was independently verified as `yuv420p10le`. The browser decoded and played the public six-second AV1 output to completion.                                                                                                                                                                                                         |
+| Trim                                | Frames 24 through 96 produced an exact three-second H.265/AAC clip.                                                                                                                                                                                                                                                                            |
+| Image extraction                    | Two-second WebP extraction produced three frames and a timestamp manifest in the ZIP.                                                                                                                                                                                                                                                          |
+| Quality comparison                  | Two H.265 CRF candidates produced matched sample windows, previews, SSIM/PSNR results, a Pareto set and a recommendation.                                                                                                                                                                                                                      |
+| HLS                                 | Eight package files downloaded with CLI byte/hash verification. Playlists had the correct MIME type and CORS; FFprobe confirmed HEVC Main10 plus AAC. All eight public URLs returned 404 after complete package deletion. Browser-specific HEVC/HLS player support was not separately certified.                                               |
+| Managed public storage              | Public GET matched stored SHA-256 and byte counts. Ranged GET returned 206 with exact Content-Range and CORS `*`.                                                                                                                                                                                                                              |
+| Visibility and recovery             | Public withdrawal reached private readiness with old URLs returning 404; authenticated private download passed. Republishing retained the exact URLs and bytes. The final cycle passed without manual purge.                                                                                                                                   |
+| Customer storage                    | Real R2 connection validated multipart upload/readback/abort/deletion and private denial. Direct source upload, export, verified download and credential-version rotation passed.                                                                                                                                                              |
+| Disconnect and cleanup              | Forget/disconnect preserved customer objects and erased saved connection credentials. After verifying preservation, this run removed only its isolated test prefix and purged those exact URLs.                                                                                                                                                |
+| Runtime skill                       | Built CLI 0.2.0 returned the current skill version and reference metadata. Requested command, organization, storage, HLS and workflow reference contents/hashes matched the repository. Public npm bootstrap remains blocked as described above.                                                                                               |
+| Other applications                  | All 25 unrelated container IDs were unchanged. No unrelated deployment was performed.                                                                                                                                                                                                                                                          |
 
-## Account compatibility
+## Account compatibility and backup
 
-The new schema changes ownership from users to organizations and intentionally does
-not migrate legacy account state. A fresh database means previous sessions must
-sign in again; old jobs, usage history, and subscription mappings are not retained
-in the active database. Previous data will remain in the protected Densio backup.
-The prior email sign-in check and handling of the existing Stripe test subscription
-must be completed before this release is considered verified.
+The new schema changes ownership from users to organizations. The authorized fresh
+database cutover retained no old sessions, jobs, usage history, or subscription
+mappings in the active database. Existing users must sign in again; ordinary
+registration creates their new Free organization. This was verified using the
+previously registered base email. It is not a data migration.
 
-## Release evidence
+The recoverable backup is
+`/home/primeui/apps/densio/backups/20260905-before-organizations`. Its protected
+owner-only directory contains the original complete data directory and runtime
+environment. The original SQLite integrity check passed before cutover. Only the
+legacy subscription identified from that Densio database was canceled, after
+checking test mode, customer identity, email and legacy user metadata.
 
-- Main release commit: `1f9e397` (all 596 changed files, including generated migration snapshots).
-- CLI release commit: `1ea28df` (`densio@0.2.0`), pushed to `origin/main`.
-- Linux check: 1,109 tests across 189 files; all typechecks and builds passed; zero lint warnings/errors.
-- Local release commands use `/tmp/densio-production-20260905/node-v22.18.0-darwin-arm64/bin` first in PATH. The Homebrew pnpm launcher delegated versioning to npm and failed on `workspace:*`; the Corepack-managed pnpm 11 command completed correctly. No application workaround was added.
+## Cloudflare resources
 
-## Production resources and recovery
+- Account: `a56bc287ba527e8d0d3c0d26bb87559a`; Densio zone: `ffd1f294b9eb1487463722f4b6f8b4fd`.
+- Buckets: `densio-prod-media-public`, `densio-prod-media-private`, `densio-prod-media-staging`, in WEUR with Standard storage.
+- All three buckets have R2 development URLs disabled. Only the public bucket has `media.densio.sh`, with TLS 1.2 minimum.
+- Lifecycle: abort incomplete multipart uploads after two days on all three buckets; expire stored objects after two days on staging only. Public/private objects have no bucket expiry.
+- Public CORS allows GET/HEAD, origins `*`, Range and conditional-read headers; exposes size/range/ETag response headers.
+- Runtime token is restricted to object read/write on these three buckets. Purge token is restricted to the Densio zone. Temporary provisioning token was revoked.
+- Cache rule `0d3289300e3242b2b1f82d9ef17f9607` and client rule `1b09e4ae425a4b3092c02cf2ddf7f78f` match only `media.densio.sh`.
+- Provisioning used Cloudflare API/UI. No Terraform state was created. Import existing resources before a future Terraform apply; the current module does not own the two zone rules.
 
-- Running source/image: `1ea28dfdcd9890e6ef424e8217ee2843a23f3571`.
-- Densio backup: `/home/primeui/apps/densio/backups/20260905-before-organizations`; owner-only directory, original data and runtime environment, SQLite integrity check passed.
-- Public/private/staging R2 buckets: `densio-prod-media-public`, `densio-prod-media-private`, `densio-prod-media-staging` (WEUR).
-- Public delivery: `https://media.densio.sh`; R2 development URLs disabled on all three buckets.
-- Lifecycle: abort incomplete multipart after two days on all buckets; delete objects after two days on staging only.
-- Runtime credential restricted to these three buckets; cache purge credential restricted to densio.sh. Secret configuration lives only in protected, ignored deployment environment files.
-- Buckets were provisioned through Cloudflare API/UI. Import them before a future Terraform apply; no Terraform state was created by this run.
-- No other application database or bucket was modified.
+## Remaining test state
 
-## Test evidence
+- Test organization: `c2dc09c3-dc06-42e2-b2dd-a88d28b0e776`, named **Densio production verification**. Alias +1 is owner; alias +2 is admin. Its billing contact is alias +2 and its subscription is Basic in Stripe test mode.
+- Existing-email organization: `08c97839-f8af-4b4e-83d6-34acc3f0fe37`, Free.
+- Empty alias +2 organization `c5d871fb-f4fb-4883-ab80-281d94c655cd` is deleted.
+- Two ready managed videos remain for inspection: `681d28d4-ebd4-4173-b860-c64c2997ed79` (VP9/H.265) and `1a8a2d6b-ab4a-4d84-a25e-53c592b3b222` (10-bit AV1).
+- Public bucket contains their three verified objects; private and staging buckets are empty. The HLS sample and customer export are deleted/forgotten; the customer connection is disconnected.
+- Test CLI sessions were logged out; temporary credential copies, hosted checkout/portal URLs, and the canary environment were removed. Active deployment credentials and the protected rollback backup remain intact.
+- Final Basic balance: 749.70 credits available, 0.30 used, zero reserved. Managed storage uses 987,552 bytes with zero reserved, transient, or cleanup-pending bytes.
+- Final processing state: seven successful jobs, two ready sources and one deleted source. Temporary artifacts retain their normal automatic expiry.
+- Storage state: eight successful transfers and one intentional canceled transfer from forgetting the export; no pending/retrying transfers. Two ready videos and two deleted videos.
 
-- Existing email organization: `08c97839-f8af-4b4e-83d6-34acc3f0fe37`; compression job `ab36727d-edf1-4134-a2bc-774035df522c` succeeded.
-- Alias +1 organization: `c2dc09c3-dc06-42e2-b2dd-a88d28b0e776`, renamed to Densio production verification.
-- Reusable six-second 640×360/24 fps source: `3ef9ed7d-778e-491b-95f0-aa3a7c4c950a`.
-- Default compression: `f80a8e64-0765-49fe-8f66-e0848fd6c580`; original 856,908 bytes; VP9 332,917 and H.265 356,028 bytes, audible audio preserved, independent FFprobe and SHA-256 verification passed.
-- Mac `/tmp` is a symlink. The CLI correctly rejected artifact writes through it (`ARTIFACT_OUTPUT_UNSAFE`). Resuming the same completed jobs into canonical `/private/tmp` paths succeeded without another encode or charge.
-- Hosted Stripe checkout displayed Sandbox and used the authorized 4242 test card. Basic status: active Stripe entitlement, 750 monthly credits, 0.05 used, 0 reserved after initial compression.
-- Before invitation, alias +2 received `ORGANIZATION_NOT_FOUND`; after acceptance it could read the shared source. Member portal creation returned `ORGANIZATION_OWNER_REQUIRED` (403).
+## Release history and operational notes
 
-### PROD-008: R2 anonymous authorization response
+- `1f9e397`: committed all 596 original changed files, including generated migration snapshots.
+- `1ea28df`: bumped CLI to 0.2.0 through `scripts/bump-cli-version.sh` and pushed to main.
+- `9dc1452`, `e291aa2`, `480b1a8`: production storage fixes described above, each validated and deployed.
+- Initial Linux validation used a separate Node container limited to eight CPUs and 12 GB RAM, with read-only host FFmpeg and no production credentials. Missing git/unzip were validation-container prerequisites, not application failures.
+- Mac `/tmp` is a symlink. CLI materialization correctly refused that path with `ARTIFACT_OUTPUT_UNSAFE`; resuming the same completed jobs under canonical `/private/tmp` succeeded without another encode or charge.
+- Local test commands explicitly pinned the API origin, disposable credentials and organization. Production checks were separate from deterministic unit/integration/E2E tests. Scheduled synthetic commands were not run.
+- No fresh-agent discovery evaluation or long-duration load/retention soak is claimed by this report.
 
-Customer-storage validation rejected the private R2 staging bucket because R2
-returns HTTP 400 with `InvalidArgument` / `Authorization` for unsigned requests.
-Validation previously accepted only 403/404. Added bounded recognition of that
-specific S3 authorization error; unrelated 400 errors, oversized bodies, 200/206,
-and server errors still fail. Local HTTP test failed before the fix and passed
-afterward. Full formatting, typecheck, lint, 1,123 tests and build passed; deployment pending.
+## To complete the public CLI release
 
-### Additional verified behavior
-
-- Pro upgrade confirmed by API: 5,000 monthly credits, 0.30 used, zero reserved. Hosted portal downgrade to Basic completed; API readback pending.
-- Billing contact changed to alias +2 independently of owner login.
-- Removing alias +2 invalidated its artifact grant (404). Replaying its accepted invitation returned 409 and did not restore membership.
-- Legacy Stripe subscription was verified as test mode, matched the original email/customer, and canceled without invoice or proration. No other subscription was changed by this cleanup.
-- HLS is ready at its public URL, with `application/vnd.apple.mpegurl`, CORS `*`, HEVC Main10 rendition and shared AAC track.
-- Private stored-video download passed using fresh CLI grants.
-- Python urllib requests to the public hostname receive Cloudflare browser-integrity error 1010. Node/CLI requests and the server delivery verifier succeed; browser verification remains pending. This is recorded separately from R2 storage failures.
-
-### PROD-009: Cached 404 after public restoration
-
-After public → private → public, R2 contained the correct bytes and the server's
-verification passed, but another Cloudflare location still returned a cached 404.
-An exact-URL purge restored correct bytes. Added batched managed URL purge after
-all output writes and before public verification/readiness, for both initial saves
-and visibility changes. Regression tests simulate negative caching and a failed
-purge, then recover the same transfer. Customer CDN configuration remains customer
-owned. Full formatting, typecheck, lint, 1,125 tests and build passed; deployment pending.
-
-### PROD-010: Cloudflare browser TTL overrides media policy
-
-Live public responses advertise `max-age=14400`, overriding Densio's stored
-`max-age=60`. This violates the application's bounded public-withdrawal policy.
-A Cloudflare rule must respect origin browser cache headers for media.densio.sh.
-Configuration fix and readback pending.
+Authenticate with npm and explicitly approve publishing the reviewed `densio@0.2.0`
+package. Then run `scripts/publish-cli.sh` under Node 22.18/Corepack pnpm 11.7 with a
+clean working tree, verify npm's new latest version, and repeat the fresh `npx`
+bootstrap and an account journey. This is the only known outstanding release
+blocker; it is not counted as a pass above.
