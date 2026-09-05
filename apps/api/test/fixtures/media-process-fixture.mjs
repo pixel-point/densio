@@ -1,15 +1,23 @@
 import { appendFileSync, readFileSync } from "node:fs";
 
-const [logPath, delayInput, exitCodeInput, stderrText = "", signalMode = "default", peerPidInput] =
-  process.argv.slice(2);
+const [
+  logPath,
+  delayInput,
+  exitCodeInput,
+  stderrText = "",
+  signalMode = "default",
+  peerPidInput,
+  stdoutText = "",
+] = process.argv.slice(2);
 const delay = Number(delayInput);
 const exitCode = Number(exitCodeInput);
 const peerAlive = peerPidInput === undefined ? undefined : isProcessAlive(Number(peerPidInput));
 
+if (signalMode === "ignore-term") process.on("SIGTERM", () => undefined);
 appendFileSync(logPath, `${JSON.stringify({ event: "start", peerAlive, pid: process.pid })}\n`);
 process.stderr.write(stderrText);
+process.stdout.write(stdoutText);
 
-if (signalMode === "ignore-term") process.on("SIGTERM", () => undefined);
 if (signalMode === "barrier") await waitForConcurrentPeer();
 
 setTimeout(() => {

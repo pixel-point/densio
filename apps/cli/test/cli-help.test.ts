@@ -16,19 +16,51 @@ describe("CLI help", () => {
     expect(capture.stdout()).toContain("DENSIO_API_URL");
     expect(capture.stdout()).toContain("https://api.densio.sh");
     expect(capture.stdout()).not.toContain(["ffmpeg", "api"].join("-"));
-    expect(capture.stdout()).toContain("auth login|status|logout");
-    expect(capture.stdout()).toContain("compress <video>");
-    expect(capture.stdout()).toContain("extract-images <video>");
-    expect(capture.stdout()).toContain("compare-quality <video>");
-    expect(capture.stdout()).toContain("jobs get|wait|cancel");
-    expect(capture.stdout()).toContain("artifacts download");
-    expect(capture.stdout()).toContain("billing subscribe PLAN|portal");
-    expect(capture.stdout()).toContain("capabilities");
-    expect(capture.stdout()).toContain("skill");
-    expect(capture.stdout()).toContain("densio skill --json");
+    [
+      "auth login EMAIL",
+      "auth status",
+      "auth logout",
+      "inspect VIDEO",
+      "sources list",
+      "sources get SOURCE_ID",
+      "sources delete SOURCE_ID",
+      "plans create SOURCE_ID compress",
+      "plans create SOURCE_ID extract-images",
+      "plans create SOURCE_ID compare-quality",
+      "plans resolve PLAN_ID",
+      "plans execute PLAN_ID",
+      "jobs list",
+      "jobs lookup",
+      "jobs events JOB_ID",
+      "jobs watch JOB_ID",
+      "jobs get JOB_ID",
+      "jobs wait JOB_ID",
+      "jobs cancel JOB_ID",
+      "artifacts download ARTIFACT_ID",
+      "artifacts materialize JOB_ID",
+      "billing status",
+      "billing subscribe PLAN",
+      "billing portal",
+      "--output-dir DIR",
+      "--matrix CODEC:CRF,CRF",
+      "--samples N",
+      "--sample SECONDS|TIMECODE|frame:N",
+      "--metric ssim,psnr",
+      "--max-credits N",
+      "--max-output-bytes N",
+    ].forEach((command) => expect(capture.stdout()).toContain(command));
+    expect(capture.stdout()).not.toContain("SIGNED_URL");
+    expect(capture.stdout()).not.toContain("decide-frame-rate");
+    const examples = capture.stdout().split("Examples:\n")[1]?.trim().split("\n") ?? [];
+    expect(examples.length).toBeGreaterThan(0);
+    examples
+      .filter((line) => !line.includes("orgs list"))
+      .forEach((line) => expect(line).toContain("--org ORG_ID"));
     expect(capture.stderr()).toBe("");
   });
+});
 
+describe("CLI usage errors", () => {
   it("returns a stable JSON usage problem without prompts", async () => {
     const capture = await makeCliCapture();
 

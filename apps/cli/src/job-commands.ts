@@ -1,165 +1,91 @@
-import {
-  FrameRateDecisionRequestSchema,
-  JobStatusSchema,
-  successEnvelope,
-  type FrameRatePolicy,
-  type ProblemDetails,
-} from "@densio/shared";
-import { Schema } from "effect";
+import { runJobCreate } from "./job-create-command.ts";
+import { parseUntil } from "./storage-options.ts";
+import { organizationResponses } from "./organization-responses.ts";
 
-import { authorizationHeaders } from "./authentication.ts";
-import { decodeCliOptions, numberFlag, parseCommandArguments } from "./command-options.ts";
-import { CliProblemError, CliUsageError } from "./cli-errors.ts";
-import { jsonRequest, requestJson } from "./http-client.ts";
-import { emitProgress, emitSuccess, formatJobStatus } from "./render.ts";
-import { CLI_EXIT_CODES } from "./output.ts";
-import { pollUntilComplete } from "./polling.ts";
+import { materializeJobArtifacts } from "./artifact-materializer.ts";
+import { numberFlag, singleFlag } from "./command-options.ts";
+import { CliUsageError } from "./cli-errors.ts";
+import { runJobEvents, runJobList, runJobLookup, runJobWatch } from "./job-recovery-commands.ts";
+import { parseCatalogCommand } from "./command-catalog.ts";
+import { selectJobOrganization, waitForJob } from "./job-waiter.ts";
+import { emitSuccess, formatJobStatus } from "./render.ts";
 import type { CliRuntime } from "./runtime.ts";
+import { organizationPath, selectOrganization } from "./organization-context.ts";
+import type { OrganizationRuntime } from "./organization-context.ts";
 
-const decodeJobStatus = Schema.decodeUnknownEffect(successEnvelope(JobStatusSchema));
+const decodeJobStatus = organizationResponses.JobStatus;
 
-export const waitForJob = async (
-  runtime: CliRuntime,
-  jobId: string,
-  statusUrl: string,
-  timeoutSeconds?: number,
-) => {
-  const startedAt = runtime.now();
-  const headers = await authorizationHeaders(runtime);
-  return pollUntilComplete({
-    ...(timeoutSeconds === undefined ? {} : { deadlineAt: startedAt + timeoutSeconds * 1_000 }),
-    decide: (response) => {
-      emitProgress(runtime, response.data);
-      if (response.data.state === "succeeded") return { kind: "complete", value: response };
-      if (response.data.state === "awaiting-decision") {
-        return { kind: "complete", value: response };
-      }
-      if (response.data.state === "failed") throw new CliProblemError(response.data.problem);
-      if (response.data.state === "canceled") {
-        throw new CliProblemError(response.data.problem ?? terminalProblem("canceled", jobId));
-      }
-      if (response.data.state === "expired") {
-        throw new CliProblemError(terminalProblem("expired", jobId));
-      }
-      return { delayMilliseconds: 10_000, kind: "pending" };
-    },
-    initialDelayMilliseconds: 0,
-    interruptedError: () => interruptedJobError(jobId),
-    isRetryableFailure: isRetryablePollFailure,
-    poll: () => requestJson(runtime, statusUrl, { headers, method: "GET" }, decodeJobStatus),
-    runtime,
-    timeoutError: () => new CliProblemError(timeoutProblem(jobId), CLI_EXIT_CODES.network),
-  });
-};
-
-export const runJobsCommand = async (argv: ReadonlyArray<string>, runtime: CliRuntime) => {
-  const parsed = parseCommandArguments(argv, new Set(["--timeout"]), new Set());
-  const [command, jobId, ...extra] = parsed.positionals;
-  if (command === "decide-frame-rate" && jobId !== undefined && extra.length === 1) {
-    await decideFrameRate(runtime, jobId, extra[0] ?? "", numberFlag(parsed, "--timeout"));
-    return;
+export const runJobsCommand = async (argv: ReadonlyArray<string>, unscopedRuntime: CliRuntime) => {
+  const [recoveryCommand, ...recoveryArguments] = argv;
+  if (recoveryCommand === "create") return runJobCreate(recoveryArguments, unscopedRuntime);
+  if (recoveryCommand === "list") return runJobList(recoveryArguments, unscopedRuntime);
+  if (recoveryCommand === "lookup") return runJobLookup(recoveryArguments, unscopedRuntime);
+  if (recoveryCommand === "events") return runJobEvents(recoveryArguments, unscopedRuntime);
+  if (recoveryCommand === "watch") {
+    return runJobWatch(recoveryArguments, unscopedRuntime);
   }
-  if (
-    (command !== "get" && command !== "wait" && command !== "cancel") ||
-    jobId === undefined ||
-    extra.length > 0
-  ) {
-    throw new CliUsageError("jobs requires get, wait, or cancel followed by a job ID.");
+  const command = recoveryCommand;
+  if (command !== "get" && command !== "wait" && command !== "cancel") {
+    throw new CliUsageError(
+      "jobs requires create, list, lookup, events, watch, get, wait, or cancel.",
+    );
   }
-  const headers = await authorizationHeaders(runtime);
-  const path = `/v1/jobs/${encodeURIComponent(jobId)}${command === "cancel" ? "/cancel" : ""}`;
+  const parsed = parseCatalogCommand(`jobs ${command}`, recoveryArguments);
+  const [jobId, ...extra] = parsed.positionals;
+  if (jobId === undefined || extra.length > 0)
+    throw new CliUsageError(`jobs ${command} requires one job ID.`);
+  const outputDirectory = singleFlag(parsed, "--output-dir");
+  const force = parsed.switches.has("--force");
+  if (command === "wait") requireOutputDirectoryForForce(outputDirectory, force);
+  const timeoutSeconds = numberFlag(parsed, "--timeout");
+  if (timeoutSeconds !== undefined && timeoutSeconds <= 0)
+    throw new CliUsageError("--timeout must be positive.");
+  const runtime =
+    command === "wait"
+      ? await selectJobOrganization(unscopedRuntime, jobId, "wait")
+      : await selectOrganization(unscopedRuntime);
+  const path = `${organizationPath(runtime)}/jobs/${encodeURIComponent(jobId)}${command === "cancel" ? "/cancel" : ""}`;
   if (command === "wait") {
-    const timeoutSeconds = numberFlag(parsed, "--timeout");
-    if (timeoutSeconds !== undefined && timeoutSeconds <= 0) {
-      throw new CliUsageError("--timeout must be positive.");
-    }
-    const response = await waitForJob(runtime, jobId, path, timeoutSeconds);
-    emitSuccess(runtime, response, formatJobStatus(response.data));
+    const response = await waitForJob(
+      runtime,
+      jobId,
+      path,
+      timeoutSeconds,
+      "wait",
+      parseUntil(parsed),
+    );
+    await emitJobCompletion(runtime, jobId, response, outputDirectory, force);
     return;
   }
-  const response = await requestJson(
-    runtime,
+  const response = await runtime.organizationClient.request(
     path,
-    { headers, method: command === "cancel" ? "POST" : "GET" },
+    { method: command === "cancel" ? "POST" : "GET" },
     decodeJobStatus,
   );
   emitSuccess(runtime, response, formatJobStatus(response.data));
 };
 
-const decideFrameRate = async (
-  runtime: CliRuntime,
+const requireOutputDirectoryForForce = (outputDirectory: string | undefined, force: boolean) => {
+  if (force && outputDirectory === undefined) {
+    throw new CliUsageError("--force requires --output-dir.");
+  }
+};
+
+const emitJobCompletion = async (
+  runtime: OrganizationRuntime,
   jobId: string,
-  value: string,
-  timeoutSeconds?: number,
+  response: Awaited<ReturnType<typeof waitForJob>>,
+  outputDirectory: string | undefined,
+  force: boolean,
 ) => {
-  if (timeoutSeconds !== undefined && timeoutSeconds <= 0) {
-    throw new CliUsageError("--timeout must be positive.");
+  if (outputDirectory === undefined || response.data.state !== "succeeded") {
+    emitSuccess(runtime, response, formatJobStatus(response.data));
+    return;
   }
-  const headers = await authorizationHeaders(runtime);
-  const frameRate = parseFrameRatePolicy(value);
-  const path = `/v1/jobs/${encodeURIComponent(jobId)}/frame-rate-decision`;
-  await requestJson(runtime, path, jsonRequest("POST", { frameRate }, headers), decodeJobStatus);
-  const response = await waitForJob(
+  const materialized = await materializeJobArtifacts(runtime, jobId, outputDirectory, force);
+  emitSuccess(
     runtime,
-    jobId,
-    `/v1/jobs/${encodeURIComponent(jobId)}`,
-    timeoutSeconds,
+    materialized,
+    `Materialized ${materialized.data.files.length} artifacts in ${materialized.data.outputDirectory}.\n`,
   );
-  emitSuccess(runtime, response, formatJobStatus(response.data));
 };
-
-const parseFrameRatePolicy = (value: string): FrameRatePolicy => {
-  const frameRate =
-    value === "preserve"
-      ? { mode: "preserve" as const }
-      : value === "cap-30"
-        ? { maximum: 30 as const, mode: "cap" as const }
-        : undefined;
-  if (frameRate === undefined) {
-    throw new CliUsageError("Frame-rate decision must be preserve or cap-30.");
-  }
-  return decodeCliOptions(FrameRateDecisionRequestSchema, { frameRate }, "jobs decide-frame-rate")
-    .frameRate;
-};
-
-const terminalProblem = (state: "canceled" | "expired", jobId: string): ProblemDetails => ({
-  code: state === "canceled" ? "JOB_CANCELED" : "JOB_EXPIRED",
-  correlationId: "local",
-  detail: `Job ${jobId} is ${state}.`,
-  jobId,
-  retryable: false,
-  schemaVersion: 1,
-  status: state === "canceled" ? 409 : 410,
-  suggestedAction: "Create a new media job if another result is required.",
-  title: `Job ${state}`,
-  type: "about:blank",
-});
-
-const timeoutProblem = (jobId: string): ProblemDetails => ({
-  code: "CLI_WAIT_TIMEOUT",
-  correlationId: "local",
-  detail: `Timed out waiting for job ${jobId}.`,
-  jobId,
-  retryable: true,
-  schemaVersion: 1,
-  status: 504,
-  suggestedAction: `Resume with densio jobs wait ${jobId}.`,
-  title: "Wait timed out",
-  type: "about:blank",
-});
-
-const interruptedJobError = (jobId: string) =>
-  new CliProblemError(
-    {
-      ...timeoutProblem(jobId),
-      code: "CLI_INTERRUPTED",
-      detail: `Stopped waiting for job ${jobId}; the server job is still running.`,
-      status: 499,
-      title: "Wait interrupted",
-    },
-    130,
-  );
-
-const isRetryablePollFailure = (cause: unknown) =>
-  cause instanceof CliProblemError &&
-  (cause.exitCode === CLI_EXIT_CODES.network || cause.problem.retryable);

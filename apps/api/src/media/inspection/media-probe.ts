@@ -1,3 +1,4 @@
+import type { SourceVideoProperties } from "@densio/shared";
 import { Effect, Schema } from "effect";
 
 import { MediaInspectionError } from "./media-inspection-error.ts";
@@ -13,6 +14,16 @@ const ProbeStreamSchema = Schema.Struct({
   width: Schema.optionalKey(Schema.Int),
   height: Schema.optionalKey(Schema.Int),
   duration: Schema.optionalKey(Schema.String),
+  pix_fmt: Schema.optionalKey(Schema.String),
+  sample_aspect_ratio: Schema.optionalKey(Schema.String),
+  field_order: Schema.optionalKey(Schema.String),
+  color_primaries: Schema.optionalKey(Schema.String),
+  color_transfer: Schema.optionalKey(Schema.String),
+  color_space: Schema.optionalKey(Schema.String),
+  color_range: Schema.optionalKey(Schema.String),
+  start_time: Schema.optionalKey(Schema.String),
+  channels: Schema.optionalKey(Schema.Int),
+  sample_rate: Schema.optionalKey(Schema.String),
   avg_frame_rate: Schema.optionalKey(Schema.String),
   r_frame_rate: Schema.optionalKey(Schema.String),
   disposition: Schema.optionalKey(Schema.Struct({ attached_pic: Schema.optionalKey(Schema.Int) })),
@@ -30,12 +41,16 @@ type ProbeOutput = typeof ProbeOutputSchema.Type;
 type ProbeStream = typeof ProbeStreamSchema.Type;
 
 export interface MediaStream {
+  readonly channels?: number;
+  readonly sampleRate?: number;
+  readonly startTimeSeconds?: number;
   readonly codecName?: string;
   readonly index: number;
   readonly type: string;
 }
 
 export interface MediaProbe {
+  readonly videoProperties?: SourceVideoProperties;
   readonly audioStreamIndexes: ReadonlyArray<number>;
   readonly displayDimensions: { readonly height: number; readonly width: number };
   readonly durationSeconds: number;
@@ -83,13 +98,41 @@ const buildMediaProbe = Effect.fn("buildMediaProbe")(function* (
     return yield* invalidVideoMetadata();
   }
 
+  const sampleAspectRatio = rational(video.sample_aspect_ratio?.replace(":", "/")) ?? {
+    numerator: 1,
+    denominator: 1,
+  };
+  const displayWidth = Math.max(
+    1,
+    Math.round((width * sampleAspectRatio.numerator) / sampleAspectRatio.denominator),
+  );
   const rotationDegrees = rotation(video);
   const rotated = rotationDegrees === 90 || rotationDegrees === 270;
   return {
     audioStreamIndexes: probe.streams
       .filter(({ codec_type }) => codec_type === "audio")
       .map(({ index }) => index),
-    displayDimensions: rotated ? { height: width, width: height } : { height, width },
+    displayDimensions: rotated
+      ? { height: displayWidth, width: height }
+      : { height, width: displayWidth },
+    ...(video.pix_fmt === undefined
+      ? {}
+      : {
+          videoProperties: {
+            pixelFormat: video.pix_fmt,
+            sampleAspectRatio,
+            fieldOrder: video.field_order ?? "unknown",
+            ...(video.color_primaries === undefined
+              ? {}
+              : { colorPrimaries: video.color_primaries }),
+            ...(video.color_transfer === undefined ? {} : { colorTransfer: video.color_transfer }),
+            ...(video.color_space === undefined ? {} : { colorSpace: video.color_space }),
+            ...(video.color_range === undefined ? {} : { colorRange: video.color_range }),
+            ...(Number.isFinite(Number(video.start_time))
+              ? { startTimeSeconds: Number(video.start_time) }
+              : {}),
+          },
+        }),
     durationSeconds,
     encodedDimensions: { height, width },
     frameRate: {
@@ -98,11 +141,16 @@ const buildMediaProbe = Effect.fn("buildMediaProbe")(function* (
       numerator: frameRate.numerator,
     },
     rotationDegrees,
-    streams: probe.streams.map(({ codec_name, codec_type, index }) => ({
-      ...(codec_name === undefined ? {} : { codecName: codec_name }),
-      index,
-      type: codec_type,
-    })),
+    streams: probe.streams.map(
+      ({ codec_name, codec_type, index, channels, sample_rate, start_time }) => ({
+        ...(codec_name === undefined ? {} : { codecName: codec_name }),
+        ...(channels === undefined ? {} : { channels }),
+        ...(positiveNumber(sample_rate) === undefined ? {} : { sampleRate: Number(sample_rate) }),
+        ...(Number.isFinite(Number(start_time)) ? { startTimeSeconds: Number(start_time) } : {}),
+        index,
+        type: codec_type,
+      }),
+    ),
     videoStreamIndex: video.index,
   };
 });

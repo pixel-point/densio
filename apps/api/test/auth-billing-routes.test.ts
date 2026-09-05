@@ -19,6 +19,7 @@ import Stripe from "stripe";
 import { afterEach, expect, it } from "vitest";
 
 import { makeAuthService } from "../src/auth/auth-service.ts";
+import { decodeEmailOutboxPayload } from "../src/email/email-outbox-payload.ts";
 import { makeMagicLinkOpener, makeMagicLinkSealer } from "../src/auth/magic-link-secret.ts";
 import { type BillingConfig, makeBillingService } from "../src/billing/billing-service.ts";
 import {
@@ -33,9 +34,13 @@ import {
   stripeEvents,
   stripeSubscriptions,
   users,
+  organizations,
 } from "../src/database/schema.ts";
 import { createAuthRoutes } from "../src/routes/auth.ts";
 import { createBillingRoutes } from "../src/routes/billing.ts";
+
+import { makeOrganizationService } from "../src/organizations/organization-service.ts";
+import { unusedStripeGateway } from "./unused-stripe-gateway.ts";
 
 const NOW = 1_800_000_000_000;
 const OUTBOX_ENCRYPTION_KEY = "0123456789abcdef".repeat(4);
@@ -127,8 +132,10 @@ it("completes the magic-link flow and reports authenticated ownership", async ()
 
   expect(status.data).toMatchObject({
     authenticated: true,
-    user: { email: "agent@example.com", plan: "free" },
+    defaultOrganizationId: expect.any(String),
+    user: { email: "agent@example.com" },
   });
+  expect(status.data.authenticated && status.data.user).not.toHaveProperty("plan");
   expect(status.data.authenticated && status.data.user.id).toBe(
     harness.database.db.select().from(users).get()?.id,
   );
@@ -176,68 +183,56 @@ it("rotates tokens, logs out, and returns actionable auth problems", async () =>
   expect(decodeProblem(await invalidJson.json()).code).toBe("INVALID_REQUEST");
 });
 
-it("uses the authenticated user for Checkout, Portal, and billing status", async () => {
+it("uses the authenticated organization for Checkout, Portal, and billing status", async () => {
   const checkoutRequests: Array<Stripe.Checkout.SessionCreateParams> = [];
   const portalRequests: Array<Stripe.BillingPortal.SessionCreateParams> = [];
   const harness = await createRouteHarness(
     recordingStripeGateway(checkoutRequests, portalRequests),
   );
   const tokens = await completeLogin(harness);
-  const user = harness.database.db.select().from(users).get();
-  if (user === undefined) throw new Error("Missing user");
-
-  const checkoutResponse = await harness.app.request("/v1/billing/checkout", {
-    body: JSON.stringify({ plan: "basic" }),
-    headers: {
-      authorization: `Bearer ${tokens.accessToken}`,
-      "content-type": "application/json",
+  const organization = harness.database.db.select().from(organizations).get();
+  if (organization === undefined) throw new Error("Missing organization");
+  const organizationId = organization.id;
+  const missingPortal = await harness.app.request(
+    `/v1/organizations/${organizationId}/billing/portal`,
+    {
+      headers: { authorization: `Bearer ${tokens.accessToken}` },
+      method: "POST",
     },
-    method: "POST",
-  });
+  );
+  expect(missingPortal.status).toBe(409);
+
+  const checkoutResponse = await harness.app.request(
+    `/v1/organizations/${organizationId}/billing/checkout`,
+    {
+      body: JSON.stringify({ plan: "basic" }),
+      headers: {
+        "idempotency-key": "checkout-basic",
+        authorization: `Bearer ${tokens.accessToken}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    },
+  );
   expect(checkoutResponse.status).toBe(201);
   expect(decodeBillingSession(await checkoutResponse.json()).data).toMatchObject({
     kind: "checkout",
     url: "https://checkout.stripe.test/session",
   });
   expect(checkoutRequests[0]).toMatchObject({
-    client_reference_id: user.id,
-    customer_email: "agent@example.com",
-    metadata: { userId: user.id },
+    client_reference_id: organizationId,
+    customer: "cus_agent",
+    metadata: { organizationId, attemptId: expect.any(String) },
     line_items: [{ price: "price_basic", quantity: 1 }],
   });
 
-  const malformedCheckout = await harness.app.request("/v1/billing/checkout", {
-    body: "not-json",
-    headers: {
-      authorization: `Bearer ${tokens.accessToken}`,
-      "content-type": "application/json",
+  const portalResponse = await harness.app.request(
+    `/v1/organizations/${organizationId}/billing/portal`,
+    {
+      headers: { authorization: `Bearer ${tokens.accessToken}` },
+      method: "POST",
     },
-    method: "POST",
-  });
-  expect(malformedCheckout.status).toBe(400);
-  expect(decodeProblem(await malformedCheckout.json()).code).toBe("INVALID_REQUEST");
-
-  const oversizedCheckout = await harness.app.request("/v1/billing/checkout", {
-    body: JSON.stringify({ padding: "x".repeat(70_000), plan: "basic" }),
-    headers: {
-      authorization: `Bearer ${tokens.accessToken}`,
-      "content-type": "application/json",
-    },
-    method: "POST",
-  });
-  expect(oversizedCheckout.status).toBe(413);
-  expect(decodeProblem(await oversizedCheckout.json()).code).toBe("REQUEST_TOO_LARGE");
-
-  const missingPortal = await harness.app.request("/v1/billing/portal", {
-    headers: { authorization: `Bearer ${tokens.accessToken}` },
-    method: "POST",
-  });
-  expect(missingPortal.status).toBe(409);
-  databaseCustomer(harness.database, user.id);
-  const portalResponse = await harness.app.request("/v1/billing/portal", {
-    headers: { authorization: `Bearer ${tokens.accessToken}` },
-    method: "POST",
-  });
+  );
   expect(portalResponse.status).toBe(201);
   expect(portalRequests).toEqual([
     {
@@ -247,12 +242,17 @@ it("uses the authenticated user for Checkout, Portal, and billing status", async
   ]);
 
   await Effect.runPromise(
-    harness.billingService.grantPro({ grantedBy: "root", now: NOW, userId: user.id }),
+    harness.billingService.grantPro({ grantedBy: "root", now: NOW, organizationId }),
   );
-  const billingStatus = await harness.app.request("/v1/billing/status", {
-    headers: { authorization: `Bearer ${tokens.accessToken}` },
-  });
+  const billingStatus = await harness.app.request(
+    `/v1/organizations/${organizationId}/billing/status`,
+    {
+      headers: { authorization: `Bearer ${tokens.accessToken}` },
+    },
+  );
   expect(decodeBillingStatus(await billingStatus.json()).data).toEqual({
+    organizationId,
+    billingEmail: "agent@example.com",
     credits: {
       available: 5_000,
       monthly: 5_000,
@@ -264,7 +264,9 @@ it("uses the authenticated user for Checkout, Portal, and billing status", async
     plan: "pro",
   });
 
-  const unauthorized = await harness.app.request("/v1/billing/status");
+  const unauthorized = await harness.app.request(
+    `/v1/organizations/${organizationId}/billing/status`,
+  );
   expect(unauthorized.status).toBe(401);
   expect(decodeProblem(await unauthorized.json()).code).toBe("AUTH_REQUIRED");
 });
@@ -282,16 +284,16 @@ it("verifies the raw Stripe webhook body and exposes Stripe billing status", asy
           priceId: "price_scale",
           status: "active" as const,
           subscriptionId: "sub_agent",
-          userId: null,
+          organizationId: null,
         }),
       ),
     }),
   );
   const tokens = await completeLogin(harness);
-  const userId = harness.database.db.select().from(users).get()?.id;
-  if (userId === undefined) throw new Error("Missing user");
-  databaseCustomer(harness.database, userId);
-  const payload = JSON.stringify(subscriptionEventFixture(userId));
+  const organizationId = harness.database.db.select().from(organizations).get()?.id;
+  if (organizationId === undefined) throw new Error("Missing organization");
+  databaseCustomer(harness.database, organizationId);
+  const payload = JSON.stringify(subscriptionEventFixture(organizationId));
   const signature = stripe.webhooks.generateTestHeaderString({
     payload,
     secret: BILLING_CONFIG.webhookSecret,
@@ -309,10 +311,15 @@ it("verifies the raw Stripe webhook body and exposes Stripe billing status", asy
   expect(harness.database.db.select().from(stripeEvents).all()).toHaveLength(1);
   expect(harness.database.db.select().from(stripeSubscriptions).get()?.status).toBe("active");
 
-  const statusResponse = await harness.app.request("/v1/billing/status", {
-    headers: { authorization: `Bearer ${tokens.accessToken}` },
-  });
+  const statusResponse = await harness.app.request(
+    `/v1/organizations/${organizationId}/billing/status`,
+    {
+      headers: { authorization: `Bearer ${tokens.accessToken}` },
+    },
+  );
   expect(decodeBillingStatus(await statusResponse.json()).data).toEqual({
+    organizationId,
+    billingEmail: "agent@example.com",
     credits: {
       available: 7_500,
       monthly: 7_500,
@@ -359,11 +366,12 @@ const createRouteHarness = async (
 ): Promise<RouteHarness> => {
   const database = await createTestDatabase();
   const authService = makeAuthService(database, sealMagicLink);
-  const billingService = makeBillingService(database, gateway);
+  const billingService = makeBillingService(database, gateway, () => NOW);
   const app = new Hono();
   const common = {
     authService,
     billingService,
+    organizationService: makeOrganizationService(database),
     createCorrelationId: () => "route-correlation",
     now: () => NOW,
   };
@@ -373,7 +381,6 @@ const createRouteHarness = async (
       ...common,
       authConfig: AUTH_CONFIG,
       pollAfterSeconds: 2,
-      priceIds: BILLING_CONFIG.priceIds,
       requestIpHash: () => "request-ip-hash",
     }),
   );
@@ -382,7 +389,6 @@ const createRouteHarness = async (
     createBillingRoutes({
       ...common,
       billingConfig: BILLING_CONFIG,
-      billingSessionTtlMs: 30 * 60_000,
     }),
   );
   return { app, billingService, database };
@@ -414,9 +420,11 @@ const requestLogin = async (app: Hono) => {
 const readConfirmationUrl = (database: Database) => {
   const email = database.db.select().from(emailOutbox).get();
   if (email === undefined) throw new Error("Missing confirmation URL");
+  const payload = decodeEmailOutboxPayload(email.payloadJson);
+  if (payload.kind !== "magic-login") throw new Error("Expected login email");
   return new URL(
-    openMagicLink(email.encryptedConfirmationUrl ?? "", {
-      challengeId: email.challengeId,
+    openMagicLink(payload.encryptedConfirmationUrl, {
+      challengeId: payload.challengeId,
       emailId: email.id,
       recipient: email.recipient,
     }),
@@ -437,11 +445,21 @@ const recordingStripeGateway = (
   portalRequests: Array<Stripe.BillingPortal.SessionCreateParams>,
 ) =>
   StripeGateway.of({
+    ...unusedStripeGateway,
+    createCustomer: () => Effect.succeed("cus_agent"),
+    findCustomer: () => Effect.succeed(null),
+    findCheckoutSession: () => Effect.succeed(null),
     createCheckoutSession: Effect.fn("RouteStripe.createCheckoutSession")((params) =>
       Effect.sync(() => {
         checkoutRequests.push(params);
         return {
           id: "cs_route",
+          status: "open" as const,
+          expiresAt: NOW + 1_800_000,
+          customerId: String(params.customer),
+          subscriptionId: null,
+          organizationId: params.client_reference_id ?? "",
+          attemptId: String(params.metadata?.attemptId ?? ""),
           url: "https://checkout.stripe.test/session",
         };
       }),
@@ -463,14 +481,14 @@ const recordingStripeGateway = (
     ),
   });
 
-const databaseCustomer = (database: Database, userId: string) => {
+const databaseCustomer = (database: Database, organizationId: string) => {
   database.db
     .insert(stripeCustomers)
-    .values({ createdAt: NOW, customerId: "cus_agent", userId })
+    .values({ createdAt: NOW, customerId: "cus_agent", organizationId })
     .run();
 };
 
-const subscriptionEventFixture = (userId: string) => ({
+const subscriptionEventFixture = (organizationId: string) => ({
   api_version: null,
   created: 1_800_000_000,
   data: {
@@ -483,10 +501,11 @@ const subscriptionEventFixture = (userId: string) => ({
           {
             current_period_end: 1_900_000_000,
             price: { id: "price_scale" },
+            quantity: 1,
           },
         ],
       },
-      metadata: { userId },
+      metadata: { organizationId },
       object: "subscription",
       status: "active",
     },
@@ -503,3 +522,38 @@ const nextUtcMonth = (now: number) => {
   const date = new Date(now);
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)).toISOString();
 };
+
+it.each([
+  { body: "not-json", key: "key", status: 400, code: "INVALID_REQUEST" },
+  {
+    body: JSON.stringify({ padding: "x".repeat(70_000), plan: "basic" }),
+    key: "key",
+    status: 413,
+    code: "REQUEST_TOO_LARGE",
+  },
+  {
+    body: JSON.stringify({ plan: "basic" }),
+    key: "x".repeat(201),
+    status: 400,
+    code: "INVALID_REQUEST",
+  },
+  { body: JSON.stringify({ plan: "basic" }), key: "", status: 400, code: "INVALID_REQUEST" },
+])("validates checkout input with status $status", async ({ body, key, status, code }) => {
+  const harness = await createRouteHarness();
+  const tokens = await completeLogin(harness);
+  const organizationId = harness.database.db.select().from(organizations).get()?.id;
+  const response = await harness.app.request(
+    `/v1/organizations/${organizationId}/billing/checkout`,
+    {
+      method: "POST",
+      body,
+      headers: {
+        authorization: `Bearer ${tokens.accessToken}`,
+        "content-type": "application/json",
+        "idempotency-key": key,
+      },
+    },
+  );
+  expect(response.status).toBe(status);
+  expect(decodeProblem(await response.json()).code).toBe(code);
+});

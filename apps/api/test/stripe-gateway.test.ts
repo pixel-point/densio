@@ -43,7 +43,7 @@ it("normalizes the current Stripe subscription representation", () => {
     priceId: "price_pro",
     status: "trialing",
     subscriptionId: "sub_agent",
-    userId: "user-1",
+    organizationId: "org-1",
   });
 });
 
@@ -86,6 +86,16 @@ it("rejects an unknown Stripe subscription status", () => {
   expect(() => normalizeStripeSubscriptionStatus("ACTIVE")).toThrow();
 });
 
+it.each([0, 2, undefined])("rejects a non-global subscription quantity %s", (quantity) => {
+  const subscription = subscriptionEventFixture().data.object;
+  expect(() =>
+    normalizeStripeSubscription({
+      ...subscription,
+      items: { data: subscription.items.data.map((item) => ({ ...item, quantity })) },
+    }),
+  ).toThrow("quantity one");
+});
+
 const subscriptionEventFixture = () => ({
   api_version: null,
   created: 1_800_000_000,
@@ -98,11 +108,12 @@ const subscriptionEventFixture = () => ({
         data: [
           {
             current_period_end: 1_900_000_000,
+            quantity: 1,
             price: { id: "price_pro" },
           },
         ],
       },
-      metadata: { userId: "user-1" },
+      metadata: { organizationId: "org-1" },
       object: "subscription",
       status: "trialing",
     },

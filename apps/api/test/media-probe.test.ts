@@ -21,6 +21,55 @@ const validProbe = {
   ],
 };
 
+it("retains color, timing, audio details, and anamorphic display geometry", async () => {
+  const media = await Effect.runPromise(
+    decodeMediaProbe(
+      JSON.stringify({
+        format: { duration: "12" },
+        streams: [
+          {
+            index: 0,
+            codec_type: "video",
+            codec_name: "hevc",
+            width: 720,
+            height: 576,
+            avg_frame_rate: "25/1",
+            sample_aspect_ratio: "16:15",
+            pix_fmt: "yuv420p10le",
+            color_primaries: "bt2020",
+            color_transfer: "smpte2084",
+            color_space: "bt2020nc",
+            color_range: "tv",
+            field_order: "progressive",
+            start_time: "0.1",
+          },
+          {
+            index: 1,
+            codec_type: "audio",
+            codec_name: "aac",
+            channels: 6,
+            sample_rate: "48000",
+            start_time: "0.2",
+          },
+        ],
+      }),
+    ),
+  );
+  expect(media.displayDimensions).toEqual({ width: 768, height: 576 });
+  expect(media).toMatchObject({
+    videoProperties: {
+      sampleAspectRatio: { numerator: 16, denominator: 15 },
+      pixelFormat: "yuv420p10le",
+      colorPrimaries: "bt2020",
+      colorTransfer: "smpte2084",
+      colorSpace: "bt2020nc",
+      colorRange: "tv",
+      fieldOrder: "progressive",
+      startTimeSeconds: 0.1,
+    },
+    streams: [expect.anything(), { channels: 6, sampleRate: 48000, startTimeSeconds: 0.2 }],
+  });
+});
 describe("media probe decoding", () => {
   it("decodes duration, dimensions, rotation, frame rate, and every stream", async () => {
     const media = await Effect.runPromise(decodeMediaProbe(JSON.stringify(validProbe)));

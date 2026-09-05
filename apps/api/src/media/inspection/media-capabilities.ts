@@ -27,7 +27,7 @@ export const decodeMediaCapabilities = Effect.fn("decodeMediaCapabilities")(func
     );
   }
 
-  const missing = requiredEncoders.filter((encoder) => !encoders.includes(encoder));
+  const missing = [...requiredEncoders, "aac"].filter((encoder) => !encoders.includes(encoder));
   if (missing.length > 0) {
     return yield* capabilityError(
       "missing-required-encoder",
@@ -43,7 +43,7 @@ const binaryVersion = (output: string, binary: "ffmpeg" | "ffprobe") =>
 
 const encoderNames = (output: string) =>
   output.split(/\r?\n/u).flatMap((line) => {
-    const name = line.match(/^\s*V[.A-Z]{5}\s+(\S+)(?:\s|$)/u)?.[1];
+    const name = line.match(/^\s*[VA][.A-Z]{5}\s+(\S+)(?:\s|$)/u)?.[1];
     return name === undefined || name === "=" ? [] : [name];
   });
 

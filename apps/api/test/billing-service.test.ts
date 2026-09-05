@@ -10,12 +10,14 @@ import { BillingCustomerNotFound } from "../src/billing/billing-errors.ts";
 import { type BillingConfig, makeBillingService } from "../src/billing/billing-service.ts";
 import { type BillingWebhookEvent, StripeGateway } from "../src/billing/stripe-gateway.ts";
 import { type Database, migrateDatabase, openDatabase } from "../src/database/database.ts";
+import { stripeCustomers, stripeEvents, stripeSubscriptions } from "../src/database/schema.ts";
+
 import {
-  stripeCustomers,
-  stripeEvents,
-  stripeSubscriptions,
-  users,
-} from "../src/database/schema.ts";
+  ensureOrganizationActor,
+  fixtureOrganizationActor,
+  otherFixtureOrganizationActor,
+} from "./organization-fixture-identity.ts";
+import { unusedStripeGateway } from "./unused-stripe-gateway.ts";
 
 const NOW = 1_800_000_000_000;
 const BILLING_CONFIG: BillingConfig = {
@@ -44,64 +46,86 @@ afterEach(async () => {
 
 it("builds subscription Checkout params for new and known Stripe customers", async () => {
   const database = await createTestDatabase();
-  insertUser(database, "user-1", "agent@example.com");
+  ensureOrganizationActor(database);
   const fixture = makeRecordingGateway({ kind: "ignored", eventId: "evt_ignored" });
-  const service = makeBillingService(database, fixture.gateway);
+  const service = makeBillingService(database, fixture.gateway, () => NOW);
 
   await expect(
     Effect.runPromise(
-      service.createCheckout({ config: BILLING_CONFIG, plan: "basic", userId: "user-1" }),
+      service.createCheckout({
+        config: BILLING_CONFIG,
+        plan: "basic",
+        actor: fixtureOrganizationActor,
+        idempotencyKey: "checkout-basic",
+        correlationId: "test",
+      }),
     ),
   ).resolves.toEqual({
-    id: "cs_fixture",
+    organizationId: "org-1",
+    kind: "checkout",
+    expiresAt: new Date(NOW + 1_800_000).toISOString(),
     url: "https://checkout.stripe.test/session",
   });
   expect(fixture.checkoutRequests[0]).toEqual({
     cancel_url: BILLING_CONFIG.checkoutCancelUrl,
-    client_reference_id: "user-1",
-    customer_email: "agent@example.com",
+    client_reference_id: "org-1",
+    customer: "cus_org-1",
     line_items: [{ price: "price_basic", quantity: 1 }],
-    metadata: { userId: "user-1" },
+    metadata: { organizationId: "org-1", attemptId: expect.any(String) },
     mode: "subscription",
-    subscription_data: { metadata: { userId: "user-1" } },
+    subscription_data: { metadata: { organizationId: "org-1" } },
     success_url: BILLING_CONFIG.checkoutSuccessUrl,
   });
 
+  ensureOrganizationActor(database, "org-2", "user-2");
   database.db
     .insert(stripeCustomers)
-    .values({ createdAt: NOW, customerId: "cus_existing", userId: "user-1" })
+    .values({ createdAt: NOW, customerId: "cus_existing", organizationId: "org-2" })
     .run();
   await Effect.runPromise(
-    service.createCheckout({ config: BILLING_CONFIG, plan: "scale", userId: "user-1" }),
+    service.createCheckout({
+      config: BILLING_CONFIG,
+      plan: "scale",
+      actor: otherFixtureOrganizationActor,
+      idempotencyKey: "checkout-scale",
+      correlationId: "test",
+    }),
   );
 
   expect(fixture.checkoutRequests[1]).toEqual({
     cancel_url: BILLING_CONFIG.checkoutCancelUrl,
-    client_reference_id: "user-1",
+    client_reference_id: "org-2",
     customer: "cus_existing",
     line_items: [{ price: "price_scale", quantity: 1 }],
-    metadata: { userId: "user-1" },
+    metadata: { organizationId: "org-2", attemptId: expect.any(String) },
     mode: "subscription",
-    subscription_data: { metadata: { userId: "user-1" } },
+    subscription_data: { metadata: { organizationId: "org-2" } },
     success_url: BILLING_CONFIG.checkoutSuccessUrl,
   });
 });
 
 it("creates Customer Portal params and rejects users without a Stripe customer", async () => {
   const database = await createTestDatabase();
-  insertUser(database, "user-1", "agent@example.com");
-  insertUser(database, "user-2", "other@example.com");
+  ensureOrganizationActor(database);
+  ensureOrganizationActor(database, "org-2", "user-2");
   database.db
     .insert(stripeCustomers)
-    .values({ createdAt: NOW, customerId: "cus_existing", userId: "user-1" })
+    .values({ createdAt: NOW, customerId: "cus_existing", organizationId: "org-1" })
     .run();
   const fixture = makeRecordingGateway({ kind: "ignored", eventId: "evt_ignored" });
-  const service = makeBillingService(database, fixture.gateway);
+  const service = makeBillingService(database, fixture.gateway, () => NOW);
 
   await expect(
-    Effect.runPromise(service.createPortal({ config: BILLING_CONFIG, userId: "user-1" })),
+    Effect.runPromise(
+      service.createPortal({
+        config: BILLING_CONFIG,
+        actor: fixtureOrganizationActor,
+        correlationId: "test",
+      }),
+    ),
   ).resolves.toEqual({
-    id: "bps_fixture",
+    organizationId: "org-1",
+    kind: "portal",
     url: "https://billing.stripe.test/session",
   });
   expect(fixture.portalRequests).toEqual([
@@ -112,14 +136,24 @@ it("creates Customer Portal params and rejects users without a Stripe customer",
   ]);
 
   const missing = await Effect.runPromise(
-    Effect.flip(service.createPortal({ config: BILLING_CONFIG, userId: "user-2" })),
+    Effect.flip(
+      service.createPortal({
+        config: BILLING_CONFIG,
+        actor: otherFixtureOrganizationActor,
+        correlationId: "test",
+      }),
+    ),
   );
   expect(missing).toBeInstanceOf(BillingCustomerNotFound);
 });
 
 it("processes subscription webhooks idempotently and supports update and delete", async () => {
   const database = await createTestDatabase();
-  insertUser(database, "user-1", "agent@example.com");
+  ensureOrganizationActor(database);
+  database.db
+    .insert(stripeCustomers)
+    .values({ createdAt: NOW, customerId: "cus_agent", organizationId: "org-1" })
+    .run();
   const createdEvent = subscriptionSignal("evt_created");
   const createdService = makeBillingService(
     database,
@@ -135,7 +169,7 @@ it("processes subscription webhooks idempotently and supports update and delete"
   expect(database.db.select().from(stripeEvents).all()).toHaveLength(1);
   expect(database.db.select().from(stripeCustomers).get()).toMatchObject({
     customerId: "cus_agent",
-    userId: "user-1",
+    organizationId: "org-1",
   });
   expect(database.db.select().from(stripeSubscriptions).get()).toMatchObject({
     currentPeriodEnd: 1_900_000_000_000,
@@ -160,7 +194,11 @@ it("processes subscription webhooks idempotently and supports update and delete"
 
 it("synchronizes current Stripe state when subscription webhooks arrive out of order", async () => {
   const database = await createTestDatabase();
-  insertUser(database, "user-1", "agent@example.com");
+  ensureOrganizationActor(database);
+  database.db
+    .insert(stripeCustomers)
+    .values({ createdAt: NOW, customerId: "cus_agent", organizationId: "org-1" })
+    .run();
   const current = subscriptionState("canceled");
   const deleted = makeRecordingGateway(subscriptionSignal("evt_deleted"), current);
   const delayed = makeRecordingGateway(subscriptionSignal("evt_delayed"), current);
@@ -182,9 +220,60 @@ const createTestDatabase = async () => {
   return database;
 };
 
-const insertUser = (database: Database, id: string, email: string) => {
-  database.db.insert(users).values({ createdAt: NOW, email, id, updatedAt: NOW }).run();
-};
+it("does not let an older overlapping Stripe retrieval overwrite a newer reconciliation", async () => {
+  const database = await createTestDatabase();
+  ensureOrganizationActor(database);
+  database.db
+    .insert(stripeCustomers)
+    .values({
+      organizationId: "org-1",
+      customerId: "cus_agent",
+      createdAt: NOW,
+    })
+    .run();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const reads: string[] = [];
+  const gateway = StripeGateway.of({
+    ...unusedStripeGateway,
+    parseWebhook: ({ rawBody }) => Effect.succeed(subscriptionSignal(String(rawBody))),
+    retrieveSubscription: () =>
+      Effect.promise(async () => {
+        reads.push("read");
+        if (reads.length === 1) {
+          started.resolve();
+          await release.promise;
+          return subscriptionState("active");
+        }
+        return subscriptionState("canceled");
+      }),
+  });
+  const service = makeBillingService(database, gateway);
+  const first = Effect.runPromise(
+    Effect.result(
+      service.handleWebhook({
+        config: BILLING_CONFIG,
+        now: NOW,
+        rawBody: "old",
+        signature: "test",
+      }),
+    ),
+  );
+  await started.promise;
+  await Effect.runPromise(
+    service.handleWebhook({
+      config: BILLING_CONFIG,
+      now: NOW + 1,
+      rawBody: "new",
+      signature: "test",
+    }),
+  );
+  release.resolve();
+  const stale = await first;
+  expect(stale).toMatchObject({ failure: { _tag: "BillingWebhookUnmatched" } });
+  expect(database.db.select().from(stripeSubscriptions).get()?.status).toBe("canceled");
+  expect(database.db.select().from(stripeEvents).all()).toHaveLength(1);
+});
 
 const makeRecordingGateway = (
   event: BillingWebhookEvent,
@@ -194,11 +283,22 @@ const makeRecordingGateway = (
   const portalRequests: Array<Stripe.BillingPortal.SessionCreateParams> = [];
   const retrievedSubscriptionIds: Array<string> = [];
   const gateway = StripeGateway.of({
+    ...unusedStripeGateway,
+    createCustomer: (params) =>
+      Effect.succeed(`cus_${params.metadata && params.metadata.organizationId}`),
+    findCustomer: () => Effect.succeed(null),
+    findCheckoutSession: () => Effect.succeed(null),
     createCheckoutSession: Effect.fn("TestStripe.createCheckoutSession")((params) =>
       Effect.sync(() => {
         checkoutRequests.push(params);
         return {
-          id: "cs_fixture",
+          id: `cs_${params.client_reference_id}`,
+          status: "open" as const,
+          expiresAt: NOW + 1_800_000,
+          customerId: String(params.customer),
+          subscriptionId: null,
+          organizationId: params.client_reference_id ?? "",
+          attemptId: String(params.metadata?.attemptId ?? ""),
           url: "https://checkout.stripe.test/session",
         };
       }),
@@ -236,7 +336,7 @@ const subscriptionState = (status: "active" | "canceled" | "past_due") => ({
   priceId: "price_scale",
   status,
   subscriptionId: "sub_agent",
-  userId: "user-1",
+  organizationId: "org-1",
 });
 
 const handleWebhook = (service: ReturnType<typeof makeBillingService>, now: number) =>

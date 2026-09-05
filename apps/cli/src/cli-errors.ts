@@ -62,6 +62,16 @@ export const invalidResponseError = () =>
     ),
   );
 
+export const skillVersionChangedError = () =>
+  new CliProblemError(
+    localProblem(
+      "SKILL_VERSION_CHANGED",
+      "The API skill changed since this workflow loaded its instructions.",
+      "Run skill again and use its new skillVersion for reference requests. Preserve existing job IDs and retry keys.",
+      409,
+    ),
+  );
+
 export const authenticationRequiredError = () =>
   new CliProblemError(
     localProblem(
@@ -114,6 +124,27 @@ export const artifactHashMismatchError = () =>
     ),
   );
 
+export const artifactSizeMismatchError = () =>
+  new CliProblemError(
+    localProblem(
+      "ARTIFACT_SIZE_MISMATCH",
+      "The downloaded artifact does not match its declared byte count.",
+      "Discard the download and request a fresh artifact authorization.",
+      422,
+    ),
+  );
+
+export const artifactDownloadInterruptedError = () =>
+  new CliProblemError(
+    localProblem(
+      "CLI_INTERRUPTED",
+      "The artifact download was interrupted; no unverified output was published.",
+      "Retry the download or materialization; the remote artifact is unchanged.",
+      499,
+    ),
+    CLI_EXIT_CODES.interrupted,
+  );
+
 export const artifactDestinationExistsError = () =>
   new CliProblemError(
     localProblem(
@@ -121,6 +152,16 @@ export const artifactDestinationExistsError = () =>
       "The artifact output path already exists.",
       "Choose another --output path or explicitly pass --force to replace it.",
       409,
+    ),
+  );
+
+export const artifactOutputUnsafeError = (detail: string) =>
+  new CliProblemError(
+    localProblem(
+      "ARTIFACT_OUTPUT_UNSAFE",
+      detail,
+      "Choose a regular output directory with unique safe artifact filenames.",
+      422,
     ),
   );
 

@@ -2,14 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import { eq, sql } from "drizzle-orm";
 
-import type { Database } from "./database.ts";
+import type { DatabaseTransaction } from "./database.ts";
 import { jobCreditEntries, jobs } from "./schema.ts";
 
-export type DatabaseTransaction = Parameters<Parameters<Database["db"]["transaction"]>[0]>[0];
 type Job = typeof jobs.$inferSelect;
 
 export const reservedCreditUnits = sql<number>`coalesce(sum(case
-  when ${jobCreditEntries.kind} in ('hold', 'adjustment') then ${jobCreditEntries.units}
+  when ${jobCreditEntries.kind} = 'hold' then ${jobCreditEntries.units}
   when ${jobCreditEntries.kind} = 'release' then -${jobCreditEntries.units}
   else 0
 end), 0)`;
@@ -21,14 +20,14 @@ end), 0)`;
 
 export const creditPeriodTotals = (
   transaction: DatabaseTransaction,
-  userId: string,
+  organizationId: string,
   periodStart: number,
 ) =>
   transaction
     .select({ reservedUnits: reservedCreditUnits, usedUnits: usedCreditUnits })
     .from(jobCreditEntries)
     .where(
-      sql`${jobCreditEntries.userId} = ${userId} and ${jobCreditEntries.periodStart} = ${periodStart}`,
+      sql`${jobCreditEntries.organizationId} = ${organizationId} and ${jobCreditEntries.periodStart} = ${periodStart}`,
     )
     .get() ?? { reservedUnits: 0, usedUnits: 0 };
 
@@ -39,29 +38,12 @@ export const holdJobCredits = (
   units: number,
 ) => insertEntry(transaction, job, periodStart, "hold", units, job.createdAt);
 
-export const reserveExactJobCredits = (
-  transaction: DatabaseTransaction,
-  job: Job,
-  requiredUnits: number,
-  monthlyUnits: number,
-  now: number,
-) => {
-  const reservation = jobReservation(transaction, job.id);
-  if (reservation === undefined || reservation.units <= 0) {
-    return { kind: "missing-reservation" as const };
-  }
-  const totals = creditPeriodTotals(transaction, job.userId, reservation.periodStart);
-  const additionalUnits = Math.max(0, requiredUnits - reservation.units);
-  const availableUnits = Math.max(0, monthlyUnits - totals.reservedUnits - totals.usedUnits);
-  if (additionalUnits > availableUnits) {
-    return { availableUnits, kind: "insufficient-credits" as const };
-  }
-
-  if (additionalUnits > 0) {
-    insertEntry(transaction, job, reservation.periodStart, "adjustment", additionalUnits, now);
-  }
-  return { kind: "reserved" as const };
-};
+export const jobReservedCreditUnits = (transaction: DatabaseTransaction, jobId: string) =>
+  transaction
+    .select({ units: reservedCreditUnits })
+    .from(jobCreditEntries)
+    .where(eq(jobCreditEntries.jobId, jobId))
+    .get()?.units ?? 0;
 
 export const releaseJobCredits = (transaction: DatabaseTransaction, job: Job, now: number) => {
   const reservation = jobReservation(transaction, job.id);
@@ -101,6 +83,6 @@ const insertEntry = (
       kind,
       periodStart,
       units,
-      userId: job.userId,
+      organizationId: job.organizationId,
     })
     .run();

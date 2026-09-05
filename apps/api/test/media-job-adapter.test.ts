@@ -1,452 +1,469 @@
-import { access, chmod, copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { access, chmod, copyFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { JobResultSchema } from "@densio/shared";
+import {
+  ExecutionPlanCreateRequestSchema,
+  JobResultSchema,
+  type ExecutionPlanCreateRequest,
+  type Plan,
+} from "@densio/shared";
 import { eq } from "drizzle-orm";
 import { Effect, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { afterEach, expect, it } from "vitest";
 
-import { type Database, migrateDatabase, openDatabase } from "../src/database/database.ts";
-import { artifacts, jobs, mediaCommands, users } from "../src/database/schema.ts";
+import { claimNextJob, recoverExpiredJobs } from "../src/database/job-repository.ts";
+import { transitionJob } from "../src/database/job-transition-repository.ts";
+import { artifactAccessGrants, artifacts, jobs, mediaCommands } from "../src/database/schema.ts";
 import {
-  type MediaJobAdapterConfig,
   makeMediaJobCleanup,
   makeMediaJobProcessor,
+  type MediaJobAdapterConfig,
 } from "../src/jobs/media-job-adapter.ts";
+import { prepareJobExecution } from "../src/jobs/media-job-handler-support.ts";
+import { MediaInspector } from "../src/media/inspection/media-inspector.ts";
 import { MediaProcessRunner } from "../src/media/process/media-process-runner.ts";
+import { normalizeSourceInspection } from "../src/sources/source-inspection.ts";
 import { makeJobStoragePaths, prepareJobWorkspace } from "../src/storage/workspace.ts";
+import { createJobTestContext, cleanupJobFixtures, queueCanonicalJob } from "./job-fixture.ts";
 
 const NOW = 1_800_000_000_000;
 const fixtureSource = fileURLToPath(new URL("./fixtures/media-job-fixture.mjs", import.meta.url));
-const temporaryRoots: Array<string> = [];
+const variants = [
+  { codec: "vp9", crf: 30 },
+  { codec: "h265", crf: 32 },
+] as const;
+afterEach(cleanupJobFixtures);
 
-afterEach(async () => {
-  await Promise.all(
-    temporaryRoots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
+it("isolates retry scratch and publication paths while sharing the attached input", async () => {
+  const context = await createContext("compress", {});
+  const [first, retry] = await Effect.runPromise(
+    MediaProcessRunner.use((runner) =>
+      Effect.all([
+        prepareJobExecution({ ...context, runner }, context.job),
+        prepareJobExecution({ ...context, runner }, { ...context.job, attemptCount: 2 }),
+      ]),
+    ).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 }))),
   );
+  expect(first.paths.inputFile).toBe(retry.paths.inputFile);
+  expect(first.paths.stagingDirectory).not.toBe(retry.paths.stagingDirectory);
+  expect(first.paths.artifactDirectory).not.toBe(retry.paths.artifactDirectory);
 });
 
-it("inspects, compresses, publishes, registers, diagnoses, and cleans a job", async () => {
-  const context = await createContext("compress", {}, { duration: 6 });
-  const rawResult = await runProcessor(context);
-  const result = Schema.decodeUnknownSync(JobResultSchema)(rawResult);
-
+it("executes the planned compression and freezes evidence without creating access grants", async () => {
+  const context = await createContext("compress", {});
+  const result = await runProcessor(context);
   expect(result.kind).toBe("compress");
-  if (result.kind !== "compress") throw new Error("Expected compression result.");
-  expect(result.artifacts).toHaveLength(2);
-  expect(result.html).toContain('<source src="https://media.example/v1/artifacts/');
-  expect(result.html).toContain('type="video/webm"');
-  expect(result.commands).toHaveLength(2);
-  expect(context.database.db.select().from(artifacts).all()).toHaveLength(2);
-  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(3);
+  if (result.kind !== "compress") throw new Error("Expected compression");
+  const outputs = context.database.db.select().from(artifacts).all();
+  expect(result.artifactIds).toEqual(outputs.map(({ id }) => id));
+  expect(outputs).toHaveLength(2);
+  expect(outputs).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        durationSeconds: 6,
+        height: 360,
+        width: 640,
+        retainedUntil: NOW + 86_400_000,
+      }),
+    ]),
+  );
+  expect(result.html).toContain('<source src="./video-vp9.webm"');
+  expect(result).not.toHaveProperty("previewHtml");
+  expect(result).not.toHaveProperty("commands");
+  expect(context.database.db.select().from(artifactAccessGrants).all()).toEqual([]);
+  const stored = currentJob(context);
+  const receipt = JSON.parse(stored.receiptJson ?? "null");
+  expect(receipt.execution).toMatchObject({
+    ffmpegVersion: "fixture-ffmpeg",
+    ffprobeVersion: "fixture-ffprobe",
+  });
   expect(
     context.database.db.select({ tool: mediaCommands.tool }).from(mediaCommands).all(),
   ).toEqual([{ tool: "ffprobe" }, { tool: "ffmpeg" }, { tool: "ffmpeg" }]);
-  await Promise.all(
-    result.artifacts.map((artifact) => access(artifactPath(context, artifact.filename))),
-  );
-
-  context.database.db
-    .update(jobs)
-    .set({ state: "succeeded" })
-    .where(eq(jobs.id, context.job.id))
-    .run();
-  const succeeded = context.database.db
-    .select()
-    .from(jobs)
-    .where(eq(jobs.id, context.job.id))
-    .get();
-  if (succeeded === undefined) throw new Error("Expected persisted job.");
-  await Effect.runPromise(makeMediaJobCleanup(context.database, context.config).cleanup(succeeded));
-
+  await Effect.runPromise(makeMediaJobCleanup(context.database, context.config).cleanup(stored));
   await expect(access(context.paths.inputFile)).rejects.toMatchObject({ code: "ENOENT" });
-  await Promise.all(
-    result.artifacts.map((artifact) => access(artifactPath(context, artifact.filename))),
-  );
-  context.database.close();
+  await Promise.all(outputs.map(({ path }) => access(path)));
 });
 
-it("extracts an image archive through the durable media adapter", async () => {
-  const context = await createContext(
-    "extract-images",
-    { format: "png", intervalSeconds: 2 },
-    { duration: 6 },
+it("recovers a crash after publication into one authoritative artifact set", async () => {
+  const context = await createContext("compress", {});
+  await Effect.runPromise(processorProgram(context));
+  const firstIds = context.database.db.select({ id: artifacts.id }).from(artifacts).all();
+  const firstPaths = context.database.db.select({ path: artifacts.path }).from(artifacts).all();
+  expect(currentJob(context).state).toBe("publishing");
+  recoverExpiredJobs(context.database, { now: NOW + 60_001, maxAttempts: 2 });
+  const retry = claimNextJob(context.database, {
+    now: NOW + 60_002,
+    leaseDurationMs: 60_000,
+    workerId: "worker-2",
+  });
+  if (retry === undefined) throw new Error("Expected retry");
+  await runProcessor({ ...context, job: retry, now: NOW + 60_003 });
+  const outputs = context.database.db.select().from(artifacts).all();
+  expect(outputs).toHaveLength(2);
+  expect(outputs.map(({ id }) => ({ id }))).not.toEqual(expect.arrayContaining(firstIds));
+  expect(context.database.db.select().from(artifactAccessGrants).all()).toEqual([]);
+  expect(currentJob(context).attemptCount).toBe(2);
+  await Effect.runPromise(
+    makeMediaJobCleanup(context.database, context.config).cleanup(currentJob(context)),
   );
-  const rawResult = await runProcessor(context);
-  const result = Schema.decodeUnknownSync(JobResultSchema)(rawResult);
+  await Promise.all(outputs.map(({ path }) => access(path)));
+  await Promise.all(
+    firstPaths.map(async ({ path }) => {
+      await expect(access(path)).rejects.toMatchObject({ code: "ENOENT" });
+    }),
+  );
+});
 
-  expect(result.kind).toBe("extract-images");
-  if (result.kind !== "extract-images") throw new Error("Expected extraction result.");
-  expect(result).toMatchObject({ imageCount: 3, intervalSeconds: 2 });
-  expect(result.archive).toMatchObject({
+it("extracts images using resolved dimensions, interval, and stable archive identity", async () => {
+  const context = await createContext("extract-images", { format: "png", intervalSeconds: 2 });
+  const result = await runProcessor(context);
+  expect(result).toMatchObject({ kind: "extract-images", imageCount: 3, intervalSeconds: 2 });
+  if (result.kind !== "extract-images") throw new Error("Expected extraction");
+  const archive = context.database.db
+    .select()
+    .from(artifacts)
+    .where(eq(artifacts.id, result.archiveArtifactId))
+    .get();
+  expect(archive).toMatchObject({
     filename: "images.zip",
     kind: "image-archive",
-    mediaType: "application/zip",
+    width: 640,
+    height: 360,
   });
-  await expect(access(artifactPath(context, result.archive.filename))).resolves.toBeUndefined();
-  expect(context.database.db.select().from(artifacts).all()).toHaveLength(1);
-  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(2);
-  context.database.close();
+  await expect(access(archive?.path ?? "")).resolves.toBeUndefined();
 });
 
-it("renders and registers near-EOF quality comparison variants", async () => {
+it("executes one near-EOF sample with low-confidence comparison evidence", async () => {
+  const context = await createContext("compare-quality", {
+    variants,
+    samples: { mode: "positions", positions: [{ kind: "seconds", seconds: 5.5 }] },
+  });
+  const result = await runProcessor(context);
+  expect(result).toMatchObject({
+    kind: "compare-quality",
+    samples: [{ normalizedStartSeconds: 5.5, actualSampleDurationSeconds: 0.5 }],
+    decision: { confidence: "low", confidenceBasis: { sampleCount: 1, independentSampleCount: 1 } },
+  });
+  expect(context.database.db.select().from(artifacts).all()).toHaveLength(4);
+});
+
+it("resolves frame selectors during planning and never repeats them during execution", async () => {
   const context = await createContext(
     "compare-quality",
     {
-      codec: "vp9",
-      crfs: [30, 40],
-      durationSeconds: 1,
-      position: { kind: "seconds", seconds: 5.5 },
+      variants,
+      objectiveMetrics: ["ssim", "psnr"],
+      durationSeconds: 2,
+      samples: {
+        mode: "positions",
+        positions: [
+          { kind: "seconds", seconds: 1 },
+          { kind: "frame", frame: 24 },
+        ],
+      },
     },
-    { duration: 6 },
+    { duration: 6, frameTimestamp: 3.25 },
   );
-  const rawResult = await runProcessor(context);
-  const result = Schema.decodeUnknownSync(JobResultSchema)(rawResult);
-
-  expect(result.kind).toBe("compare-quality");
-  if (result.kind !== "compare-quality") throw new Error("Expected comparison result.");
+  const result = await runProcessor(context);
   expect(result).toMatchObject({
-    actualSampleDurationSeconds: 0.5,
-    codec: "vp9",
-    normalizedStartSeconds: 5.5,
-    variants: [
-      { crf: 30, estimatedFullVideoBytes: 3_600, sampleBytes: 300 },
-      { crf: 40, estimatedFullVideoBytes: 4_800, sampleBytes: 400 },
+    kind: "compare-quality",
+    samples: [
+      { sampleId: "sample-1", normalizedStartSeconds: 1, actualSampleDurationSeconds: 2 },
+      { sampleId: "sample-2", normalizedStartSeconds: 3.25, actualSampleDurationSeconds: 2 },
     ],
+    variants: [
+      { codec: "vp9", metrics: { ssim: 0.97, psnr: 35 } },
+      { codec: "h265", metrics: { ssim: 0.968, psnr: 34 } },
+    ],
+    decision: { confidence: "medium", recommendedVariantId: "variant-vp9-crf-30" },
   });
-  expect(context.database.db.select().from(artifacts).all()).toHaveLength(4);
-  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(5);
-  await Promise.all(
-    result.variants.flatMap((variant) => [
-      access(artifactPath(context, variant.preview.filename)),
-      access(artifactPath(context, variant.still.filename)),
-    ]),
+  expect(commands(context).some(({ arguments: argv }) => argv.includes("-show_frames"))).toBe(
+    false,
   );
-  context.database.close();
+  expect(commands(context)).toHaveLength(10);
 });
 
-it("rolls back artifact rows and cleanup removes files after registration fails", async () => {
-  const context = await createContext("compress", {}, { duration: 6 });
-  context.database.sqlite.exec(`
-    create trigger fail_h265_registration
-    before insert on artifacts
-    when NEW.filename = 'video-h265.mp4'
-    begin
-      select raise(abort, 'deterministic registration failure');
-    end
-  `);
-
-  const error = await Effect.runPromise(Effect.flip(processorProgram(context)));
-
-  expect(error).toMatchObject({ code: "MEDIA_JOB_FAILED" });
+it("rejects all encoded outputs before publication when their aggregate exceeds the guard", async () => {
+  const context = await createContext("compress", {});
+  const error = await Effect.runPromise(
+    Effect.flip(processorProgram({ ...context, job: { ...context.job, maxOutputBytes: 1 } })),
+  );
+  expect(error).toMatchObject({ code: "OUTPUT_SIZE_LIMIT_EXCEEDED", details: { limitBytes: 1 } });
   expect(context.database.db.select().from(artifacts).all()).toEqual([]);
-  await expect(access(artifactPath(context, "video-vp9.webm"))).resolves.toBeUndefined();
-  await expect(access(artifactPath(context, "video-h265.mp4"))).resolves.toBeUndefined();
-  context.database.db
-    .update(jobs)
-    .set({ state: "failed" })
-    .where(eq(jobs.id, context.job.id))
-    .run();
-  const failed = context.database.db.select().from(jobs).where(eq(jobs.id, context.job.id)).get();
-  if (failed === undefined) throw new Error("Expected failed job.");
-  await Effect.runPromise(makeMediaJobCleanup(context.database, context.config).cleanup(failed));
+  await expect(access(context.paths.artifactDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+});
 
+it("rolls back registration atomically and cleanup removes unpublished residue", async () => {
+  const context = await createContext("compress", {});
+  context.database.sqlite.exec(
+    "create trigger reject_registration before insert on artifacts when NEW.filename = 'video-h265.mp4' begin select raise(abort, 'registration failure'); end",
+  );
+  expect(await Effect.runPromise(Effect.flip(processorProgram(context)))).toMatchObject({
+    code: "MEDIA_JOB_FAILED",
+  });
+  expect(context.database.db.select().from(artifacts).all()).toEqual([]);
+  transitionJob(context.database, {
+    jobId: context.job.id,
+    now: NOW,
+    command: {
+      type: "fail",
+      workerId: "worker-1",
+      attempt: 1,
+      code: "MEDIA_JOB_FAILED",
+      message: "Registration failed",
+      details: {},
+    },
+  });
+  await Effect.runPromise(
+    makeMediaJobCleanup(context.database, context.config).cleanup(currentJob(context)),
+  );
   await expect(access(context.paths.workspaceDirectory)).rejects.toMatchObject({ code: "ENOENT" });
   await expect(access(context.paths.artifactDirectory)).rejects.toMatchObject({ code: "ENOENT" });
-  expect(JSON.stringify(context.database.db.select().from(mediaCommands).all())).not.toContain(
-    "/v1/artifacts/",
-  );
-  context.database.close();
 });
 
-it("persists sanitized bounded diagnostics for a failed media command", async () => {
+it("preserves bounded, sanitized diagnostics for failed FFmpeg commands", async () => {
   const context = await createContext("compress", {}, { duration: 6, failCodec: "h265" });
-
-  const error = await Effect.runPromise(Effect.flip(processorProgram(context)));
-  const commands = context.database.db.select().from(mediaCommands).all();
-
-  expect(error).toMatchObject({
+  expect(await Effect.runPromise(Effect.flip(processorProgram(context)))).toMatchObject({
     code: "MEDIA_PROCESS_FAILED",
     details: { stderrTail: "deterministic media job failure" },
   });
-  expect(commands).toHaveLength(3);
-  expect(commands.at(-1)).toMatchObject({
-    exitCode: 9,
-    stderrTail: "deterministic media job failure",
+  const rows = context.database.db.select().from(mediaCommands).all();
+  expect(rows).toHaveLength(3);
+  expect(rows.at(-1)).toMatchObject({ exitCode: 9, stderrTail: "deterministic media job failure" });
+  expect(JSON.stringify(rows)).not.toContain(String.fromCharCode(27));
+});
+
+it("detects changed source inspection before encoding", async () => {
+  const context = await createContext("compress", {});
+  await writeFile(context.paths.inputFile, JSON.stringify({ duration: 7 }));
+  expect(await Effect.runPromise(Effect.flip(processorProgram(context)))).toMatchObject({
+    code: "PLAN_DIVERGED",
   });
-  [JSON.stringify(commands), JSON.stringify(error)].forEach((diagnostic) => {
-    expect(diagnostic).not.toContain(String.fromCharCode(0));
-    expect(diagnostic).not.toContain(String.fromCharCode(27));
+  expect(context.database.db.select().from(artifacts).all()).toEqual([]);
+  expect(commands(context)).toHaveLength(1);
+  expect(JSON.parse(currentJob(context).toolchainJson ?? "null")).toEqual({
+    ffmpegVersion: "fixture-ffmpeg",
+    ffprobeVersion: "fixture-ffprobe",
   });
-  context.database.close();
 });
 
-it("analyzes audible audio and retains it in both default outputs", async () => {
-  const context = await createContext("compress", {}, { audio: "-30", duration: 6 });
-  const result = Schema.decodeUnknownSync(JobResultSchema)(await runProcessor(context));
-
-  expect(result.kind).toBe("compress");
-  if (result.kind !== "compress") throw new Error("Expected compression result.");
-  expect(result.commands).toHaveLength(2);
-  result.commands.forEach((command) => {
-    expect(command.arguments).toContain("0:a:0");
-    expect(command.arguments).not.toContain("-an");
-  });
-  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(4);
-  context.database.close();
-});
-
-it("requires a decision for an omitted high frame-rate policy before encoding", async () => {
-  const context = await createContext("compress", {}, { duration: 6, frameRate: "31/1" });
-  const analysis = await analyzeProcessor(context);
-
-  expect(analysis).toEqual({
-    decision: {
-      kind: "frame-rate",
-      recommended: { maximum: 30, mode: "cap" },
-      source: { denominator: 1, framesPerSecond: 31, numerator: 31 },
-    },
-    kind: "decision-required",
-  });
-  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(1);
-  expect(context.database.db.select().from(artifacts).all()).toHaveLength(0);
-  context.database.close();
-});
-
-it("continues automatically when an omitted frame-rate policy is already at 30 fps", async () => {
-  const context = await createContext("compress", {}, { duration: 6, frameRate: "30/1" });
-  const analysis = await analyzeProcessor(context);
-
-  expect(analysis.kind).toBe("ready");
-  context.database.close();
-});
-
-it("applies an explicit rational cadence cap to every compression output", async () => {
-  const context = await createContext(
-    "compress",
-    { frameRate: { maximum: 30, mode: "cap" } },
-    { duration: 6, frameRate: "60000/1001" },
-  );
-  const result = Schema.decodeUnknownSync(JobResultSchema)(await runProcessor(context));
-
-  expect(result.kind).toBe("compress");
-  if (result.kind !== "compress") throw new Error("Expected compression result.");
-  expect(result.commands).toHaveLength(2);
-  result.commands.forEach((command) => {
-    expect(command.arguments).toContain("fps=30000/1001");
-  });
-  context.database.close();
-});
-
-it("rejects AV1 for a free job before encoding", async () => {
-  const context = await createContext("compress", { codecs: ["av1"] }, { duration: 6 });
-  const error = await Effect.runPromise(Effect.flip(processorProgram(context)));
-
-  expect(error).toMatchObject({ code: "CODEC_NOT_ENTITLED" });
-  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(1);
-  expect(context.database.db.select().from(artifacts).all()).toHaveLength(0);
-  context.database.close();
-});
-
-it("allows AV1 for a Basic job", async () => {
-  const context = await createContext("compress", { codecs: ["av1"] }, { duration: 6 }, "basic");
-  const result = Schema.decodeUnknownSync(JobResultSchema)(await runProcessor(context));
-
-  expect(result).toMatchObject({ artifacts: [{ codec: "av1" }], kind: "compress" });
-  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(2);
-  expect(context.database.db.select().from(artifacts).all()).toHaveLength(1);
-  context.database.close();
-});
-
-it.each([
-  ["one H.265 output", { codecs: ["h265"] }, 100],
-  ["the default VP9 and H.265 outputs", {}, 200],
-] as const)("meters five-minute 1080p compression for %s", async (_label, options, expected) => {
-  const context = await createContext("compress", options, {
-    duration: 300,
-    height: 1080,
-    width: 1920,
-  });
-
-  const analysis = await Effect.runPromise(
-    MediaProcessRunner.use((runner) =>
-      makeMediaJobProcessor(context.database, context.config, runner).analyze(context.job),
-    ).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 }))),
-  );
-
-  if (analysis.kind !== "ready") throw new Error("Expected ready analysis.");
-  expect(analysis.creditUnits).toBe(expected);
-  expect(analysis.data).toMatchObject({ kind: "compress" });
-  context.database.close();
-});
-
-it.each([
-  ["free", 1_800.01],
-  ["pro", 10_800.01],
-] as const)("enforces the %s duration limit", async (plan, duration) => {
-  const context = await createContext("compress", {}, { duration }, plan);
-
-  const error = await Effect.runPromise(Effect.flip(processorProgram(context)));
-
-  expect(error).toMatchObject({ code: "DURATION_LIMIT_EXCEEDED" });
-  expect(context.database.db.select().from(mediaCommands).all()).toHaveLength(1);
-  context.database.close();
-});
-
-it("allows a paid job above the Free duration limit", async () => {
-  const context = await createContext("compress", {}, { duration: 1_800.01 }, "pro");
-  const result = Schema.decodeUnknownSync(JobResultSchema)(await runProcessor(context));
-
-  expect(result.kind).toBe("compress");
-  context.database.close();
-});
-
-it("rejects analysis from a different job attempt", async () => {
-  const context = await createContext("compress", {}, { duration: 6 });
+it("rejects analysis from another worker attempt", async () => {
+  const context = await createContext("compress", {});
   const error = await Effect.runPromise(
     Effect.gen(function* () {
       yield* TestClock.setTime(NOW);
-      return yield* MediaProcessRunner.use((runner) => {
-        const processor = makeMediaJobProcessor(context.database, context.config, runner);
-        return Effect.gen(function* () {
+      return yield* MediaProcessRunner.use((runner) =>
+        Effect.gen(function* () {
+          const processor = makeMediaJobProcessor(context.database, context.config, runner);
           const analysis = yield* processor.analyze(context.job);
-          if (analysis.kind !== "ready") return yield* Effect.die("Expected ready analysis.");
-          return yield* Effect.flip(
-            processor.process({ ...context.job, attemptCount: 2 }, analysis.data),
-          );
-        });
-      });
+          return yield* Effect.flip(analysis.process({ ...context.job, attemptCount: 2 }));
+        }),
+      );
     }).pipe(
       Effect.provide(MediaProcessRunner.layer({ concurrency: 3 })),
       Effect.provide(TestClock.layer()),
     ),
   );
-
   expect(error).toMatchObject({ code: "STALE_JOB_ANALYSIS" });
-  expect(JSON.stringify(error)).not.toContain("/v1/artifacts/");
-  context.database.close();
 });
 
 it.each([
-  ["compress", {}],
-  ["extract-images", {}],
-  ["compare-quality", { codec: "vp9", crfs: [30, 40] }],
-] as const)("persists workflow-discriminated analysis for %s", async (kind, options) => {
-  const context = await createContext(kind, options, { duration: 6 });
-  const analysis = await Effect.runPromise(
-    MediaProcessRunner.use((runner) =>
-      makeMediaJobProcessor(context.database, context.config, runner).analyze(context.job),
-    ).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 }))),
-  );
+  [{ audio: "auto" }, { audio: "-30", duration: 6 }, "0:a:0"],
+  [
+    { frameRate: { mode: "cap", maximum: 30 } },
+    { frameRate: "60000/1001", duration: 6 },
+    "fps=30000/1001",
+  ],
+] as const)(
+  "applies resolved audio and frame-rate policy to every output",
+  async (options, source, argument) => {
+    const context = await createContext("compress", options, source);
+    await runProcessor(context);
+    const encodes = commands(context).filter(({ arguments: argv }) => argv.includes("-crf"));
+    expect(encodes).toHaveLength(2);
+    encodes.forEach(({ arguments: argv }) => expect(argv).toContain(argument));
+  },
+);
 
-  expect(analysis).toMatchObject({ creditUnits: 5, data: { kind } });
-  context.database.close();
+it("rejects an unentitled codec before creating a job and permits it on Basic", async () => {
+  await expect(createContext("compress", { codecs: ["av1"] })).rejects.toMatchObject({
+    _tag: "ExecutionPlanEntitlementRejected",
+  });
+  const context = await createContext("compress", { codecs: ["av1"] }, { duration: 6 }, "basic");
+  await runProcessor(context);
+  expect(context.database.db.select().from(artifacts).all()).toMatchObject([{ codec: "av1" }]);
 });
 
-const runProcessor = (context: TestContext) => Effect.runPromise(processorProgram(context));
-
-const analyzeProcessor = (context: TestContext) =>
-  Effect.runPromise(
-    MediaProcessRunner.use((runner) =>
-      makeMediaJobProcessor(context.database, context.config, runner).analyze(context.job),
-    ).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 }))),
+it.each([
+  [{ codecs: ["h265"] }, 100],
+  [{}, 200],
+] as const)("meters the exact five-minute 1080p plan cost", async (options, expected) => {
+  const context = await createContext("compress", options, {
+    duration: 300,
+    height: 1080,
+    width: 1920,
+  });
+  expect(context.job.quoteCreditUnits).toBe(expected);
+  const analysis = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* TestClock.setTime(NOW);
+      return yield* MediaProcessRunner.use((runner) =>
+        makeMediaJobProcessor(context.database, context.config, runner).analyze(context.job),
+      );
+    }).pipe(
+      Effect.provide(MediaProcessRunner.layer({ concurrency: 3 })),
+      Effect.provide(TestClock.layer()),
+    ),
   );
+  expect(analysis.creditUnits).toBe(expected);
+});
+
+const createContext = async (
+  workflow: ExecutionPlanCreateRequest["workflow"],
+  options: Schema.Json,
+  source: Schema.Json = { duration: 6 },
+  plan: Plan = "free",
+) => {
+  const context = await createJobTestContext();
+  const paths = await Effect.runPromise(makeJobStoragePaths(context.mediaRoot, "job-1"));
+  await Effect.runPromise(prepareJobWorkspace(paths));
+  const bytes = JSON.stringify(source);
+  await writeFile(paths.inputFile, bytes);
+  const ffmpegPath = join(context.directory, "ffmpeg");
+  const ffprobePath = join(context.directory, "ffprobe");
+  await Promise.all(
+    [ffmpegPath, ffprobePath].map(async (path) => {
+      await copyFile(fixtureSource, path);
+      await chmod(path, 0o755);
+    }),
+  );
+  const config: MediaJobAdapterConfig = {
+    ffmpegPath,
+    ffprobePath,
+    ffmpegVersion: "fixture-ffmpeg",
+    ffprobeVersion: "fixture-ffprobe",
+    artifactAccessGrantTtlMs: 900_000,
+    artifactTtlMs: 86_400_000,
+    audioSilenceThresholdDb: -50,
+    maxExtractedImages: 2_000,
+    mediaRoot: context.mediaRoot,
+    publicBaseUrl: "https://media.example",
+  };
+  const request = Schema.decodeUnknownSync(ExecutionPlanCreateRequestSchema)({
+    sourceId: "source-job-1",
+    workflow,
+    options,
+  });
+  const facts = await Effect.runPromise(
+    MediaInspector.use((inspector) =>
+      Effect.gen(function* () {
+        const inspection = yield* inspector
+          .inspect(paths.inputFile)
+          .pipe(Effect.flatMap(normalizeSourceInspection));
+        const frames =
+          request.workflow === "compare-quality" && request.options.samples?.mode === "positions"
+            ? request.options.samples.positions.flatMap((position) =>
+                position.kind === "frame" ? [position.frame] : [],
+              )
+            : [];
+        const timestamps = yield* Effect.forEach(frames, (frame) =>
+          inspector.resolveFrameTimestamp(
+            paths.inputFile,
+            frame,
+            inspection.primaryVideoStream.index,
+          ),
+        );
+        return { inspection, timestamps };
+      }),
+    ).pipe(
+      Effect.provide(MediaInspector.layer(config)),
+      Effect.provide(MediaProcessRunner.layer({ concurrency: 3 })),
+    ),
+  );
+  queueCanonicalJob(
+    context.database,
+    {
+      kind: workflow,
+      requestedOptionsJson: JSON.stringify(options),
+      subscriptionPlan: plan,
+      inspectionJson: JSON.stringify(facts.inspection),
+      inputBytes: Buffer.byteLength(bytes),
+      declaredBytes: Buffer.byteLength(bytes),
+      inputSha256: createHash("sha256").update(bytes).digest("hex"),
+      createdAt: NOW - 2,
+    },
+    facts.timestamps,
+  );
+  const job = claimNextJob(context.database, {
+    now: NOW,
+    leaseDurationMs: 60_000,
+    workerId: "worker-1",
+  });
+  if (job === undefined) throw new Error("Expected claimed job");
+  return { ...context, config, job, paths, now: NOW };
+};
+type TestContext = Awaited<ReturnType<typeof createContext>>;
 
 const processorProgram = (context: TestContext) =>
   Effect.gen(function* () {
-    yield* TestClock.setTime(NOW);
-    return yield* MediaProcessRunner.use((runner) => {
-      const processor = makeMediaJobProcessor(context.database, context.config, runner);
-      return Effect.gen(function* () {
+    yield* TestClock.setTime(context.now);
+    return yield* MediaProcessRunner.use((runner) =>
+      Effect.gen(function* () {
+        const processor = makeMediaJobProcessor(context.database, context.config, runner);
         const analysis = yield* processor.analyze(context.job);
-        if (analysis.kind !== "ready") return yield* Effect.die("Expected ready analysis.");
-        return yield* processor.process(context.job, analysis.data);
-      });
-    });
+        const processing = transitionJob(context.database, {
+          jobId: context.job.id,
+          now: context.now,
+          command: {
+            type: "processing",
+            attempt: context.job.attemptCount,
+            workerId: context.job.leaseOwner ?? "",
+            creditUnits: analysis.creditUnits,
+            leaseDurationMs: 60_000,
+          },
+        });
+        if (processing?.state !== "processing") return yield* Effect.die("Expected processing");
+        return yield* analysis.process(context.job);
+      }),
+    );
   }).pipe(
     Effect.provide(MediaProcessRunner.layer({ concurrency: 3 })),
     Effect.provide(TestClock.layer()),
   );
 
-interface TestContext {
-  readonly config: MediaJobAdapterConfig;
-  readonly database: Database;
-  readonly job: typeof jobs.$inferSelect;
-  readonly paths: Awaited<ReturnType<typeof makePaths>>;
-}
-
-const createContext = async (
-  kind: typeof jobs.$inferInsert.kind,
-  options: Schema.Json,
-  source: Schema.Json,
-  plan: "free" | "basic" | "pro" = "free",
-): Promise<TestContext> => {
-  const root = await mkdtemp(join(tmpdir(), "densio-media-job-"));
-  temporaryRoots.push(root);
-  const database = openDatabase(join(root, "database.sqlite"));
-  migrateDatabase(database);
-  const paths = await makePaths(root, "job-1");
-  await writeFile(paths.inputFile, JSON.stringify(source));
-  const config = await makeConfig(root);
-  database.db
-    .insert(users)
-    .values({ createdAt: NOW, email: "agent@example.com", id: "user-1", updatedAt: NOW })
-    .run();
-  database.db
-    .insert(jobs)
-    .values(jobValues(kind, options, plan))
-    .run();
-  const job = database.db.select().from(jobs).get();
-  if (job === undefined) throw new Error("Expected test job.");
-  return { config, database, job, paths };
+const runProcessor = async (context: TestContext) => {
+  const result = Schema.decodeUnknownSync(JobResultSchema)(
+    await Effect.runPromise(processorProgram(context)),
+  );
+  transitionJob(context.database, {
+    jobId: context.job.id,
+    now: context.now,
+    command: {
+      type: "complete",
+      attempt: context.job.attemptCount,
+      workerId: context.job.leaseOwner ?? "",
+      resultJson: JSON.stringify(result),
+    },
+  });
+  return result;
 };
-
-const makePaths = async (root: string, jobId: string) => {
-  const paths = await Effect.runPromise(makeJobStoragePaths(join(root, "media"), jobId));
-  await Effect.runPromise(prepareJobWorkspace(paths));
-  return paths;
+const currentJob = (context: TestContext) => {
+  const job = context.database.db.select().from(jobs).where(eq(jobs.id, context.job.id)).get();
+  if (job === undefined) throw new Error("Expected persisted job");
+  return job;
 };
-
-const makeConfig = async (root: string): Promise<MediaJobAdapterConfig> => {
-  const ffmpegPath = join(root, "ffmpeg");
-  const ffprobePath = join(root, "ffprobe");
-  await Promise.all([copyExecutable(ffmpegPath), copyExecutable(ffprobePath)]);
-  return {
-    artifactTtlMs: 86_400_000,
-    audioSilenceThresholdDb: -50,
-    ffmpegPath,
-    ffprobePath,
-    maxExtractedImages: 2_000,
-    mediaRoot: join(root, "media"),
-    publicBaseUrl: "https://media.example",
-  };
-};
-
-const copyExecutable = async (path: string) => {
-  await copyFile(fixtureSource, path);
-  await chmod(path, 0o755);
-};
-
-const artifactPath = (context: TestContext, filename: string) =>
-  join(context.paths.artifactDirectory, filename);
-
-const jobValues = (
-  kind: typeof jobs.$inferInsert.kind,
-  options: Schema.Json,
-  plan: "free" | "basic" | "pro",
-) => ({
-  attemptCount: 1,
-  createdAt: NOW,
-  declaredBytes: 100,
-  id: "job-1",
-  kind,
-  optionsJson: JSON.stringify(options),
-  plan,
-  sourceFilename: "input.mp4",
-  state: "processing" as const,
-  updatedAt: NOW,
-  userId: "user-1",
-});
+const commands = (context: TestContext) =>
+  context.database.db
+    .select()
+    .from(mediaCommands)
+    .all()
+    .map((row) => ({
+      arguments: Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.String)))(
+        row.argumentsJson,
+      ),
+      tool: row.tool,
+    }));

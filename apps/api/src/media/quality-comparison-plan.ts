@@ -1,16 +1,20 @@
-import type { ComparisonPosition } from "@densio/shared";
+import type {
+  CompareQualityOptions,
+  ComparisonObjectiveMetrics,
+  ComparisonPosition,
+  ComparisonSamples,
+  MediaBitDepth,
+} from "@densio/shared";
 
 import { assertCommandPath, createCommandPlan, type CommandPlan } from "./command-plan.ts";
 import {
   assertCrf,
   buildCompressionPlan,
   formatNumber,
-  type AudioAnalysis,
-  type AudioMode,
   type MediaCodec,
 } from "./compression-plan.ts";
 import { MediaPlanError } from "./media-plan-error.ts";
-import type { TransformOptions, VideoDimensions } from "./video-filter.ts";
+import { buildVideoFilters, type TransformOptions, type VideoDimensions } from "./video-filter.ts";
 
 export type { ComparisonPosition } from "@densio/shared";
 
@@ -19,30 +23,87 @@ interface ComparisonOutputPaths {
   readonly still: string;
 }
 
-export interface QualityComparisonPlanOptions {
-  readonly executable?: string;
+export interface NormalizedQualityComparisonVariant {
   readonly codec: MediaCodec;
-  readonly crfs: readonly number[];
-  readonly inputPath: string;
-  readonly outputPaths: readonly ComparisonOutputPaths[];
-  readonly source: VideoDimensions;
-  readonly sourceDurationSeconds?: number;
-  readonly durationSeconds?: number;
-  readonly position?: ComparisonPosition;
-  readonly resolvedFrameTimestampSeconds?: number;
-  readonly audio?: AudioMode;
-  readonly audioAnalysis?: AudioAnalysis;
+  readonly crf: number;
+  readonly variantId: string;
+}
+
+export interface NormalizedQualityComparisonOptions {
+  readonly bitDepth: MediaBitDepth;
+  readonly durationSeconds: number;
+  readonly objectiveMetrics: ComparisonObjectiveMetrics;
+  readonly sampleSelection: ComparisonSamples;
   readonly transform?: TransformOptions;
+  readonly variants: ReadonlyArray<NormalizedQualityComparisonVariant>;
+}
+
+interface PositionSamples {
+  readonly mode: "positions";
+  readonly positions: ReadonlyArray<ComparisonPosition>;
+}
+
+export interface ResolvedQualityComparisonSample {
+  readonly actualSampleDurationSeconds: number;
+  readonly normalizedStartSeconds: number;
+  readonly sampleId: string;
+}
+
+interface ResolveQualityComparisonSamplesOptions {
+  readonly durationSeconds: number;
+  readonly resolvedFrameTimestamps?: ReadonlyArray<number | null>;
+  readonly sampleSelection: ComparisonSamples;
+  readonly sourceDurationSeconds: number;
+}
+
+interface QualityReferencePlanOptions {
+  readonly bitDepth?: MediaBitDepth;
+  readonly executable?: string;
+  readonly inputPath: string;
+  readonly outputPath: string;
+  readonly samples: ReadonlyArray<ResolvedQualityComparisonSample>;
+  readonly source: VideoDimensions;
+  readonly transform?: TransformOptions;
+}
+
+interface QualityMetricPlanOptions {
+  readonly executable?: string;
+  readonly kind: "psnr" | "ssim";
+  readonly previewPath: string;
+  readonly referencePath: string;
+  readonly statsPath: string;
+}
+
+interface QualityVariantOutputPaths extends ComparisonOutputPaths {
+  readonly psnrStats?: string;
+  readonly ssimStats: string;
+}
+
+interface QualityComparisonVariantPlansOptions {
+  readonly bitDepth?: MediaBitDepth;
+  readonly executable?: string;
+  readonly objectiveMetrics: ComparisonObjectiveMetrics;
+  readonly outputPaths: ReadonlyArray<QualityVariantOutputPaths>;
+  readonly referencePath: string;
+  readonly sampleDurationSeconds: number;
+  readonly source: VideoDimensions;
+  readonly variants: ReadonlyArray<NormalizedQualityComparisonVariant>;
+}
+
+export interface QualityComparisonMetricPlan {
+  readonly kind: "psnr" | "ssim";
+  readonly plan: CommandPlan;
+  readonly statsPath: string;
 }
 
 export interface QualityComparisonVariantPlan {
   readonly codec: MediaCodec;
   readonly crf: number;
-  readonly startSeconds: number;
-  readonly durationSeconds: number;
-  readonly sourceFrame?: number;
+  readonly metrics: ReadonlyArray<QualityComparisonMetricPlan>;
   readonly preview: CommandPlan;
+  readonly previewPath: string;
   readonly representativeFrame: CommandPlan;
+  readonly variantId: string;
 }
 
 interface EstimateFullVideoBytesOptions {
@@ -51,52 +112,167 @@ interface EstimateFullVideoBytesOptions {
   readonly sourceDurationSeconds: number;
 }
 
-export const buildQualityComparisonPlans = (options: QualityComparisonPlanOptions) => {
-  const durationSeconds = options.durationSeconds ?? 1;
-  assertSampleDuration(durationSeconds);
-  assertComparisonCrfs(options.codec, options.crfs);
-  if (options.outputPaths.length !== options.crfs.length) {
+export const normalizeQualityComparisonOptions = (
+  options: CompareQualityOptions,
+): NormalizedQualityComparisonOptions => ({
+  bitDepth: options.bitDepth ?? 8,
+  durationSeconds: options.durationSeconds ?? 1,
+  objectiveMetrics: options.objectiveMetrics ?? ["ssim"],
+  sampleSelection: options.samples ?? { mode: "auto", count: 3 },
+  ...(options.transform === undefined ? {} : { transform: options.transform }),
+  variants: options.variants.map(({ codec, crf }) => ({
+    codec,
+    crf,
+    variantId: variantId(codec, crf),
+  })),
+});
+
+export const resolveQualityComparisonSamples = (
+  options: ResolveQualityComparisonSamplesOptions,
+): ReadonlyArray<ResolvedQualityComparisonSample> => {
+  assertSampleDuration(options.durationSeconds);
+  assertPositiveSourceDuration(options.sourceDurationSeconds);
+  if (options.sampleSelection.mode === "auto") {
+    return resolveAutoSamples(options, options.sampleSelection);
+  }
+
+  return resolvePositionSamples(options, options.sampleSelection);
+};
+
+export const buildQualityReferencePlan = (options: QualityReferencePlanOptions) => {
+  if (options.samples.length === 0 || options.samples.length > 5) {
+    throw new MediaPlanError("INVALID_COMPARISON_SAMPLES", "Comparison requires 1 to 5 samples");
+  }
+  assertCommandPath(options.inputPath, "Input");
+  assertCommandPath(options.outputPath, "Reference");
+  const videoFilters = buildVideoFilters(options.source, options.transform);
+  const sampleFilters = options.samples.map((sample, index) => {
+    assertNonNegativeFinite(sample.normalizedStartSeconds, "Comparison sample position");
+    assertPositiveFinite(sample.actualSampleDurationSeconds, "Comparison sample duration");
+    const filters = [
+      `trim=start=${formatNumber(sample.normalizedStartSeconds)}:duration=${formatNumber(sample.actualSampleDurationSeconds)}`,
+      "setpts=PTS-STARTPTS",
+      ...videoFilters,
+    ];
+
+    const input = options.samples.length === 1 ? "[0:v:0]" : `[input${index}]`;
+
+    return `${input}${filters.join(",")}[sample${index}]`;
+  });
+  const inputs = options.samples.map((_, index) => `[sample${index}]`).join("");
+  const split =
+    options.samples.length === 1
+      ? []
+      : [
+          `[0:v:0]split=${options.samples.length}${options.samples
+            .map((_, index) => `[input${index}]`)
+            .join("")}`,
+        ];
+  const filter = [
+    ...split,
+    ...sampleFilters,
+    `${inputs}concat=n=${options.samples.length}:v=1:a=0[reference]`,
+  ].join(";");
+
+  return createCommandPlan(options.executable ?? "ffmpeg", [
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-i",
+    options.inputPath,
+    "-filter_complex",
+    filter,
+    "-map",
+    "[reference]",
+    "-an",
+    "-c:v",
+    "ffv1",
+    "-pix_fmt",
+    options.bitDepth === 10 ? "yuv420p10le" : "yuv420p",
+    options.outputPath,
+  ]);
+};
+
+export const buildQualityMetricPlan = (options: QualityMetricPlanOptions) => {
+  assertCommandPath(options.previewPath, "Preview");
+  assertCommandPath(options.referencePath, "Reference");
+  assertCommandPath(options.statsPath, "Metric stats");
+  if (options.kind !== "ssim" && options.kind !== "psnr") {
+    throw new MediaPlanError("INVALID_COMPARISON_METRIC", "Comparison metric is invalid");
+  }
+
+  return createCommandPlan(options.executable ?? "ffmpeg", [
+    "-hide_banner",
+    "-nostdin",
+    "-i",
+    options.previewPath,
+    "-i",
+    options.referencePath,
+    "-lavfi",
+    `${options.kind}=stats_file=${options.statsPath}`,
+    "-f",
+    "null",
+    "-",
+  ]);
+};
+
+export const buildQualityComparisonVariantPlans = (
+  options: QualityComparisonVariantPlansOptions,
+) => {
+  assertComparisonVariants(options.variants);
+  assertPositiveFinite(options.sampleDurationSeconds, "Aggregate sample duration");
+  if (options.outputPaths.length !== options.variants.length) {
     throw new MediaPlanError(
       "OUTPUT_PATH_COUNT_MISMATCH",
-      "An output path pair is required for every CRF",
+      "An output path set is required for every comparison variant",
     );
   }
 
-  const position = normalizePosition(options.position, options.resolvedFrameTimestampSeconds);
-  const actualDurationSeconds = resolveActualDuration(
-    durationSeconds,
-    position.seconds,
-    options.sourceDurationSeconds,
-  );
-
-  return options.crfs.map((crf, index): QualityComparisonVariantPlan => {
-    const outputPaths = options.outputPaths[index];
-    if (outputPaths === undefined) {
+  return options.variants.map((variant, index): QualityComparisonVariantPlan => {
+    const paths = options.outputPaths[index];
+    if (paths === undefined) {
       throw new MediaPlanError("OUTPUT_PATH_COUNT_MISMATCH", "Comparison output path is missing");
     }
+    const metrics = options.objectiveMetrics.map((kind): QualityComparisonMetricPlan => {
+      const statsPath = kind === "ssim" ? paths.ssimStats : paths.psnrStats;
+      if (statsPath === undefined) {
+        throw new MediaPlanError(
+          "OUTPUT_PATH_COUNT_MISMATCH",
+          "Comparison metric stats path is missing",
+        );
+      }
+
+      return {
+        kind,
+        plan: buildQualityMetricPlan({
+          executable: options.executable ?? "ffmpeg",
+          kind,
+          previewPath: paths.preview,
+          referencePath: options.referencePath,
+          statsPath,
+        }),
+        statsPath,
+      };
+    });
 
     return {
-      codec: options.codec,
-      crf,
-      startSeconds: position.seconds,
-      durationSeconds: actualDurationSeconds,
-      ...(position.frame === undefined ? {} : { sourceFrame: position.frame }),
+      ...variant,
+      metrics,
       preview: buildCompressionPlan({
+        bitDepth: options.bitDepth ?? 8,
         executable: options.executable ?? "ffmpeg",
-        codec: options.codec,
-        crf,
-        inputPath: options.inputPath,
-        outputPath: outputPaths.preview,
+        codec: variant.codec,
+        crf: variant.crf,
+        inputPath: options.referencePath,
+        outputPath: paths.preview,
         source: options.source,
-        audio: options.audio ?? "auto",
-        ...(options.audioAnalysis === undefined ? {} : { audioAnalysis: options.audioAnalysis }),
-        ...(options.transform === undefined ? {} : { transform: options.transform }),
-        segment: { startSeconds: position.seconds, durationSeconds: actualDurationSeconds },
+        audio: "remove",
       }),
+      previewPath: paths.preview,
       representativeFrame: buildRepresentativeFramePlan(
         options.executable ?? "ffmpeg",
-        outputPaths,
-        actualDurationSeconds,
+        paths,
+        options.sampleDurationSeconds,
       ),
     };
   });
@@ -142,16 +318,6 @@ const buildRepresentativeFramePlan = (
     "2",
     paths.still,
   ]);
-};
-
-const assertComparisonCrfs = (codec: MediaCodec, crfs: readonly number[]) => {
-  if (!Array.isArray(crfs) || crfs.length < 2 || crfs.length > 8) {
-    throw new MediaPlanError("INVALID_COMPARISON_CRFS", "Comparison requires 2 to 8 CRFs");
-  }
-  if (new Set(crfs).size !== crfs.length) {
-    throw new MediaPlanError("DUPLICATE_COMPARISON_CRF", "Comparison CRFs must be unique");
-  }
-  crfs.forEach((crf) => assertCrf(codec, crf));
 };
 
 const normalizePosition = (
@@ -237,5 +403,77 @@ const assertNonNegativeFinite = (value: number, label: string) => {
 const assertPositiveFinite = (value: number, label: string) => {
   if (!Number.isFinite(value) || value <= 0) {
     throw new MediaPlanError("INVALID_SIZE_ESTIMATE", `${label} must be positive and finite`);
+  }
+};
+
+const resolveAutoSamples = (
+  options: ResolveQualityComparisonSamplesOptions,
+  sampleSelection: { readonly count: number; readonly mode: "auto" },
+) => {
+  const { count } = sampleSelection;
+  if (!Number.isSafeInteger(count) || count < 1 || count > 5) {
+    throw new MediaPlanError(
+      "INVALID_COMPARISON_SAMPLES",
+      "Automatic samples require a count of 1 to 5",
+    );
+  }
+  const duration = Math.min(options.durationSeconds, options.sourceDurationSeconds);
+  const maximumStart = options.sourceDurationSeconds - duration;
+
+  return Array.from({ length: count }, (_, index) => {
+    const center = (options.sourceDurationSeconds * (index + 1)) / (count + 1);
+    const start = Math.min(maximumStart, Math.max(0, center - duration / 2));
+
+    return comparisonSample(index, start, duration);
+  });
+};
+
+const resolvePositionSamples = (
+  options: ResolveQualityComparisonSamplesOptions,
+  sampleSelection: PositionSamples,
+) => {
+  const { positions } = sampleSelection;
+  if (positions.length === 0 || positions.length > 5) {
+    throw new MediaPlanError(
+      "INVALID_COMPARISON_SAMPLES",
+      "Position samples require 1 to 5 positions",
+    );
+  }
+
+  return positions.map((position, index) => {
+    const frameTimestamp = options.resolvedFrameTimestamps?.[index];
+    const normalized = normalizePosition(position, frameTimestamp ?? undefined);
+    const duration = resolveActualDuration(
+      options.durationSeconds,
+      normalized.seconds,
+      options.sourceDurationSeconds,
+    );
+
+    return comparisonSample(index, normalized.seconds, duration);
+  });
+};
+
+const comparisonSample = (index: number, start: number, duration: number) => ({
+  actualSampleDurationSeconds: duration,
+  normalizedStartSeconds: start,
+  sampleId: `sample-${index + 1}`,
+});
+
+const variantId = (codec: MediaCodec, crf: number) => `variant-${codec}-crf-${crf}`;
+
+const assertComparisonVariants = (variants: ReadonlyArray<NormalizedQualityComparisonVariant>) => {
+  if (variants.length < 2 || variants.length > 8) {
+    throw new MediaPlanError("INVALID_COMPARISON_VARIANTS", "Comparison requires 2 to 8 variants");
+  }
+  const pairs = variants.map(({ codec, crf }) => `${codec}:${crf}`);
+  if (new Set(pairs).size !== pairs.length) {
+    throw new MediaPlanError("DUPLICATE_COMPARISON_VARIANT", "Comparison variants must be unique");
+  }
+  variants.forEach(({ codec, crf }) => assertCrf(codec, crf));
+};
+
+const assertPositiveSourceDuration = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new MediaPlanError("INVALID_SOURCE_DURATION", "Source duration must be positive");
   }
 };

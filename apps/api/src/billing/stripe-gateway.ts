@@ -12,6 +12,17 @@ export interface HostedStripeSession {
   readonly url: string;
 }
 
+export interface StripeCheckoutState {
+  readonly id: string;
+  readonly url: string | null;
+  readonly status: "open" | "complete" | "expired";
+  readonly expiresAt: number;
+  readonly customerId: string;
+  readonly subscriptionId: string | null;
+  readonly organizationId: string;
+  readonly attemptId: string;
+}
+
 export interface StripeSubscriptionState {
   readonly cancelAtPeriodEnd: boolean;
   readonly currentPeriodEnd: number;
@@ -19,7 +30,7 @@ export interface StripeSubscriptionState {
   readonly priceId: string;
   readonly status: StripeSubscriptionStatus;
   readonly subscriptionId: string;
-  readonly userId: string | null;
+  readonly organizationId: string | null;
 }
 
 interface StripeSubscriptionInput {
@@ -29,6 +40,7 @@ interface StripeSubscriptionInput {
   readonly items: {
     readonly data: ReadonlyArray<{
       readonly current_period_end: number;
+      readonly quantity?: number | undefined;
       readonly price: { readonly id: string };
     }>;
   };
@@ -41,7 +53,7 @@ export type BillingWebhookEvent =
       readonly eventId: string;
       readonly kind: "customer-map";
       readonly customerId: string;
-      readonly userId: string;
+      readonly organizationId: string;
     }
   | {
       readonly eventId: string;
@@ -61,11 +73,44 @@ export interface ParseWebhookInput {
 }
 
 export interface StripeGatewayDefinition {
+  readonly retrieveCustomer: (customerId: string) => Effect.Effect<
+    {
+      customerId: string;
+      organizationId: string | null;
+      email: string | null;
+    } | null,
+    StripeGatewayError
+  >;
+  readonly listCustomerSubscriptions: (
+    customerId: string,
+  ) => Effect.Effect<readonly StripeSubscriptionState[], StripeGatewayError>;
+  readonly createCustomer: (
+    params: Stripe.CustomerCreateParams,
+    idempotencyKey: string,
+  ) => Effect.Effect<string, StripeGatewayError>;
+  readonly findCustomer: (
+    organizationId: string,
+    email: string,
+  ) => Effect.Effect<string | null, StripeGatewayError>;
+  readonly updateCustomer: (
+    customerId: string,
+    email: string,
+    idempotencyKey: string,
+  ) => Effect.Effect<void, StripeGatewayError>;
   readonly createCheckoutSession: (
     params: Stripe.Checkout.SessionCreateParams,
-  ) => Effect.Effect<HostedStripeSession, StripeGatewayError>;
+    idempotencyKey: string,
+  ) => Effect.Effect<StripeCheckoutState, StripeGatewayError>;
+  readonly retrieveCheckoutSession: (
+    sessionId: string,
+  ) => Effect.Effect<StripeCheckoutState, StripeGatewayError>;
+  readonly findCheckoutSession: (
+    customerId: string,
+    attemptId: string,
+  ) => Effect.Effect<StripeCheckoutState | null, StripeGatewayError>;
   readonly createPortalSession: (
     params: Stripe.BillingPortal.SessionCreateParams,
+    idempotencyKey: string,
   ) => Effect.Effect<HostedStripeSession, StripeGatewayError>;
   readonly parseWebhook: (
     input: ParseWebhookInput,
@@ -81,32 +126,71 @@ export class StripeGateway extends Context.Service<StripeGateway, StripeGatewayD
 
 export const makeStripeGateway = (stripe: Stripe) =>
   StripeGateway.of({
-    createCheckoutSession: Effect.fn("StripeGateway.createCheckoutSession")((params) =>
-      Effect.tryPromise({
-        catch: (cause) =>
-          new StripeGatewayError({
-            cause,
-            operation: "create-checkout-session",
-          }),
-        try: async () => {
-          const session = await stripe.checkout.sessions.create(params);
-          return { id: session.id, url: requireValue(session.url, "Checkout URL") };
-        },
+    retrieveCustomer: (customerId) =>
+      stripeRequest("retrieve-customer", async () => {
+        const customer = await stripe.customers.retrieve(customerId);
+        return customer.deleted
+          ? null
+          : {
+              customerId: customer.id,
+              organizationId: customer.metadata.organizationId ?? null,
+              email: customer.email,
+            };
       }),
-    ),
-    createPortalSession: Effect.fn("StripeGateway.createPortalSession")((params) =>
-      Effect.tryPromise({
-        catch: (cause) =>
-          new StripeGatewayError({
-            cause,
-            operation: "create-portal-session",
-          }),
-        try: async () => {
-          const session = await stripe.billingPortal.sessions.create(params);
-          return { id: session.id, url: session.url };
-        },
+    listCustomerSubscriptions: (customerId) =>
+      stripeRequest("list-customer-subscriptions", async () => {
+        const subscriptions = await stripe.subscriptions
+          .list({ customer: customerId, status: "all", limit: 100 })
+          .autoPagingToArray({ limit: 10_000 });
+        if (subscriptions.length >= 10_000)
+          throw new Error("Subscription reconciliation limit reached.");
+        return subscriptions.map(normalizeStripeSubscription);
       }),
-    ),
+    createCustomer: (params, idempotencyKey) =>
+      stripeRequest(
+        "create-customer",
+        async () => (await stripe.customers.create(params, { idempotencyKey })).id,
+      ),
+    findCustomer: (organizationId, email) =>
+      stripeRequest("find-customer", async () => {
+        const customers = await stripe.customers
+          .list({ email, limit: 100 })
+          .autoPagingToArray({ limit: 10_000 });
+        return (
+          uniqueReconciledObject(
+            customers,
+            (customer) => customer.metadata.organizationId === organizationId,
+          )?.id ?? null
+        );
+      }),
+    updateCustomer: (customerId, email, idempotencyKey) =>
+      stripeRequest("update-customer", async () => {
+        await stripe.customers.update(customerId, { email }, { idempotencyKey });
+      }),
+    createCheckoutSession: (params, idempotencyKey) =>
+      stripeRequest("create-checkout-session", async () =>
+        normalizeCheckoutSession(await stripe.checkout.sessions.create(params, { idempotencyKey })),
+      ),
+    retrieveCheckoutSession: (sessionId) =>
+      stripeRequest("retrieve-checkout-session", async () =>
+        normalizeCheckoutSession(await stripe.checkout.sessions.retrieve(sessionId)),
+      ),
+    findCheckoutSession: (customerId, attemptId) =>
+      stripeRequest("find-checkout-session", async () => {
+        const sessions = await stripe.checkout.sessions
+          .list({ customer: customerId, limit: 100 })
+          .autoPagingToArray({ limit: 10_000 });
+        const session = uniqueReconciledObject(
+          sessions,
+          (candidate) => candidate.metadata?.attemptId === attemptId,
+        );
+        return session === undefined ? null : normalizeCheckoutSession(session);
+      }),
+    createPortalSession: (params, idempotencyKey) =>
+      stripeRequest("create-portal-session", async () => {
+        const session = await stripe.billingPortal.sessions.create(params, { idempotencyKey });
+        return { id: session.id, url: session.url };
+      }),
     parseWebhook: Effect.fn("StripeGateway.parseWebhook")((input) =>
       Effect.try({
         catch: (cause) => new InvalidStripeWebhook({ cause }),
@@ -124,6 +208,32 @@ export const makeStripeGateway = (stripe: Stripe) =>
       }),
     ),
   });
+
+const stripeRequest = <Value>(operation: string, evaluate: () => Promise<Value>) =>
+  Effect.tryPromise({
+    try: evaluate,
+    catch: (cause) => new StripeGatewayError({ cause, operation }),
+  });
+const uniqueReconciledObject = <Value>(
+  values: readonly Value[],
+  matches: (value: Value) => boolean,
+) => {
+  if (values.length >= 10_000)
+    throw new Error("Provider reconciliation requires an operator: listing limit reached.");
+  const candidates = values.filter(matches);
+  if (candidates.length > 1) throw new Error("Multiple provider objects match one billing intent.");
+  return candidates[0];
+};
+const normalizeCheckoutSession = (session: Stripe.Checkout.Session): StripeCheckoutState => ({
+  id: session.id,
+  url: session.url,
+  status: requireValue(session.status, "Checkout status"),
+  expiresAt: session.expires_at * 1_000,
+  customerId: requireValue(getExpandableId(session.customer), "Customer ID"),
+  subscriptionId: getExpandableId(session.subscription),
+  organizationId: checkoutOrganizationId(session),
+  attemptId: requireValue(session.metadata?.attemptId, "Checkout attempt ID"),
+});
 
 export const normalizeStripeSubscriptionStatus = (status: unknown): StripeSubscriptionStatus =>
   decodeStripeSubscriptionStatus(status);
@@ -152,13 +262,23 @@ const normalizeCheckoutEvent = (
   customerId: requireValue(getExpandableId(session.customer), "Customer ID"),
   eventId,
   kind: "customer-map",
-  userId: requireValue(session.metadata?.userId ?? session.client_reference_id, "User ID"),
+  organizationId: checkoutOrganizationId(session),
 });
+
+const checkoutOrganizationId = (session: Stripe.Checkout.Session) => {
+  const organizationId = requireValue(session.metadata?.organizationId, "Organization ID");
+  if (organizationId !== session.client_reference_id)
+    throw new Error("Checkout organization metadata mismatch.");
+  return organizationId;
+};
 
 export const normalizeStripeSubscription = (
   subscription: StripeSubscriptionInput,
 ): StripeSubscriptionState => {
   const item = requireValue(subscription.items.data[0], "Subscription item");
+  if (subscription.items.data.length !== 1)
+    throw new Error("Organization subscriptions require one item.");
+  if (item.quantity !== 1) throw new Error("Organization subscriptions require quantity one.");
 
   return {
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -169,7 +289,7 @@ export const normalizeStripeSubscription = (
     priceId: item.price.id,
     status: normalizeStripeSubscriptionStatus(subscription.status),
     subscriptionId: subscription.id,
-    userId: subscription.metadata.userId ?? null,
+    organizationId: subscription.metadata.organizationId ?? null,
   };
 };
 

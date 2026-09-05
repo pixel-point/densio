@@ -1,0 +1,4223 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "46c4211b-f449-4379-a06b-873ffec852f7",
+  "prevIds": ["00fcc599-e033-4ffa-9f5f-614db3315407"],
+  "ddl": [
+    {
+      "name": "admin_grants",
+      "entityType": "tables"
+    },
+    {
+      "name": "artifact_access_grants",
+      "entityType": "tables"
+    },
+    {
+      "name": "artifacts",
+      "entityType": "tables"
+    },
+    {
+      "name": "auth_challenges",
+      "entityType": "tables"
+    },
+    {
+      "name": "billing_checkout_attempts",
+      "entityType": "tables"
+    },
+    {
+      "name": "billing_customer_requests",
+      "entityType": "tables"
+    },
+    {
+      "name": "billing_operations",
+      "entityType": "tables"
+    },
+    {
+      "name": "billing_reconciliations",
+      "entityType": "tables"
+    },
+    {
+      "name": "email_outbox",
+      "entityType": "tables"
+    },
+    {
+      "name": "execution_plans",
+      "entityType": "tables"
+    },
+    {
+      "name": "job_attempts",
+      "entityType": "tables"
+    },
+    {
+      "name": "job_credit_entries",
+      "entityType": "tables"
+    },
+    {
+      "name": "job_events",
+      "entityType": "tables"
+    },
+    {
+      "name": "jobs",
+      "entityType": "tables"
+    },
+    {
+      "name": "media_commands",
+      "entityType": "tables"
+    },
+    {
+      "name": "organization_audit_events",
+      "entityType": "tables"
+    },
+    {
+      "name": "organization_creation_requests",
+      "entityType": "tables"
+    },
+    {
+      "name": "organization_invitations",
+      "entityType": "tables"
+    },
+    {
+      "name": "organization_memberships",
+      "entityType": "tables"
+    },
+    {
+      "name": "organizations",
+      "entityType": "tables"
+    },
+    {
+      "name": "prepared_sources",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_refresh_tokens",
+      "entityType": "tables"
+    },
+    {
+      "name": "sessions",
+      "entityType": "tables"
+    },
+    {
+      "name": "source_write_activities",
+      "entityType": "tables"
+    },
+    {
+      "name": "stripe_customers",
+      "entityType": "tables"
+    },
+    {
+      "name": "stripe_events",
+      "entityType": "tables"
+    },
+    {
+      "name": "stripe_subscriptions",
+      "entityType": "tables"
+    },
+    {
+      "name": "users",
+      "entityType": "tables"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "admin_grants"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "admin_grants"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "granted_by",
+      "entityType": "columns",
+      "table": "admin_grants"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "granted_at",
+      "entityType": "columns",
+      "table": "admin_grants"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revoked_at",
+      "entityType": "columns",
+      "table": "admin_grants"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "issuing_membership_id",
+      "entityType": "columns",
+      "table": "artifact_access_grants"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "artifact_access_grants"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "artifact_id",
+      "entityType": "columns",
+      "table": "artifact_access_grants"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "token_hash",
+      "entityType": "columns",
+      "table": "artifact_access_grants"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "artifact_access_grants"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "artifact_access_grants"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "job_id",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "path",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "filename",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "media_type",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "size_bytes",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "sha256",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "retained_until",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "codec",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "width",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "height",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "duration_seconds",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "deleted_at",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "deletion_error",
+      "entityType": "columns",
+      "table": "artifacts"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "email",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "confirmation_token_hash",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "polling_token_hash",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "request_ip_hash",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "attempts",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "confirmed_at",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "consumed_at",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "auth_challenges"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "idempotency_key",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "plan",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "price_id",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "cancel_url",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "success_url",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "billing_customer_requests"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "billing_email",
+      "entityType": "columns",
+      "table": "billing_customer_requests"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "billing_customer_requests"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "billing_operations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "billing_operations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "operation",
+      "entityType": "columns",
+      "table": "billing_operations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "request_key",
+      "entityType": "columns",
+      "table": "billing_operations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "lease_token",
+      "entityType": "columns",
+      "table": "billing_operations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "lease_expires_at",
+      "entityType": "columns",
+      "table": "billing_operations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "billing_operations"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscription_id",
+      "entityType": "columns",
+      "table": "billing_reconciliations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "claim_id",
+      "entityType": "columns",
+      "table": "billing_reconciliations"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "resource_key",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "recipient",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "payload_json",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "attempts",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "next_attempt_at",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "last_error",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "sent_at",
+      "entityType": "columns",
+      "table": "email_outbox"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_by_user_id",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_id",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "snapshot_json",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "supersedes_plan_id",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "request_digest",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "idempotency_key",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "execution_plans"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "job_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "job_id",
+      "entityType": "columns",
+      "table": "job_attempts"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "attempt",
+      "entityType": "columns",
+      "table": "job_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "worker_id",
+      "entityType": "columns",
+      "table": "job_attempts"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "table": "job_attempts"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "completed_at",
+      "entityType": "columns",
+      "table": "job_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "outcome",
+      "entityType": "columns",
+      "table": "job_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "error_code",
+      "entityType": "columns",
+      "table": "job_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "job_credit_entries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "job_credit_entries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "job_id",
+      "entityType": "columns",
+      "table": "job_credit_entries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "period_start",
+      "entityType": "columns",
+      "table": "job_credit_entries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "job_credit_entries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "units",
+      "entityType": "columns",
+      "table": "job_credit_entries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "job_credit_entries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "sequence",
+      "entityType": "columns",
+      "table": "job_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "job_id",
+      "entityType": "columns",
+      "table": "job_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "job_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "job_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "progress_json",
+      "entityType": "columns",
+      "table": "job_events"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "attempt",
+      "entityType": "columns",
+      "table": "job_events"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "occurred_at",
+      "entityType": "columns",
+      "table": "job_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_cleaned_at",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_by_user_id",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "plan",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "queue_priority",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_filename",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "declared_bytes",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "input_bytes",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "input_sha256",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_id",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "execution_plan_id",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "client_reference",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "idempotency_key",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "request_digest",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "requested_options_json",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "resolved_options_json",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "intent_digest",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "quote_credit_units",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "max_output_bytes",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "inspection_json",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "toolchain_json",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "progress_json",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "attempt_count",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "lease_owner",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "lease_expires_at",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "error_code",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "error_json",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "result_json",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "receipt_json",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "cancel_requested_at",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "completed_at",
+      "entityType": "columns",
+      "table": "jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "job_id",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "attempt",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "tool",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "executable",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "arguments_json",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "display_command",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "completed_at",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "exit_code",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stderr_tail",
+      "entityType": "columns",
+      "table": "media_commands"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "sequence",
+      "entityType": "columns",
+      "table": "organization_audit_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "organization_audit_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "organization_audit_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_json",
+      "entityType": "columns",
+      "table": "organization_audit_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "target_id",
+      "entityType": "columns",
+      "table": "organization_audit_events"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "occurred_at",
+      "entityType": "columns",
+      "table": "organization_audit_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "correlation_id",
+      "entityType": "columns",
+      "table": "organization_audit_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "table": "organization_creation_requests"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "idempotency_key",
+      "entityType": "columns",
+      "table": "organization_creation_requests"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "request_digest",
+      "entityType": "columns",
+      "table": "organization_creation_requests"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "organization_creation_requests"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "organization_creation_requests"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "email",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "role",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "invited_by_user_id",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "accepted_membership_id",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "organization_invitations"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "organization_memberships"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "organization_memberships"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "table": "organization_memberships"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "role",
+      "entityType": "columns",
+      "table": "organization_memberships"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "is_default",
+      "entityType": "columns",
+      "table": "organization_memberships"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "joined_at",
+      "entityType": "columns",
+      "table": "organization_memberships"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "billing_email",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_by_user_id",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "deletion_requested_at",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "deleted_at",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "cleanup_error",
+      "entityType": "columns",
+      "table": "organizations"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_by_user_id",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_filename",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "declared_bytes",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "max_upload_bytes",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "input_bytes",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "input_sha256",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "upload_staging_file",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "inspection_json",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "error_code",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "error_json",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "idempotency_key",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "request_digest",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "upload_expires_at",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "deleted_at",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "cleaned_at",
+      "entityType": "columns",
+      "table": "prepared_sources"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "token_hash",
+      "entityType": "columns",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "rotated_at",
+      "entityType": "columns",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "sessions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "table": "sessions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "family_id",
+      "entityType": "columns",
+      "table": "sessions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "access_token_hash",
+      "entityType": "columns",
+      "table": "sessions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "access_expires_at",
+      "entityType": "columns",
+      "table": "sessions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "refresh_expires_at",
+      "entityType": "columns",
+      "table": "sessions"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revoked_at",
+      "entityType": "columns",
+      "table": "sessions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "sessions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "sessions"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "source_write_activities"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_id",
+      "entityType": "columns",
+      "table": "source_write_activities"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "source_write_activities"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "process_id",
+      "entityType": "columns",
+      "table": "source_write_activities"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "process_identity",
+      "entityType": "columns",
+      "table": "source_write_activities"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "source_write_activities"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "stripe_customers"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "customer_id",
+      "entityType": "columns",
+      "table": "stripe_customers"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "stripe_customers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "event_id",
+      "entityType": "columns",
+      "table": "stripe_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "event_type",
+      "entityType": "columns",
+      "table": "stripe_events"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "processed_at",
+      "entityType": "columns",
+      "table": "stripe_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscription_id",
+      "entityType": "columns",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "customer_id",
+      "entityType": "columns",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "price_id",
+      "entityType": "columns",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "cancel_at_period_end",
+      "entityType": "columns",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "current_period_end",
+      "entityType": "columns",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "users"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "email",
+      "entityType": "columns",
+      "table": "users"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "users"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "users"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_admin_grants_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "admin_grants"
+    },
+    {
+      "columns": ["issuing_membership_id"],
+      "tableTo": "organization_memberships",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_artifact_access_grants_issuing_membership_id_organization_memberships_id_fk",
+      "entityType": "fks",
+      "table": "artifact_access_grants"
+    },
+    {
+      "columns": ["artifact_id"],
+      "tableTo": "artifacts",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_artifact_access_grants_artifact_id_artifacts_id_fk",
+      "entityType": "fks",
+      "table": "artifact_access_grants"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_artifacts_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "artifacts"
+    },
+    {
+      "columns": ["job_id"],
+      "tableTo": "jobs",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_artifacts_job_id_jobs_id_fk",
+      "entityType": "fks",
+      "table": "artifacts"
+    },
+    {
+      "columns": ["organization_id", "job_id"],
+      "tableTo": "jobs",
+      "columnsTo": ["organization_id", "id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_artifacts_organization_id_job_id_jobs_organization_id_id_fk",
+      "entityType": "fks",
+      "table": "artifacts"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_billing_checkout_attempts_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_billing_customer_requests_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "billing_customer_requests"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_billing_operations_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "billing_operations"
+    },
+    {
+      "columns": ["created_by_user_id"],
+      "tableTo": "users",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_plans_created_by_user_id_users_id_fk",
+      "entityType": "fks",
+      "table": "execution_plans"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_plans_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "execution_plans"
+    },
+    {
+      "columns": ["source_id"],
+      "tableTo": "prepared_sources",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_plans_source_id_prepared_sources_id_fk",
+      "entityType": "fks",
+      "table": "execution_plans"
+    },
+    {
+      "columns": ["organization_id", "source_id"],
+      "tableTo": "prepared_sources",
+      "columnsTo": ["organization_id", "id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_plans_organization_id_source_id_prepared_sources_organization_id_id_fk",
+      "entityType": "fks",
+      "table": "execution_plans"
+    },
+    {
+      "columns": ["job_id"],
+      "tableTo": "jobs",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_job_attempts_job_id_jobs_id_fk",
+      "entityType": "fks",
+      "table": "job_attempts"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_job_credit_entries_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "job_credit_entries"
+    },
+    {
+      "columns": ["job_id"],
+      "tableTo": "jobs",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_job_credit_entries_job_id_jobs_id_fk",
+      "entityType": "fks",
+      "table": "job_credit_entries"
+    },
+    {
+      "columns": ["organization_id", "job_id"],
+      "tableTo": "jobs",
+      "columnsTo": ["organization_id", "id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_job_credit_entries_organization_id_job_id_jobs_organization_id_id_fk",
+      "entityType": "fks",
+      "table": "job_credit_entries"
+    },
+    {
+      "columns": ["job_id"],
+      "tableTo": "jobs",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_job_events_job_id_jobs_id_fk",
+      "entityType": "fks",
+      "table": "job_events"
+    },
+    {
+      "columns": ["created_by_user_id"],
+      "tableTo": "users",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_jobs_created_by_user_id_users_id_fk",
+      "entityType": "fks",
+      "table": "jobs"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_jobs_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "jobs"
+    },
+    {
+      "columns": ["source_id"],
+      "tableTo": "prepared_sources",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_jobs_source_id_prepared_sources_id_fk",
+      "entityType": "fks",
+      "table": "jobs"
+    },
+    {
+      "columns": ["execution_plan_id"],
+      "tableTo": "execution_plans",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_jobs_execution_plan_id_execution_plans_id_fk",
+      "entityType": "fks",
+      "table": "jobs"
+    },
+    {
+      "columns": ["organization_id", "source_id"],
+      "tableTo": "prepared_sources",
+      "columnsTo": ["organization_id", "id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_jobs_organization_id_source_id_prepared_sources_organization_id_id_fk",
+      "entityType": "fks",
+      "table": "jobs"
+    },
+    {
+      "columns": ["organization_id", "execution_plan_id"],
+      "tableTo": "execution_plans",
+      "columnsTo": ["organization_id", "id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_jobs_organization_id_execution_plan_id_execution_plans_organization_id_id_fk",
+      "entityType": "fks",
+      "table": "jobs"
+    },
+    {
+      "columns": ["job_id"],
+      "tableTo": "jobs",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_media_commands_job_id_jobs_id_fk",
+      "entityType": "fks",
+      "table": "media_commands"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_organization_audit_events_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "organization_audit_events"
+    },
+    {
+      "columns": ["user_id"],
+      "tableTo": "users",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_organization_creation_requests_user_id_users_id_fk",
+      "entityType": "fks",
+      "table": "organization_creation_requests"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_organization_creation_requests_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "organization_creation_requests"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_organization_invitations_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "organization_invitations"
+    },
+    {
+      "columns": ["invited_by_user_id"],
+      "tableTo": "users",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_organization_invitations_invited_by_user_id_users_id_fk",
+      "entityType": "fks",
+      "table": "organization_invitations"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_organization_memberships_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "organization_memberships"
+    },
+    {
+      "columns": ["user_id"],
+      "tableTo": "users",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_organization_memberships_user_id_users_id_fk",
+      "entityType": "fks",
+      "table": "organization_memberships"
+    },
+    {
+      "columns": ["created_by_user_id"],
+      "tableTo": "users",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_organizations_created_by_user_id_users_id_fk",
+      "entityType": "fks",
+      "table": "organizations"
+    },
+    {
+      "columns": ["created_by_user_id"],
+      "tableTo": "users",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_prepared_sources_created_by_user_id_users_id_fk",
+      "entityType": "fks",
+      "table": "prepared_sources"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_prepared_sources_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "prepared_sources"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "sessions",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_refresh_tokens_session_id_sessions_id_fk",
+      "entityType": "fks",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "columns": ["user_id"],
+      "tableTo": "users",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_sessions_user_id_users_id_fk",
+      "entityType": "fks",
+      "table": "sessions"
+    },
+    {
+      "columns": ["source_id"],
+      "tableTo": "prepared_sources",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_source_write_activities_source_id_prepared_sources_id_fk",
+      "entityType": "fks",
+      "table": "source_write_activities"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_source_write_activities_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "source_write_activities"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_stripe_customers_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "stripe_customers"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_stripe_subscriptions_organization_id_organizations_id_fk",
+      "entityType": "fks",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "admin_grants_pk",
+      "table": "admin_grants",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "artifact_access_grants_pk",
+      "table": "artifact_access_grants",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "artifacts_pk",
+      "table": "artifacts",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "auth_challenges_pk",
+      "table": "auth_challenges",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "billing_checkout_attempts_pk",
+      "table": "billing_checkout_attempts",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["organization_id"],
+      "nameExplicit": false,
+      "name": "billing_customer_requests_pk",
+      "table": "billing_customer_requests",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["organization_id"],
+      "nameExplicit": false,
+      "name": "billing_operations_pk",
+      "table": "billing_operations",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["subscription_id"],
+      "nameExplicit": false,
+      "name": "billing_reconciliations_pk",
+      "table": "billing_reconciliations",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "email_outbox_pk",
+      "table": "email_outbox",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "execution_plans_pk",
+      "table": "execution_plans",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "job_attempts_pk",
+      "table": "job_attempts",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "job_credit_entries_pk",
+      "table": "job_credit_entries",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["sequence"],
+      "nameExplicit": false,
+      "name": "job_events_pk",
+      "table": "job_events",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "jobs_pk",
+      "table": "jobs",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "media_commands_pk",
+      "table": "media_commands",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["sequence"],
+      "nameExplicit": false,
+      "name": "organization_audit_events_pk",
+      "table": "organization_audit_events",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "organization_invitations_pk",
+      "table": "organization_invitations",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "organization_memberships_pk",
+      "table": "organization_memberships",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "organizations_pk",
+      "table": "organizations",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "prepared_sources_pk",
+      "table": "prepared_sources",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "session_refresh_tokens_pk",
+      "table": "session_refresh_tokens",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "sessions_pk",
+      "table": "sessions",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "source_write_activities_pk",
+      "table": "source_write_activities",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["organization_id"],
+      "nameExplicit": false,
+      "name": "stripe_customers_pk",
+      "table": "stripe_customers",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["event_id"],
+      "nameExplicit": false,
+      "name": "stripe_events_pk",
+      "table": "stripe_events",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["subscription_id"],
+      "nameExplicit": false,
+      "name": "stripe_subscriptions_pk",
+      "table": "stripe_subscriptions",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "users_pk",
+      "table": "users",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "admin_grants_organization_index",
+      "entityType": "indexes",
+      "table": "admin_grants"
+    },
+    {
+      "columns": [
+        {
+          "value": "token_hash",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "artifact_access_grants_token_unique",
+      "entityType": "indexes",
+      "table": "artifact_access_grants"
+    },
+    {
+      "columns": [
+        {
+          "value": "artifact_id",
+          "isExpression": false
+        },
+        {
+          "value": "expires_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "artifact_access_grants_artifact_expiry_index",
+      "entityType": "indexes",
+      "table": "artifact_access_grants"
+    },
+    {
+      "columns": [
+        {
+          "value": "job_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "artifacts_job_index",
+      "entityType": "indexes",
+      "table": "artifacts"
+    },
+    {
+      "columns": [
+        {
+          "value": "retained_until",
+          "isExpression": false
+        },
+        {
+          "value": "deleted_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "artifacts_retention_index",
+      "entityType": "indexes",
+      "table": "artifacts"
+    },
+    {
+      "columns": [
+        {
+          "value": "confirmation_token_hash",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "auth_challenges_confirmation_hash_unique",
+      "entityType": "indexes",
+      "table": "auth_challenges"
+    },
+    {
+      "columns": [
+        {
+          "value": "polling_token_hash",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "auth_challenges_polling_hash_unique",
+      "entityType": "indexes",
+      "table": "auth_challenges"
+    },
+    {
+      "columns": [
+        {
+          "value": "email",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "auth_challenges_email_created_index",
+      "entityType": "indexes",
+      "table": "auth_challenges"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "idempotency_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "billing_checkout_attempts_org_key_unique",
+      "entityType": "indexes",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "\"billing_checkout_attempts\".\"state\" in ('creating','open')",
+      "origin": "manual",
+      "name": "billing_checkout_attempts_live_unique",
+      "entityType": "indexes",
+      "table": "billing_checkout_attempts"
+    },
+    {
+      "columns": [
+        {
+          "value": "resource_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "email_outbox_resource_unique",
+      "entityType": "indexes",
+      "table": "email_outbox"
+    },
+    {
+      "columns": [
+        {
+          "value": "status",
+          "isExpression": false
+        },
+        {
+          "value": "next_attempt_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "email_outbox_pending_index",
+      "entityType": "indexes",
+      "table": "email_outbox"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "executionPlans_organization_id_unique",
+      "entityType": "indexes",
+      "table": "execution_plans"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "idempotency_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "execution_plans_organization_idempotency_unique",
+      "entityType": "indexes",
+      "table": "execution_plans"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "execution_plans_organization_created_index",
+      "entityType": "indexes",
+      "table": "execution_plans"
+    },
+    {
+      "columns": [
+        {
+          "value": "source_id",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "execution_plans_source_created_index",
+      "entityType": "indexes",
+      "table": "execution_plans"
+    },
+    {
+      "columns": [
+        {
+          "value": "job_id",
+          "isExpression": false
+        },
+        {
+          "value": "attempt",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "job_attempts_job_attempt_unique",
+      "entityType": "indexes",
+      "table": "job_attempts"
+    },
+    {
+      "columns": [
+        {
+          "value": "job_id",
+          "isExpression": false
+        },
+        {
+          "value": "kind",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "job_credit_entries_job_kind_unique",
+      "entityType": "indexes",
+      "table": "job_credit_entries"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "period_start",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "job_credit_entries_organization_period_index",
+      "entityType": "indexes",
+      "table": "job_credit_entries"
+    },
+    {
+      "columns": [
+        {
+          "value": "job_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "job_credit_entries_job_index",
+      "entityType": "indexes",
+      "table": "job_credit_entries"
+    },
+    {
+      "columns": [
+        {
+          "value": "job_id",
+          "isExpression": false
+        },
+        {
+          "value": "sequence",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "job_events_job_sequence_index",
+      "entityType": "indexes",
+      "table": "job_events"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "jobs_organization_id_unique",
+      "entityType": "indexes",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "idempotency_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "jobs_organization_idempotency_unique",
+      "entityType": "indexes",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "client_reference",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "jobs_organization_client_reference_unique",
+      "entityType": "indexes",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        {
+          "value": "state",
+          "isExpression": false
+        },
+        {
+          "value": "queue_priority",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "jobs_queue_index",
+      "entityType": "indexes",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "jobs_organization_created_id_index",
+      "entityType": "indexes",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "state",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "jobs_organization_state_created_index",
+      "entityType": "indexes",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "kind",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "jobs_organization_kind_created_index",
+      "entityType": "indexes",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        {
+          "value": "job_id",
+          "isExpression": false
+        },
+        {
+          "value": "attempt",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "media_commands_job_attempt_index",
+      "entityType": "indexes",
+      "table": "media_commands"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "sequence",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "organization_audit_sequence_index",
+      "entityType": "indexes",
+      "table": "organization_audit_events"
+    },
+    {
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        },
+        {
+          "value": "idempotency_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "organization_creation_requests_key_unique",
+      "entityType": "indexes",
+      "table": "organization_creation_requests"
+    },
+    {
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "organization_creation_requests_rate_index",
+      "entityType": "indexes",
+      "table": "organization_creation_requests"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "email",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "\"organization_invitations\".\"state\" = 'pending'",
+      "origin": "manual",
+      "name": "organization_invitations_pending_unique",
+      "entityType": "indexes",
+      "table": "organization_invitations"
+    },
+    {
+      "columns": [
+        {
+          "value": "email",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "organization_invitations_recipient_index",
+      "entityType": "indexes",
+      "table": "organization_invitations"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "organization_invitations_org_created_index",
+      "entityType": "indexes",
+      "table": "organization_invitations"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "user_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "organization_memberships_org_user_unique",
+      "entityType": "indexes",
+      "table": "organization_memberships"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "\"organization_memberships\".\"role\" = 'owner'",
+      "origin": "manual",
+      "name": "organization_memberships_owner_unique",
+      "entityType": "indexes",
+      "table": "organization_memberships"
+    },
+    {
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "\"organization_memberships\".\"is_default\" = 1",
+      "origin": "manual",
+      "name": "organization_memberships_default_unique",
+      "entityType": "indexes",
+      "table": "organization_memberships"
+    },
+    {
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        },
+        {
+          "value": "joined_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "organization_memberships_user_joined_index",
+      "entityType": "indexes",
+      "table": "organization_memberships"
+    },
+    {
+      "columns": [
+        {
+          "value": "state",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "organizations_state_created_index",
+      "entityType": "indexes",
+      "table": "organizations"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "preparedSources_organization_id_unique",
+      "entityType": "indexes",
+      "table": "prepared_sources"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "idempotency_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "prepared_sources_organization_idempotency_unique",
+      "entityType": "indexes",
+      "table": "prepared_sources"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "prepared_sources_organization_created_index",
+      "entityType": "indexes",
+      "table": "prepared_sources"
+    },
+    {
+      "columns": [
+        {
+          "value": "state",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "prepared_sources_recovery_index",
+      "entityType": "indexes",
+      "table": "prepared_sources"
+    },
+    {
+      "columns": [
+        {
+          "value": "state",
+          "isExpression": false
+        },
+        {
+          "value": "expires_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "prepared_sources_expiry_index",
+      "entityType": "indexes",
+      "table": "prepared_sources"
+    },
+    {
+      "columns": [
+        {
+          "value": "token_hash",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "session_refresh_tokens_hash_unique",
+      "entityType": "indexes",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_refresh_tokens_session_index",
+      "entityType": "indexes",
+      "table": "session_refresh_tokens"
+    },
+    {
+      "columns": [
+        {
+          "value": "access_token_hash",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "sessions_access_hash_unique",
+      "entityType": "indexes",
+      "table": "sessions"
+    },
+    {
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "sessions_user_index",
+      "entityType": "indexes",
+      "table": "sessions"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "source_write_activities_org_index",
+      "entityType": "indexes",
+      "table": "source_write_activities"
+    },
+    {
+      "columns": [
+        {
+          "value": "customer_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "stripe_customers_customer_unique",
+      "entityType": "indexes",
+      "table": "stripe_customers"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "status",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "stripe_subscriptions_organization_status_index",
+      "entityType": "indexes",
+      "table": "stripe_subscriptions"
+    },
+    {
+      "columns": [
+        {
+          "value": "email",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "users_email_unique",
+      "entityType": "indexes",
+      "table": "users"
+    },
+    {
+      "value": "\"role\" in ('owner','admin','member')",
+      "name": "organization_memberships_role_check",
+      "entityType": "checks",
+      "table": "organization_memberships"
+    },
+    {
+      "value": "\"state\" in ('active','deleting','deleted')",
+      "name": "organizations_state_check",
+      "entityType": "checks",
+      "table": "organizations"
+    }
+  ],
+  "renames": []
+}

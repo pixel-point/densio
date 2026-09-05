@@ -11,7 +11,12 @@ import { MediaInspector } from "../src/media/inspection/media-inspector.ts";
 const versions = {
   ffmpeg: "ffmpeg version 7.1-static\n",
   ffprobe: "ffprobe version 7.1-static\n",
-  encoders: [" V....D libvpx-vp9 VP9", " V....D libx265 H.265", " V..... libsvtav1 AV1"].join("\n"),
+  encoders: [
+    " V....D libvpx-vp9 VP9",
+    " V....D libx265 H.265",
+    " V..... libsvtav1 AV1",
+    " A..... aac AAC",
+  ].join("\n"),
 };
 
 describe("media inspector process integration", () => {

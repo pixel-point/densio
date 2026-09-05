@@ -1,26 +1,35 @@
-import { JobResultSchema, type JobResult } from "@densio/shared";
-import { Effect, Layer, Predicate, Schema } from "effect";
+import { JobResultSchema, SourceInspectionSchema, type JobResult } from "@densio/shared";
+import { Clock, Effect, Layer, Predicate, Schema } from "effect";
 
 import { PLAN_ENTITLEMENTS } from "../auth/entitlements.ts";
 import { MINIMUM_JOB_CREDIT_UNITS } from "../billing/credit-units.ts";
 import type { Database } from "../database/database.ts";
+import { transitionJob } from "../database/job-transition-repository.ts";
+import { matchesPlannedInspection } from "../sources/source-inspection-compatibility.ts";
+import { normalizeSourceInspection } from "../sources/source-inspection.ts";
 import { MediaInspectionError } from "../media/inspection/media-inspection-error.ts";
 import { MediaInspector } from "../media/inspection/media-inspector.ts";
+import type { MediaProbe } from "../media/inspection/media-probe.ts";
 import { MediaPlanError } from "../media/media-plan-error.ts";
 import type { MediaProcessError } from "../media/process/media-process-runner.ts";
 import { MediaProcessRunner } from "../media/process/media-process-runner.ts";
 import { MediaWorkflowProcessError } from "../media/workflows/workflow-command.ts";
-import type { WorkflowCommandDiagnostic } from "../media/workflows/workflow-types.ts";
+import { HlsScratchLimitExceeded } from "../media/workflows/hls-scratch.ts";
 import { makeJobStoragePaths } from "../storage/workspace.ts";
 import { makeRecordingMediaProcessRunner, sanitizeMediaStderr } from "./job-command-recorder.ts";
-import type { Job, JobAnalysis } from "./job-worker.ts";
+import { ArtifactOutputSizeLimitExceeded } from "./artifact-publication.ts";
+import type { Job } from "./job-worker.ts";
 import { JobProcessorError } from "./job-worker.ts";
 
 export interface MediaJobAdapterConfig {
+  readonly hlsMaxScratchBytes?: number;
+  readonly artifactAccessGrantTtlMs: number;
   readonly artifactTtlMs: number;
   readonly audioSilenceThresholdDb: number;
   readonly ffmpegPath: string;
+  readonly ffmpegVersion: string;
   readonly ffprobePath: string;
+  readonly ffprobeVersion: string;
   readonly maxExtractedImages: number;
   readonly mediaRoot: string;
   readonly publicBaseUrl: string;
@@ -32,9 +41,14 @@ export interface MediaJobHandlerContext {
   readonly runner: MediaProcessRunner["Service"];
 }
 
-export interface MediaJobHandler {
-  readonly analyze: (job: Job) => Effect.Effect<JobAnalysis, unknown>;
-  readonly process: (job: Job, analysis: Schema.Json) => Effect.Effect<Schema.Json, unknown>;
+export interface MediaJobHandler<Analysis> {
+  readonly analyze: (
+    job: Job,
+  ) => Effect.Effect<
+    { readonly creditUnits: number; readonly data: Analysis; readonly kind: "ready" },
+    unknown
+  >;
+  readonly process: (job: Job, analysis: Analysis) => Effect.Effect<Schema.Json, unknown>;
 }
 
 export const analysisIdentityFields = {
@@ -45,17 +59,17 @@ export const analysisIdentityFields = {
 
 export const positiveDurationSchema = Schema.Finite.check(Schema.isGreaterThan(0));
 
-export const meteredAnalysis = (
-  data: Schema.Json,
+export const meteredAnalysis = <Analysis>(
+  data: Analysis,
   creditUnits = MINIMUM_JOB_CREDIT_UNITS,
-): JobAnalysis => ({ creditUnits, data, kind: "ready" });
+) => ({ creditUnits, data, kind: "ready" as const });
 
 const decodeJobResult = Schema.decodeUnknownEffect(JobResultSchema);
 
 export const inspectJob = <Value, Error>(
   context: MediaJobHandlerContext,
   job: Job,
-  inspect: (inspector: MediaInspector["Service"], inputFile: string) => Effect.Effect<Value, Error>,
+  inspect: (inspector: JobMediaInspector, inputFile: string) => Effect.Effect<Value, Error>,
 ) =>
   Effect.gen(function* () {
     const paths = yield* makeJobStoragePaths(context.config.mediaRoot, job.id);
@@ -65,9 +79,9 @@ export const inspectJob = <Value, Error>(
       ffprobePath: context.config.ffprobePath,
       silenceThresholdDb: context.config.audioSilenceThresholdDb,
     }).pipe(Layer.provide(Layer.succeed(MediaProcessRunner, recordingRunner)));
-    return yield* MediaInspector.use((inspector) => inspect(inspector, paths.inputFile)).pipe(
-      Effect.provide(inspectorLayer),
-    );
+    return yield* MediaInspector.use((inspector) =>
+      inspect(recordingInspector(context, job, inspector), paths.inputFile),
+    ).pipe(Effect.provide(inspectorLayer));
   });
 
 export const prepareJobExecution = Effect.fn("MediaJobHandler.prepare")(function* (
@@ -75,12 +89,12 @@ export const prepareJobExecution = Effect.fn("MediaJobHandler.prepare")(function
   job: Job,
 ) {
   return {
-    paths: yield* makeJobStoragePaths(context.config.mediaRoot, job.id),
+    paths: yield* makeJobStoragePaths(context.config.mediaRoot, job.id, job.attemptCount),
     recordingRunner: makeRecordingRunner(context, job),
   };
 });
 
-export const entitlementsFor = (job: Job) => PLAN_ENTITLEMENTS[job.plan];
+export const entitlementsFor = (job: Job) => PLAN_ENTITLEMENTS[job.subscriptionPlan];
 
 export const assertCurrentAnalysis = (
   job: Job,
@@ -124,14 +138,6 @@ export const invalidJobResult = () =>
     message: "The media workflow produced an invalid result.",
   });
 
-export const sanitizeCommands = (commands: ReadonlyArray<WorkflowCommandDiagnostic>) =>
-  commands.map((command) => ({
-    ...command,
-    ...(command.stderrTail === undefined
-      ? {}
-      : { stderrTail: sanitizeMediaStderr(command.stderrTail) }),
-  }));
-
 export const adaptMediaJobErrors = <Value, Error, Requirements>(
   effect: Effect.Effect<Value, Error, Requirements>,
 ): Effect.Effect<Value, JobProcessorError, Requirements> =>
@@ -148,6 +154,61 @@ const makeRecordingRunner = (context: MediaJobHandlerContext, job: Job) =>
     context.config.ffprobePath,
   );
 
+export type JobMediaInspector = ReturnType<typeof recordingInspector>;
+
+const recordingInspector = (
+  context: MediaJobHandlerContext,
+  job: Job,
+  inspector: MediaInspector["Service"],
+) => ({
+  checkCapabilities: inspector.checkCapabilities,
+  classifyAudio: inspector.classifyAudio,
+  inspect: (inputPath: string) =>
+    recordToolchain(context, job).pipe(
+      Effect.andThen(inspector.inspect(inputPath)),
+      Effect.tap((probe) => persistInspection(job, probe)),
+    ),
+  resolveFrameTimestamp: inspector.resolveFrameTimestamp,
+});
+
+const persistInspection = Effect.fn("MediaJobHandler.verifyInspection")(function* (
+  job: Job,
+  probe: MediaProbe,
+) {
+  const inspection = yield* normalizeSourceInspection(probe);
+  const planned = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(SourceInspectionSchema))(
+    job.inspectionJson,
+  ).pipe(Effect.mapError(() => invalidAnalysis()));
+  if (!matchesPlannedInspection(planned, inspection)) {
+    return yield* new JobProcessorError({
+      code: "PLAN_DIVERGED",
+      details: {},
+      message: "Fresh source inspection differs from the immutable plan.",
+    });
+  }
+});
+
+const recordToolchain = Effect.fn("MediaJobHandler.recordToolchain")(function* (
+  context: MediaJobHandlerContext,
+  job: Job,
+) {
+  const now = yield* Clock.currentTimeMillis;
+  const recorded = transitionJob(context.database, {
+    jobId: job.id,
+    now,
+    command: {
+      type: "provenance",
+      attempt: job.attemptCount,
+      workerId: job.leaseOwner ?? "",
+      toolchainJson: JSON.stringify({
+        ffmpegVersion: context.config.ffmpegVersion,
+        ffprobeVersion: context.config.ffprobeVersion,
+      }),
+    },
+  });
+  if (recorded === undefined) return yield* invalidAnalysis();
+});
+
 const invalidAnalysis = () =>
   new JobProcessorError({
     code: "STALE_JOB_ANALYSIS",
@@ -157,6 +218,20 @@ const invalidAnalysis = () =>
 
 const toProcessorError = (error: unknown) => {
   if (error instanceof JobProcessorError) return error;
+  if (error instanceof HlsScratchLimitExceeded)
+    return new JobProcessorError({
+      code: "HLS_SCRATCH_LIMIT_EXCEEDED",
+      details: { actualBytes: error.actualBytes, limitBytes: error.limitBytes },
+      message:
+        "HLS exceeded its scratch budget or the media filesystem has less than 64 MiB free. Increase HLS_MAX_SCRATCH_BYTES or free disk space before retrying.",
+    });
+  if (error instanceof ArtifactOutputSizeLimitExceeded) {
+    return new JobProcessorError({
+      code: "OUTPUT_SIZE_LIMIT_EXCEEDED",
+      details: { actualBytes: error.actualBytes, limitBytes: error.limitBytes },
+      message: "The encoded outputs exceed the configured byte limit.",
+    });
+  }
   if (error instanceof MediaInspectionError) {
     return new JobProcessorError({
       code: error.reason.replaceAll("-", "_").toUpperCase(),

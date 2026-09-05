@@ -6,7 +6,7 @@ import { afterEach, expect, it } from "vitest";
 
 import { runAdminCommand } from "../src/admin/admin-command.ts";
 import { type Database, migrateDatabase, openDatabase } from "../src/database/database.ts";
-import { users } from "../src/database/schema.ts";
+import { ensureOrganizationActor } from "./organization-fixture-identity.ts";
 
 const NOW = 1_800_000_000_000;
 const databases: Array<Database> = [];
@@ -21,23 +21,23 @@ afterEach(async () => {
   );
 });
 
-it("grants, lists, and revokes Pro by normalized email", async () => {
+it("grants, lists, and revokes Pro by organization ID", async () => {
   const database = await createTestDatabase();
 
   await expect(
-    runAdminCommand(database, ["pro", "grant", " Agent@Example.COM "], {
+    runAdminCommand(database, ["pro", "grant", "org-1"], {
       grantedBy: "operator",
       now: () => NOW,
     }),
-  ).resolves.toMatchObject({ exitCode: 0, output: { created: true, email: "agent@example.com" } });
+  ).resolves.toMatchObject({ exitCode: 0, output: { created: true, organizationId: "org-1" } });
   await expect(
     runAdminCommand(database, ["pro", "list"], { grantedBy: "operator", now: () => NOW }),
   ).resolves.toMatchObject({
     exitCode: 0,
-    output: { grants: [{ email: "agent@example.com", grantedBy: "operator" }] },
+    output: { grants: [{ organizationId: "org-1", grantedBy: "operator" }] },
   });
   await expect(
-    runAdminCommand(database, ["pro", "revoke", "agent@example.com"], {
+    runAdminCommand(database, ["pro", "revoke", "org-1"], {
       grantedBy: "operator",
       now: () => NOW + 1,
     }),
@@ -48,11 +48,11 @@ it("returns agent-readable errors for invalid usage and missing accounts", async
   const database = await createTestDatabase();
 
   await expect(
-    runAdminCommand(database, ["pro", "grant", "missing@example.com"], {
+    runAdminCommand(database, ["pro", "grant", "missing-org"], {
       grantedBy: "operator",
       now: () => NOW,
     }),
-  ).resolves.toMatchObject({ exitCode: 4, error: { code: "USER_NOT_FOUND" } });
+  ).resolves.toMatchObject({ exitCode: 4, error: { code: "ORGANIZATION_NOT_FOUND" } });
   await expect(
     runAdminCommand(database, ["unknown"], { grantedBy: "operator", now: () => NOW }),
   ).resolves.toMatchObject({ exitCode: 2, error: { code: "INVALID_USAGE" } });
@@ -64,14 +64,6 @@ const createTestDatabase = async () => {
   const database = openDatabase(join(directory, "database.sqlite"));
   databases.push(database);
   migrateDatabase(database);
-  database.db
-    .insert(users)
-    .values({
-      createdAt: NOW,
-      email: "agent@example.com",
-      id: "user-1",
-      updatedAt: NOW,
-    })
-    .run();
+  ensureOrganizationActor(database);
   return database;
 };

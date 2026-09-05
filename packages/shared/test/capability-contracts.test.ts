@@ -1,13 +1,13 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { CapabilitiesSchema, PlanLimitsSchema } from "../src/index.ts";
+import { CapabilitiesSchema, PublicCapabilitiesSchema, PlanLimitsSchema } from "../src/index.ts";
 
 const limits = {
   maxVideoDurationSeconds: 10,
   maxUploadBytes: 100_000_000,
   maxExtractionImages: 300,
-  maxComparisonCrfs: 8,
+  maxComparisonVariants: 8,
   maxComparisonDurationSeconds: 3,
   artifactRetentionSeconds: 86_400,
 };
@@ -18,7 +18,9 @@ const options = {
   cropKinds: ["aspect-ratio", "rectangle"],
   scaleDimensions: ["width", "height"],
   comparisonPositionKinds: ["seconds", "timecode", "frame"],
-  comparisonCrfCount: { minimum: 2, maximum: 8 },
+  comparisonVariantCount: { minimum: 2, maximum: 8 },
+  comparisonSampleCount: { minimum: 1, maximum: 5, default: 3 },
+  comparisonMetrics: ["ssim", "psnr"],
   comparisonDurationSeconds: { minimum: 1, maximum: 3, default: 1 },
 };
 
@@ -37,6 +39,11 @@ describe("plan limits", () => {
 describe("capabilities", () => {
   it("describes workflows, plan access, defaults, and server limits", () => {
     const capabilities = {
+      scope: "organization",
+      organizationId: "org-1",
+      organizationName: "Team",
+      role: "member",
+      actions: ["media-read", "media-write", "billing-read"],
       apiVersion: "v1",
       workflows: ["compress", "extract-images", "compare-quality"],
       plan: "free",
@@ -71,7 +78,18 @@ describe("capabilities", () => {
         extractionIntervalSeconds: 1,
         extractionFormat: "jpeg",
         comparisonDurationSeconds: 1,
-        comparisonPositionSeconds: 0,
+        comparisonSamples: 3,
+        comparisonMetrics: ["ssim"],
+      },
+      controlPlane: {
+        preparedSources: true,
+        sourceListing: true,
+        executionPlans: true,
+        jobEvents: true,
+        stableArtifacts: true,
+        sourceRetentionSeconds: 3600,
+        planTtlSeconds: 600,
+        artifactAccessGrantTtlSeconds: 300,
       },
       server: {
         maxConcurrentMediaProcesses: 3,
@@ -81,8 +99,38 @@ describe("capabilities", () => {
     };
 
     expect(Schema.decodeUnknownSync(CapabilitiesSchema)(capabilities)).toEqual(capabilities);
+    expect(Schema.is(CapabilitiesSchema)({ ...capabilities, organizationId: undefined })).toBe(
+      false,
+    );
+    const {
+      scope: _,
+      organizationId: _id,
+      organizationName: _name,
+      role: _role,
+      actions: _actions,
+      plan: _plan,
+      limits: _limits,
+      ...common
+    } = capabilities;
+    const discovery = {
+      ...common,
+      scope: "public",
+      plans: [{ plan: "free", monthlyCredits: 30, limits }],
+    };
+    expect(PublicCapabilitiesSchema).toBeDefined();
+    expect(
+      Schema.decodeUnknownSync(PublicCapabilitiesSchema, { onExcessProperty: "error" })(discovery),
+    ).toEqual(discovery);
+    expect(() =>
+      Schema.decodeUnknownSync(PublicCapabilitiesSchema, { onExcessProperty: "error" })({
+        ...discovery,
+        plan: "free",
+      }),
+    ).toThrow();
   });
+});
 
+describe("capability entitlements", () => {
   it("rejects capabilities that advertise AV1 on Free", () => {
     const decode = Schema.decodeUnknownSync(CapabilitiesSchema);
 
@@ -108,7 +156,18 @@ describe("capabilities", () => {
           extractionIntervalSeconds: 1,
           extractionFormat: "jpeg",
           comparisonDurationSeconds: 1,
-          comparisonPositionSeconds: 0,
+          comparisonSamples: 3,
+          comparisonMetrics: ["ssim"],
+        },
+        controlPlane: {
+          preparedSources: true,
+          sourceListing: true,
+          executionPlans: true,
+          jobEvents: true,
+          stableArtifacts: true,
+          sourceRetentionSeconds: 3600,
+          planTtlSeconds: 600,
+          artifactAccessGrantTtlSeconds: 300,
         },
         server: {
           maxConcurrentMediaProcesses: 3,

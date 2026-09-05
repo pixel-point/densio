@@ -1,9 +1,11 @@
+import { loadStorageConfig } from "./storage/storage-config.ts";
 import { Schema } from "effect";
 
 const positiveInteger = (minimum: number, maximum: number) =>
   Schema.NumberFromString.check(Schema.isInt(), Schema.isBetween({ maximum, minimum }));
 
 const ConfigInput = Schema.Struct({
+  artifactAccessGrantTtlSeconds: positiveInteger(60, 86_400),
   artifactCleanupIntervalSeconds: positiveInteger(1, 86_400),
   artifactTtlSeconds: positiveInteger(60, 604_800),
   audioSilenceThresholdDb: Schema.NumberFromString.check(
@@ -17,7 +19,6 @@ const ConfigInput = Schema.Struct({
   authOutboxEncryptionKey: Schema.NonEmptyString,
   authRateLimitWindowSeconds: positiveInteger(1, 86_400),
   authRefreshTtlSeconds: positiveInteger(300, 31_536_000),
-  billingSessionTtlSeconds: positiveInteger(60, 86_400),
   databasePath: Schema.NonEmptyString,
   emailFrom: Schema.NonEmptyString,
   emailLeaseSeconds: positiveInteger(1, 3_600),
@@ -36,8 +37,12 @@ const ConfigInput = Schema.Struct({
   maxConcurrentMediaProcesses: positiveInteger(1, 32),
   maxExtractedImages: positiveInteger(1, 100_000),
   maxUploadBytes: positiveInteger(1, Number.MAX_SAFE_INTEGER),
+  hlsMaxScratchBytes: positiveInteger(1, Number.MAX_SAFE_INTEGER),
   mediaRoot: Schema.NonEmptyString,
+  organizationMaxCreatesPerDay: positiveInteger(1, 1_000),
+  organizationMaxInvitationsPerHour: positiveInteger(1, 10_000),
   port: positiveInteger(1, 65_535),
+  planTtlSeconds: positiveInteger(60, 86_400),
   publicBaseUrl: Schema.NonEmptyString,
   resendApiKey: Schema.String,
   stripeBasicPriceId: Schema.String,
@@ -46,6 +51,7 @@ const ConfigInput = Schema.Struct({
   stripeSecretKey: Schema.String,
   stripeWebhookSecret: Schema.String,
   uploadTtlSeconds: positiveInteger(60, 86_400),
+  sourceTtlSeconds: positiveInteger(3_600, 604_800),
   workerId: Schema.NonEmptyString,
 });
 
@@ -54,6 +60,7 @@ const decodeConfig = Schema.decodeUnknownSync(ConfigInput);
 export const loadConfig = (environment: NodeJS.ProcessEnv) => {
   const publicBaseUrl = environment.PUBLIC_BASE_URL ?? "http://localhost:3000";
   const config = decodeConfig({
+    artifactAccessGrantTtlSeconds: environment.ARTIFACT_ACCESS_GRANT_TTL_SECONDS ?? "900",
     artifactCleanupIntervalSeconds: environment.ARTIFACT_CLEANUP_INTERVAL_SECONDS ?? "600",
     artifactTtlSeconds: environment.ARTIFACT_TTL_SECONDS ?? "86400",
     audioSilenceThresholdDb: environment.AUDIO_SILENCE_THRESHOLD_DB ?? "-50",
@@ -65,7 +72,6 @@ export const loadConfig = (environment: NodeJS.ProcessEnv) => {
     authOutboxEncryptionKey: environment.AUTH_OUTBOX_ENCRYPTION_KEY ?? "0".repeat(64),
     authRateLimitWindowSeconds: environment.AUTH_RATE_LIMIT_WINDOW_SECONDS ?? "60",
     authRefreshTtlSeconds: environment.AUTH_REFRESH_TTL_SECONDS ?? "2592000",
-    billingSessionTtlSeconds: environment.BILLING_SESSION_TTL_SECONDS ?? "1800",
     databasePath: environment.DATABASE_PATH ?? "./data/database.sqlite",
     emailFrom: environment.EMAIL_FROM ?? "Densio <login@example.com>",
     emailLeaseSeconds: environment.EMAIL_LEASE_SECONDS ?? "30",
@@ -84,8 +90,12 @@ export const loadConfig = (environment: NodeJS.ProcessEnv) => {
     maxConcurrentMediaProcesses: environment.MAX_CONCURRENT_MEDIA_PROCESSES ?? "3",
     maxExtractedImages: environment.MAX_EXTRACTED_IMAGES ?? "2000",
     maxUploadBytes: environment.MAX_UPLOAD_BYTES ?? "21474836480",
+    hlsMaxScratchBytes: environment.HLS_MAX_SCRATCH_BYTES ?? "21474836480",
     mediaRoot: environment.MEDIA_ROOT ?? "./data/media",
+    organizationMaxCreatesPerDay: environment.ORGANIZATION_MAX_CREATES_PER_DAY ?? "10",
+    organizationMaxInvitationsPerHour: environment.ORGANIZATION_MAX_INVITATIONS_PER_HOUR ?? "30",
     port: environment.PORT ?? "3000",
+    planTtlSeconds: environment.PLAN_TTL_SECONDS ?? "3600",
     publicBaseUrl,
     resendApiKey: environment.RESEND_API_KEY ?? "",
     stripeBasicPriceId: environment.STRIPE_BASIC_PRICE_ID ?? "",
@@ -94,57 +104,67 @@ export const loadConfig = (environment: NodeJS.ProcessEnv) => {
     stripeSecretKey: environment.STRIPE_SECRET_KEY ?? "",
     stripeWebhookSecret: environment.STRIPE_WEBHOOK_SECRET ?? "",
     uploadTtlSeconds: environment.UPLOAD_TTL_SECONDS ?? "3600",
+    sourceTtlSeconds: environment.SOURCE_TTL_SECONDS ?? "86400",
     workerId: environment.WORKER_ID ?? "densio-worker",
   });
   if (config.jobHeartbeatSeconds >= config.jobLeaseSeconds) {
     throw new Error("JOB_HEARTBEAT_SECONDS must be less than JOB_LEASE_SECONDS");
   }
 
-  return {
-    ...config,
-    artifactCleanupIntervalMs: config.artifactCleanupIntervalSeconds * 1_000,
-    artifactTtlMs: config.artifactTtlSeconds * 1_000,
-    auth: {
-      accessTokenTtlMs: config.authAccessTtlSeconds * 1_000,
-      challengeTtlMs: config.authChallengeTtlSeconds * 1_000,
-      maxChallengesPerEmail: config.authMaxChallengesPerEmail,
-      maxChallengesPerIp: config.authMaxChallengesPerIp,
-      publicBaseUrl: config.publicBaseUrl,
-      rateLimitWindowMs: config.authRateLimitWindowSeconds * 1_000,
-      refreshTokenTtlMs: config.authRefreshTtlSeconds * 1_000,
-    },
-    billing: {
-      checkoutCancelUrl:
-        environment.STRIPE_CHECKOUT_CANCEL_URL ?? `${publicBaseUrl}/billing/canceled`,
-      checkoutSuccessUrl:
-        environment.STRIPE_CHECKOUT_SUCCESS_URL ?? `${publicBaseUrl}/billing/success`,
-      portalReturnUrl: environment.STRIPE_PORTAL_RETURN_URL ?? `${publicBaseUrl}/billing`,
-      priceIds: {
-        basic: config.stripeBasicPriceId,
-        pro: config.stripeProPriceId,
-        scale: config.stripeScalePriceId,
-      },
-      webhookSecret: config.stripeWebhookSecret,
-    },
-    billingSessionTtlMs: config.billingSessionTtlSeconds * 1_000,
-    email: {
-      from: config.emailFrom,
-      leaseMs: config.emailLeaseSeconds * 1_000,
-      maxAttempts: config.emailMaxAttempts,
-      pollIntervalMs: config.emailPollIntervalMs,
-      retryBaseMs: config.emailRetryBaseSeconds * 1_000,
-    },
-    jobWorker: {
-      concurrency: config.jobWorkerConcurrency,
-      heartbeatIntervalMs: config.jobHeartbeatSeconds * 1_000,
-      leaseDurationMs: config.jobLeaseSeconds * 1_000,
-      maxAttempts: config.jobMaxAttempts,
-      pollIntervalMs: config.jobPollIntervalMs,
-      workerId: config.workerId,
-    },
-    uploadTtlMs: config.uploadTtlSeconds * 1_000,
-    trustProxy: environment.TRUST_PROXY === "true",
-  };
+  return materializeConfig(environment, publicBaseUrl, config);
 };
+
+const materializeConfig = (
+  environment: NodeJS.ProcessEnv,
+  publicBaseUrl: string,
+  config: ReturnType<typeof decodeConfig>,
+) => ({
+  ...config,
+  storage: loadStorageConfig(environment.STORAGE_CONFIG_JSON),
+  artifactAccessGrantTtlMs: config.artifactAccessGrantTtlSeconds * 1_000,
+  artifactCleanupIntervalMs: config.artifactCleanupIntervalSeconds * 1_000,
+  artifactTtlMs: config.artifactTtlSeconds * 1_000,
+  auth: {
+    accessTokenTtlMs: config.authAccessTtlSeconds * 1_000,
+    challengeTtlMs: config.authChallengeTtlSeconds * 1_000,
+    maxChallengesPerEmail: config.authMaxChallengesPerEmail,
+    maxChallengesPerIp: config.authMaxChallengesPerIp,
+    publicBaseUrl: config.publicBaseUrl,
+    rateLimitWindowMs: config.authRateLimitWindowSeconds * 1_000,
+    refreshTokenTtlMs: config.authRefreshTtlSeconds * 1_000,
+  },
+  billing: {
+    checkoutCancelUrl:
+      environment.STRIPE_CHECKOUT_CANCEL_URL ?? `${publicBaseUrl}/billing/canceled`,
+    checkoutSuccessUrl:
+      environment.STRIPE_CHECKOUT_SUCCESS_URL ?? `${publicBaseUrl}/billing/success`,
+    portalReturnUrl: environment.STRIPE_PORTAL_RETURN_URL ?? `${publicBaseUrl}/billing`,
+    priceIds: {
+      basic: config.stripeBasicPriceId,
+      pro: config.stripeProPriceId,
+      scale: config.stripeScalePriceId,
+    },
+    webhookSecret: config.stripeWebhookSecret,
+  },
+  planTtlMs: config.planTtlSeconds * 1_000,
+  email: {
+    from: config.emailFrom,
+    leaseMs: config.emailLeaseSeconds * 1_000,
+    maxAttempts: config.emailMaxAttempts,
+    pollIntervalMs: config.emailPollIntervalMs,
+    retryBaseMs: config.emailRetryBaseSeconds * 1_000,
+  },
+  jobWorker: {
+    concurrency: config.jobWorkerConcurrency,
+    heartbeatIntervalMs: config.jobHeartbeatSeconds * 1_000,
+    leaseDurationMs: config.jobLeaseSeconds * 1_000,
+    maxAttempts: config.jobMaxAttempts,
+    pollIntervalMs: config.jobPollIntervalMs,
+    workerId: config.workerId,
+  },
+  uploadTtlMs: config.uploadTtlSeconds * 1_000,
+  sourceTtlMs: config.sourceTtlSeconds * 1_000,
+  trustProxy: environment.TRUST_PROXY === "true",
+});
 
 export type AppConfig = ReturnType<typeof loadConfig>;

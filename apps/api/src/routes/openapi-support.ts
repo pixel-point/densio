@@ -4,8 +4,16 @@ import type { OpenAPIV3_1 } from "openapi-types";
 
 import type { ProblemDescriptor } from "../errors/problem-details.ts";
 
-export const jsonRequest = <S extends Schema.Top>(schema: S) => ({
-  content: { "application/json": { schema: openApiSchema(schema) } },
+export const jsonRequest = <S extends Schema.Top>(
+  schema: S,
+  examples?: Readonly<Record<string, { readonly summary: string; readonly value: S["Type"] }>>,
+) => ({
+  content: {
+    "application/json": {
+      schema: openApiSchema(schema),
+      ...(examples === undefined ? {} : { examples }),
+    },
+  },
   required: true,
 });
 
@@ -51,8 +59,34 @@ export const pathParameter = (name: string, description: string) =>
 export const queryParameter = (name: string, description: string, required = false) =>
   parameter(name, "query", description, required);
 
-export const headerParameter = (name: string, description: string, required = false) =>
-  parameter(name, "header", description, required);
+export const queryParameters = <Fields extends Schema.Struct.Fields>(
+  schema: Schema.Struct<Fields>,
+  descriptions: Readonly<Record<keyof Fields & string, string>>,
+): OpenAPIV3_1.ParameterObject[] => {
+  const object = openApiSchema(schema);
+  // openapi-types still aliases 3.1 parameters to 3.0 types; the emitted schemas are 3.1.
+  return Object.entries(object.properties ?? {}).map(
+    ([name, property]) =>
+      ({
+        description: descriptions[name as keyof typeof descriptions],
+        in: "query",
+        name,
+        required: object.required?.includes(name) ?? false,
+        schema: property,
+      }) as OpenAPIV3_1.ParameterObject,
+  );
+};
+
+export const headerParameter = (
+  name: string,
+  description: string,
+  required = false,
+  schema: Schema.Top = Schema.String,
+): OpenAPIV3_1.ParameterObject =>
+  ({
+    ...parameter(name, "header", description, required),
+    schema: openApiSchema(schema),
+  }) as OpenAPIV3_1.ParameterObject;
 
 export const binaryBody = {
   content: {
@@ -63,7 +97,7 @@ export const binaryBody = {
 
 export const binaryResponse = (description: string) => ({
   content: {
-    "application/octet-stream": { schema: { format: "binary", type: "string" as const } },
+    "*/*": { schema: { format: "binary", type: "string" as const } },
   },
   description,
 });

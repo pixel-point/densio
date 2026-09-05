@@ -10,6 +10,10 @@ const expectedSources = [
   ["SKILL.md", "entrypoint.md"],
   ["references/commands.md", "references/commands.md"],
   ["references/errors.md", "references/errors.md"],
+  ["references/organizations.md", "references/organizations.md"],
+  ["references/hls.md", "references/hls.md"],
+  ["references/storage.md", "references/storage.md"],
+  ["references/workflows.md", "references/workflows.md"],
 ] as const;
 
 it("embeds the canonical repository skill and references byte-for-byte", async () => {

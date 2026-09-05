@@ -1,10 +1,10 @@
 import { Schema } from "effect";
 
 const Sha256Schema = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/));
-const SkillFilePathSchema = Schema.String.check(
+export const SkillFilePathSchema = Schema.String.check(
   Schema.isPattern(/^(?:SKILL\.md|references\/[a-z0-9]+(?:-[a-z0-9]+)*\.md)$/),
 );
-const SkillVersionSchema = Schema.String.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/));
+export const SkillVersionSchema = Schema.String.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/));
 
 export const SkillFileSchema = Schema.Struct({
   content: Schema.NonEmptyString,
@@ -27,3 +27,12 @@ export const SkillBundleSchema = Schema.Struct({
   }),
 );
 export type SkillBundle = typeof SkillBundleSchema.Type;
+
+export const SkillSelectionSchema = Schema.Struct({
+  cliVersion: Schema.String.check(Schema.isPattern(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)),
+  entrypoint: Schema.Literal("SKILL.md"),
+  files: Schema.Array(SkillFileSchema).check(Schema.isLengthBetween(1, 1)),
+  references: Schema.Array(Schema.Struct({ path: SkillFilePathSchema, sha256: Sha256Schema })),
+  skillVersion: SkillVersionSchema,
+});
+export type SkillSelection = typeof SkillSelectionSchema.Type;

@@ -1,6 +1,7 @@
 import { CliUsageError } from "./cli-errors.ts";
 
 export interface GlobalArguments {
+  readonly organizationId?: string;
   readonly apiUrl?: string;
   readonly arguments: ReadonlyArray<string>;
   readonly credentialsPath?: string;
@@ -12,6 +13,7 @@ export const parseGlobalArguments = (argv: ReadonlyArray<string>): GlobalArgumen
   const argumentsRemaining: Array<string> = [];
   let apiUrl: string | undefined;
   let credentialsPath: string | undefined;
+  let organizationId: string | undefined;
   let help = false;
   let json = false;
 
@@ -25,13 +27,18 @@ export const parseGlobalArguments = (argv: ReadonlyArray<string>): GlobalArgumen
       help = true;
       continue;
     }
-    if (argument === "--api-url" || argument === "--credentials") {
+    if (argument === "--api-url" || argument === "--credentials" || argument === "--org") {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith("--")) {
         throw new CliUsageError(`${argument} requires a value.`);
       }
       if (argument === "--api-url") apiUrl = value;
       if (argument === "--credentials") credentialsPath = value;
+      if (argument === "--org") {
+        if (organizationId !== undefined || value.trim().length === 0)
+          throw new CliUsageError("--org requires one non-empty organization ID.");
+        organizationId = value;
+      }
       index += 1;
       continue;
     }
@@ -44,5 +51,6 @@ export const parseGlobalArguments = (argv: ReadonlyArray<string>): GlobalArgumen
     json,
     ...(apiUrl === undefined ? {} : { apiUrl }),
     ...(credentialsPath === undefined ? {} : { credentialsPath }),
+    ...(organizationId === undefined ? {} : { organizationId }),
   };
 };

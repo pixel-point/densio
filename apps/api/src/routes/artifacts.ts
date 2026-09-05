@@ -5,7 +5,8 @@ import { Effect, Schema } from "effect";
 import { Hono } from "hono";
 import { describeRoute } from "hono-openapi";
 
-import { ArtifactUnavailable, findSignedArtifact } from "../database/artifact-repository.ts";
+import { ArtifactUnavailable, findGrantedArtifact } from "../database/artifact-repository.ts";
+import { SafePathComponentSchema } from "@densio/shared";
 import type { Database } from "../database/database.ts";
 import { internalErrorProblemDescriptor } from "../errors/problem-details.ts";
 import { createArtifactEtag } from "../storage/artifact.ts";
@@ -24,15 +25,14 @@ import {
   rangeProblemDescriptor,
 } from "./problems/storage-problems.ts";
 
-const SafeFilenameSchema = Schema.String.check(Schema.isPattern(/^[^\p{Cc}/\\]+$/u));
-const decodeSafeFilename = Schema.decodeUnknownEffect(SafeFilenameSchema);
+const decodeSafeFilename = Schema.decodeUnknownEffect(SafePathComponentSchema);
 const artifactDocumentation = describeRoute({
   description:
-    "Downloads an artifact through a short-lived signed URL. Supports conditional requests and one byte range.",
+    "Downloads retained bytes using the short-lived URL returned by POST /v1/artifacts/{artifactId}/authorize. The token in the URL authorizes this request; no account bearer header is needed. Treat the URL as a secret, not stable artifact identity. Supports conditional requests and one byte range. An invalid, expired, or revoked grant returns 404; obtain a fresh grant by artifact ID if retention still permits it. The response Content-Type is the artifact descriptor's mediaType.",
   operationId: "downloadArtifact",
   parameters: [
     pathParameter("artifactId", "Artifact identifier."),
-    pathParameter("token", "Short-lived signed download token. Do not log or reuse it."),
+    pathParameter("token", "Short-lived download grant token. Do not log or publish it."),
     pathParameter("filename", "Expected safe artifact filename."),
     headerParameter("range", "Single RFC byte range, for example `bytes=0-1023`."),
     headerParameter("if-range", "ETag that must match before applying the requested range."),
@@ -48,7 +48,7 @@ const artifactDocumentation = describeRoute({
       internalErrorProblemDescriptor,
     ),
   },
-  summary: "Download a signed artifact",
+  summary: "Download an authorized artifact",
   tags: ["Artifacts"],
 });
 
@@ -70,18 +70,19 @@ export const createArtifactRoutes = (dependencies: ArtifactRouteDependencies) =>
         const filename = yield* decodeSafeFilename(context.req.param("filename")).pipe(
           Effect.mapError(() => new ArtifactUnavailable({ reason: "invalid" })),
         );
-        const artifact = yield* findSignedArtifact(dependencies.database, {
+        const lookup = {
           artifactId: context.req.param("artifactId"),
           now,
           token: context.req.param("token"),
-        });
+        };
+        const artifact = yield* findGrantedArtifact(dependencies.database, lookup);
         if (filename !== artifact.filename) {
           return yield* new ArtifactUnavailable({ reason: "invalid" });
         }
         const etag = createArtifactEtag(artifact.sha256);
         if (etagMatches(context.req.header("if-none-match"), etag)) {
           return {
-            cacheControl: artifactCacheControl(artifact.expiresAt, now),
+            cacheControl: "private, no-store",
             etag,
             kind: "not-modified" as const,
           };
@@ -165,7 +166,7 @@ const artifactHeaders = (
   correlationId: string,
 ) => ({
   "accept-ranges": "bytes",
-  "cache-control": artifactCacheControl(result.artifact.expiresAt, result.now),
+  "cache-control": "private, no-store",
   "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.artifact.filename)}`,
   "content-length": String(result.range?.length ?? result.artifact.sizeBytes),
   "content-type": result.artifact.mediaType,
@@ -173,9 +174,6 @@ const artifactHeaders = (
   ...(result.range === undefined ? {} : { "content-range": result.range.contentRange }),
   "x-correlation-id": correlationId,
 });
-
-const artifactCacheControl = (expiresAt: number, now: number) =>
-  `private, max-age=${Math.max(0, Math.floor((expiresAt - now) / 1_000))}, immutable`;
 
 const streamOptions = (range: ByteRange | undefined) =>
   range === undefined ? {} : { end: range.end, start: range.start };

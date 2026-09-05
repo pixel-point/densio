@@ -21,14 +21,9 @@ export class BillingStorageError extends Schema.TaggedErrorClass<BillingStorageE
   },
 ) {}
 
-export class BillingUserNotFound extends Schema.TaggedErrorClass<BillingUserNotFound>()(
-  "BillingUserNotFound",
-  { userId: Schema.String },
-) {}
-
 export class BillingCustomerNotFound extends Schema.TaggedErrorClass<BillingCustomerNotFound>()(
   "BillingCustomerNotFound",
-  { userId: Schema.String },
+  { organizationId: Schema.String },
 ) {}
 
 export class BillingWebhookUnmatched extends Schema.TaggedErrorClass<BillingWebhookUnmatched>()(

@@ -1,7 +1,7 @@
 import { DateTime, Effect, Schema } from "effect";
 
-import type { CommandPlan } from "../command-plan.ts";
-import { MediaProcessRunner } from "../process/media-process-runner.ts";
+import { createCommandPlan, type CommandPlan } from "../command-plan.ts";
+import { type MediaProcessCommand, MediaProcessRunner } from "../process/media-process-runner.ts";
 import type { WorkflowCommandDiagnostic } from "./workflow-types.ts";
 
 export const WorkflowCommandDiagnosticSchema = Schema.Struct({
@@ -34,33 +34,44 @@ export class MediaWorkflowProcessError extends Schema.TaggedErrorClass<MediaWork
 
 export const runWorkflowCommand = Effect.fn("MediaWorkflow.runCommand")(function* (
   plan: CommandPlan,
+  progressContext?: MediaProcessCommand["progressContext"],
 ) {
+  const executionPlan =
+    progressContext === undefined
+      ? plan
+      : createCommandPlan(plan.executable, ["-nostats", "-progress", "pipe:1", ...plan.argv]);
   const startedAt = DateTime.formatIso(yield* DateTime.now);
   const runner = yield* MediaProcessRunner;
-  const result = yield* runner.run({ executable: plan.executable, arguments: plan.argv }).pipe(
-    Effect.mapError(
-      (error) =>
-        new MediaWorkflowProcessError({
-          completedCommands: [],
-          exitCode: error.exitCode,
-          failedCommand: {
-            arguments: [...plan.argv],
-            displayCommand: plan.displayCommand,
-            executable: plan.executable,
-            startedAt,
-          },
-          message: error.message,
-          stderrTail: error.stderrTail,
-        }),
-    ),
-  );
+  const result = yield* runner
+    .run({
+      executable: executionPlan.executable,
+      arguments: executionPlan.argv,
+      ...(progressContext === undefined ? {} : { progressContext }),
+    })
+    .pipe(
+      Effect.mapError(
+        (error) =>
+          new MediaWorkflowProcessError({
+            completedCommands: [],
+            exitCode: error.exitCode,
+            failedCommand: {
+              arguments: [...executionPlan.argv],
+              displayCommand: executionPlan.displayCommand,
+              executable: executionPlan.executable,
+              startedAt,
+            },
+            message: error.message,
+            stderrTail: error.stderrTail,
+          }),
+      ),
+    );
   const completedAt = DateTime.formatIso(yield* DateTime.now);
 
   return {
-    arguments: plan.argv,
+    arguments: executionPlan.argv,
     completedAt,
-    displayCommand: plan.displayCommand,
-    executable: plan.executable,
+    displayCommand: executionPlan.displayCommand,
+    executable: executionPlan.executable,
     exitCode: result.exitCode,
     startedAt,
     ...(result.stderrTail.length === 0 ? {} : { stderrTail: result.stderrTail }),
@@ -69,13 +80,14 @@ export const runWorkflowCommand = Effect.fn("MediaWorkflow.runCommand")(function
 
 export const runWorkflowCommands = Effect.fn("MediaWorkflow.runCommands")(function* (
   plans: ReadonlyArray<CommandPlan>,
+  progressContexts?: ReadonlyArray<MediaProcessCommand["progressContext"]>,
 ) {
   const completedCommands = new Map<number, WorkflowCommandDiagnostic>();
 
   return yield* Effect.forEach(
     plans,
     (plan, index) =>
-      runWorkflowCommand(plan).pipe(
+      runWorkflowCommand(plan, progressContexts?.[index]).pipe(
         Effect.tap((command) =>
           Effect.sync(() => {
             completedCommands.set(index, command);

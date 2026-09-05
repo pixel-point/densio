@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { SkillBundleSchema } from "../src/index.ts";
+import { SkillBundleSchema, SkillSelectionSchema } from "../src/index.ts";
 
 const bundle = {
   entrypoint: "SKILL.md",
@@ -36,4 +36,25 @@ describe("skill bundle contract", () => {
   ])("rejects malformed or unsafe bundle fields", (invalid) => {
     expect(() => decode(invalid)).toThrow();
   });
+});
+
+it("validates one selected document without requiring entrypoint content on reference requests", () => {
+  const selection = {
+    cliVersion: "0.1.3",
+    entrypoint: "SKILL.md",
+    files: [bundle.files[1]],
+    references: [{ path: "references/commands.md", sha256: "b".repeat(64) }],
+    skillVersion: bundle.skillVersion,
+  };
+  const decodeSelection = Schema.decodeUnknownSync(SkillSelectionSchema);
+  expect(decodeSelection(selection)).toEqual(selection);
+  expect(() => decodeSelection({ ...selection, files: [] })).toThrow();
+  expect(() => decodeSelection({ ...selection, files: bundle.files })).toThrow();
+  expect(() => decodeSelection({ ...selection, cliVersion: "latest" })).toThrow();
+  expect(() =>
+    decodeSelection({
+      ...selection,
+      references: [{ path: "../secret.md", sha256: "b".repeat(64) }],
+    }),
+  ).toThrow();
 });

@@ -7,14 +7,15 @@ import {
   toProblemDetails,
   unexpectedProblem,
 } from "../src/errors/problem-details.ts";
-import { JobCreditsExhausted } from "../src/jobs/job-service.ts";
-import { jobProblem } from "../src/routes/problems/job-problems.ts";
+import { ExecutionPlanCreditsUnavailable } from "../src/execution-plans/execution-plan-errors.ts";
+import { executionPlanProblem } from "../src/routes/problems/execution-plan-problems.ts";
 
 describe("problem details", () => {
   it("creates schema-versioned actionable RFC 9457 responses", () => {
     const problem = makeProblem({
       code: "AUTH_REQUIRED",
       detail: "Authenticate before submitting a job.",
+      details: { command: "densio auth login" },
       retryable: false,
       status: 401,
       suggestedAction: "Run densio auth login.",
@@ -25,6 +26,7 @@ describe("problem details", () => {
       code: "AUTH_REQUIRED",
       correlationId: "correlation-1",
       detail: "Authenticate before submitting a job.",
+      details: { command: "densio auth login" },
       retryable: false,
       schemaVersion: 1,
       status: 401,
@@ -60,7 +62,9 @@ describe("problem details", () => {
 
   it("returns a payment-required problem when monthly credits are exhausted", () => {
     expect(
-      jobProblem(new JobCreditsExhausted({ availableCredits: 0, monthlyCredits: 30 })),
+      executionPlanProblem(
+        new ExecutionPlanCreditsUnavailable({ availableCredits: 0, requiredCredits: 1 }),
+      ),
     ).toMatchObject({
       code: "CREDITS_EXHAUSTED",
       retryable: false,

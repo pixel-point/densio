@@ -27,6 +27,7 @@ describe("compression workflow", () => {
           executable,
           paths,
           source: { height: 1080, width: 1920 },
+          sourceDurationSeconds: 10,
         }),
       ),
     );
@@ -56,7 +57,7 @@ describe("compression workflow", () => {
     ]);
     expect(result.commands).toHaveLength(3);
     expect(result.commands[0]).toMatchObject({
-      arguments: expect.arrayContaining(["libvpx-vp9"]),
+      arguments: expect.arrayContaining(["-progress", "pipe:1", "libvpx-vp9"]),
       executable,
       exitCode: 0,
     });
@@ -79,6 +80,7 @@ describe("compression workflow", () => {
             executable,
             paths,
             source: { height: 1080, width: 1920 },
+            sourceDurationSeconds: 10,
           }),
         ),
       ),

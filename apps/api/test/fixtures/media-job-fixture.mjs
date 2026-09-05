@@ -6,6 +6,7 @@ import { basename, dirname } from "node:path";
 const defaults = {
   audio: undefined,
   duration: 6,
+  frameCount: 300,
   frameTimestamp: 1.25,
   height: 360,
   width: 640,
@@ -19,6 +20,7 @@ if (argv.includes("-show_format") && argv.includes("-show_streams")) {
   const streams = [
     {
       avg_frame_rate: source.frameRate ?? "24/1",
+      codec_name: "h264",
       codec_type: "video",
       height: source.height,
       index: 0,
@@ -32,13 +34,33 @@ if (argv.includes("-show_format") && argv.includes("-show_streams")) {
 
 if (argv.includes("-show_frames")) {
   process.stdout.write(
-    JSON.stringify({ frames: [{ best_effort_timestamp_time: String(source.frameTimestamp) }] }),
+    JSON.stringify({
+      frames: Array.from({ length: source.frameCount }, () => ({
+        best_effort_timestamp_time: String(source.frameTimestamp),
+      })),
+    }),
   );
   process.exit(0);
 }
 
 if (argv.includes("-af") && argv.includes("null")) {
   process.stdout.write(`lavfi.astats.Overall.Peak_level=${source.audio ?? "-inf"}\n`);
+  process.exit(0);
+}
+
+const metricFilterIndex = argv.indexOf("-lavfi");
+const metricFilter = metricFilterIndex < 0 ? undefined : argv[metricFilterIndex + 1];
+if (metricFilter?.startsWith("ssim=") || metricFilter?.startsWith("psnr=")) {
+  const statsPath = metricFilter.slice(metricFilter.indexOf("stats_file=") + "stats_file=".length);
+  await mkdir(dirname(statsPath), { recursive: true });
+  await writeFile(statsPath, "metric-stats");
+  const crf = Number(/crf-(\d+)/.exec(inputPath ?? "")?.[1] ?? 0);
+  if (metricFilter.startsWith("ssim=")) {
+    process.stderr.write(`SSIM Y:1 U:1 V:1 All:${1 - crf / 1000} (20)`);
+  } else {
+    const average = 50 - crf / 2;
+    process.stderr.write(`PSNR y:${average} u:${average} v:${average} average:${average}`);
+  }
   process.exit(0);
 }
 

@@ -15,30 +15,29 @@ export class ZipArchiveError extends Schema.TaggedErrorClass<ZipArchiveError>()(
 export const createZipArchive = Effect.fn("MediaWorkflow.createZipArchive")(function* (
   outputPath: string,
   entries: ReadonlyArray<ZipArchiveEntry>,
+  options: { readonly store?: boolean } = {},
 ) {
-  yield* Effect.tryPromise({
-    catch: () => new ZipArchiveError({ message: "The image archive could not be created." }),
-    try: () => streamZipArchive(outputPath, entries),
-  });
-});
-
-const streamZipArchive = (outputPath: string, entries: ReadonlyArray<ZipArchiveEntry>) =>
-  new Promise<void>((resolve, reject) => {
+  yield* Effect.callback<void, ZipArchiveError>((resume) => {
     const output = createWriteStream(outputPath, { flags: "wx" });
-    const archive = new ZipArchive({ zlib: { level: 9 } });
-    let settled = false;
-    const fail = (error: unknown) => {
-      if (settled) return;
-      settled = true;
+    const archive = new ZipArchive({ zlib: { level: 9 }, store: options.store ?? false });
+    const completion = Promise.withResolvers<void>();
+    let failed = false;
+    const stop = () => {
       archive.abort();
       output.destroy();
-      reject(error);
+    };
+    const fail = () => {
+      failed = true;
+      stop();
     };
 
     output.once("close", () => {
-      if (settled) return;
-      settled = true;
-      resolve();
+      completion.resolve();
+      resume(
+        failed
+          ? Effect.fail(new ZipArchiveError({ message: "The archive could not be created." }))
+          : Effect.void,
+      );
     });
     output.once("error", fail);
     archive.once("error", fail);
@@ -46,4 +45,9 @@ const streamZipArchive = (outputPath: string, entries: ReadonlyArray<ZipArchiveE
     archive.pipe(output);
     entries.forEach((entry) => archive.file(entry.path, { name: entry.archiveName }));
     void archive.finalize().catch(fail);
+    return Effect.promise(async () => {
+      stop();
+      await completion.promise;
+    });
   });
+});

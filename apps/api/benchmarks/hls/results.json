@@ -1,0 +1,104 @@
+[
+  {
+    "scene": "animation-calm",
+    "profile": "main8-crf",
+    "encodeSeconds": 75.128496291,
+    "crf": 30,
+    "packageBytes": 807207,
+    "peakBitsPerSecond": 284850,
+    "averageBitsPerSecond": 214171,
+    "ssim": 0.961932,
+    "psnr": 33.080502
+  },
+  {
+    "scene": "animation-calm",
+    "profile": "main10-crf",
+    "encodeSeconds": 103.84716216700001,
+    "crf": 30,
+    "packageBytes": 798521,
+    "peakBitsPerSecond": 290079,
+    "averageBitsPerSecond": 211856,
+    "ssim": 0.960001,
+    "psnr": 33.016847
+  },
+  {
+    "scene": "animation-calm",
+    "profile": "main10-capped",
+    "encodeSeconds": 106.66483970900002,
+    "crf": 30,
+    "packageBytes": 856884,
+    "peakBitsPerSecond": 318351,
+    "averageBitsPerSecond": 227384,
+    "ssim": 0.960865,
+    "psnr": 33.048115,
+    "maxVideoBitrateBps": 691200
+  },
+  {
+    "scene": "animation-action",
+    "profile": "main8-crf",
+    "encodeSeconds": 143.077094584,
+    "crf": 30,
+    "packageBytes": 1689219,
+    "peakBitsPerSecond": 639158,
+    "averageBitsPerSecond": 449374,
+    "ssim": 0.932091,
+    "psnr": 29.066277
+  },
+  {
+    "scene": "animation-action",
+    "profile": "main10-crf",
+    "encodeSeconds": 167.66555541600002,
+    "crf": 30,
+    "packageBytes": 1681721,
+    "peakBitsPerSecond": 641304,
+    "averageBitsPerSecond": 447376,
+    "ssim": 0.93021,
+    "psnr": 29.036325
+  },
+  {
+    "scene": "animation-action",
+    "profile": "main10-capped",
+    "encodeSeconds": 152.80765720899996,
+    "crf": 30,
+    "packageBytes": 1650159,
+    "peakBitsPerSecond": 601107,
+    "averageBitsPerSecond": 438924,
+    "ssim": 0.929548,
+    "psnr": 29.021476,
+    "maxVideoBitrateBps": 691200
+  },
+  {
+    "scene": "motion-noise",
+    "profile": "main8-crf",
+    "encodeSeconds": 89.74962699999998,
+    "crf": 30,
+    "packageBytes": 1423032,
+    "peakBitsPerSecond": 381207,
+    "averageBitsPerSecond": 378465,
+    "ssim": 0.774247,
+    "psnr": 27.714421
+  },
+  {
+    "scene": "motion-noise",
+    "profile": "main10-crf",
+    "encodeSeconds": 116.3334584590001,
+    "crf": 30,
+    "packageBytes": 1463063,
+    "peakBitsPerSecond": 392251,
+    "averageBitsPerSecond": 389142,
+    "ssim": 0.772376,
+    "psnr": 27.678578
+  },
+  {
+    "scene": "motion-noise",
+    "profile": "main10-capped",
+    "encodeSeconds": 115.26051729100011,
+    "crf": 30,
+    "packageBytes": 1496659,
+    "peakBitsPerSecond": 401142,
+    "averageBitsPerSecond": 398065,
+    "ssim": 0.772546,
+    "psnr": 27.681849,
+    "maxVideoBitrateBps": 691200
+  }
+]

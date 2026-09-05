@@ -3,8 +3,9 @@ import { Effect, Schema } from "effect";
 
 import { CliProblemError, invalidResponseError, networkError } from "./cli-errors.ts";
 import type { CliRuntime } from "./runtime.ts";
+import { controlRequestUrl } from "./control-request-policy.ts";
 
-type ResponseDecoder<Value> = (input: unknown) => Effect.Effect<Value, unknown>;
+export type ResponseDecoder<Value> = (input: unknown) => Effect.Effect<Value, unknown>;
 
 const decodeProblem = Schema.decodeUnknownEffect(ProblemDetailsSchema);
 
@@ -14,19 +15,27 @@ export const requestJson = async <Value>(
   init: RequestInit,
   decode: ResponseDecoder<Value>,
 ) => {
+  const url = controlRequestUrl(runtime, path);
+  const headers = new Headers(init.headers);
   const response = await runtime
-    .fetch(resolveRequestUrl(runtime.apiUrl, path), {
+    .fetch(url.toString(), {
       ...init,
-      ...(runtime.signal === undefined ? {} : { signal: runtime.signal }),
+      headers,
+      redirect: "error",
+      signal: requestSignal(runtime, init),
     })
     .catch(() => Promise.reject(networkError("The API request could not be completed.")));
   const body = await response.json().catch(() => Promise.reject(invalidResponseError()));
   if (!response.ok) {
     throw new CliProblemError(await decodeProblemBody(body));
   }
-
   return Effect.runPromise(decode(body)).catch(() => Promise.reject(invalidResponseError()));
 };
+
+export const requestSignal = (runtime: Pick<CliRuntime, "signal">, init: RequestInit) =>
+  AbortSignal.any(
+    [runtime.signal, init.signal].filter((signal): signal is AbortSignal => signal != null),
+  );
 
 export const jsonRequest = (
   method: string,

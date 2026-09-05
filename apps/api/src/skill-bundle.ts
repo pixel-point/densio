@@ -6,6 +6,10 @@ import { Schema } from "effect";
 import skillMarkdown from "../../../skill-bundle/entrypoint.md?raw";
 import commandsMarkdown from "../../../skill-bundle/references/commands.md?raw";
 import errorsMarkdown from "../../../skill-bundle/references/errors.md?raw";
+import organizationsMarkdown from "../../../skill-bundle/references/organizations.md?raw";
+import hlsMarkdown from "../../../skill-bundle/references/hls.md?raw";
+import storageMarkdown from "../../../skill-bundle/references/storage.md?raw";
+import workflowsMarkdown from "../../../skill-bundle/references/workflows.md?raw";
 
 const decodeSkillBundle = Schema.decodeUnknownSync(SkillBundleSchema);
 
@@ -33,4 +37,8 @@ export const densioSkillBundle = buildSkillBundle([
   { content: skillMarkdown, path: "SKILL.md" },
   { content: commandsMarkdown, path: "references/commands.md" },
   { content: errorsMarkdown, path: "references/errors.md" },
+  { content: organizationsMarkdown, path: "references/organizations.md" },
+  { content: hlsMarkdown, path: "references/hls.md" },
+  { content: storageMarkdown, path: "references/storage.md" },
+  { content: workflowsMarkdown, path: "references/workflows.md" },
 ]);

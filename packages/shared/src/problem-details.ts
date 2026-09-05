@@ -14,6 +14,7 @@ export const ProblemDetailsSchema = Schema.Struct({
   title: Schema.NonEmptyString,
   status: Schema.Finite.check(Schema.isInt(), Schema.isBetween({ minimum: 400, maximum: 599 })),
   detail: Schema.NonEmptyString,
+  details: Schema.optionalKey(Schema.Json),
   instance: Schema.optionalKey(Schema.NonEmptyString),
   schemaVersion: SchemaVersionSchema,
   code: ErrorCodeSchema,

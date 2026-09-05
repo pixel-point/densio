@@ -9,7 +9,8 @@
   "scripts": {
     "build": "pnpm typecheck",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit --project tsconfig.json --pretty false"
+    "typecheck": "tsgo --noEmit --project tsconfig.json --pretty false",
+    "test:fast": "vitest run"
   },
   "dependencies": {
     "effect": "4.0.0-beta.93"

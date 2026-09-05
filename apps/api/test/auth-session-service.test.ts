@@ -7,6 +7,7 @@ import { afterEach, expect, it } from "vitest";
 
 import { AuthSessionUnauthorized, RefreshTokenReplay } from "../src/auth/auth-errors.ts";
 import { makeAuthService } from "../src/auth/auth-service.ts";
+import { decodeEmailOutboxPayload } from "../src/email/email-outbox-payload.ts";
 import { makeMagicLinkOpener, makeMagicLinkSealer } from "../src/auth/magic-link-secret.ts";
 import {
   createOpaqueToken,
@@ -208,8 +209,10 @@ const completeLogin = async () => {
   );
   const outbox = database.db.select().from(emailOutbox).get();
   if (outbox === undefined) throw new Error("Missing confirmation URL");
-  const confirmationUrl = openMagicLink(outbox.encryptedConfirmationUrl ?? "", {
-    challengeId: outbox.challengeId,
+  const payload = decodeEmailOutboxPayload(outbox.payloadJson);
+  if (payload.kind !== "magic-login") throw new Error("Expected login email");
+  const confirmationUrl = openMagicLink(payload.encryptedConfirmationUrl, {
+    challengeId: payload.challengeId,
     emailId: outbox.id,
     recipient: outbox.recipient,
   });
@@ -228,6 +231,24 @@ const completeLogin = async () => {
   }
   return { authenticated, database, service };
 };
+
+it("provisions exactly one ordinary owner/default organization on completed registration", async () => {
+  const { database } = await completeLogin();
+  const tables = database.sqlite
+    .prepare("select name from sqlite_schema where type = 'table'")
+    .all();
+  expect(tables).toContainEqual({ name: "organizations" });
+  const organization = database.sqlite.prepare("select * from organizations").all();
+  const memberships = database.sqlite.prepare("select * from organization_memberships").all();
+  expect(organization).toHaveLength(1);
+  expect(organization[0]).toMatchObject({
+    name: "My organization",
+    state: "active",
+    billing_email: "agent@example.com",
+  });
+  expect(memberships).toHaveLength(1);
+  expect(memberships[0]).toMatchObject({ role: "owner", is_default: 1 });
+});
 
 const createTestDatabase = async () => {
   const directory = await mkdtemp(join(tmpdir(), "densio-auth-session-"));

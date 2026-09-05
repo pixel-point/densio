@@ -4,8 +4,15 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { writeCredentials } from "../src/config.ts";
+
 import { runCli } from "../src/cli.ts";
-import { cleanupCliDirectories, makeCliCapture, startCliServer } from "./cli-test-support.ts";
+import {
+  cleanupCliDirectories,
+  makeCliCapture,
+  sendEnvelope,
+  startOrganizationCliServer,
+} from "./cli-test-support.ts";
 
 afterEach(cleanupCliDirectories);
 
@@ -14,9 +21,8 @@ describe("artifact download command", () => {
     const capture = await makeCliCapture();
     const content = Buffer.from("verified artifact bytes");
     const sha256 = createHash("sha256").update(content).digest("hex");
-    const server = await startCliServer((_request, response) => {
-      response.end(content);
-    });
+    const server = await downloadServer(content, sha256);
+    await authenticate(capture, server.url);
     const outputPath = join(capture.directory, "downloads", "video.webm");
 
     const exitCode = await runCli(
@@ -26,11 +32,9 @@ describe("artifact download command", () => {
         server.url,
         "artifacts",
         "download",
-        `${server.url}/video.webm?token=signed`,
+        "artifact-1",
         "--output",
         outputPath,
-        "--sha256",
-        sha256,
       ],
       capture.dependencies,
     );
@@ -39,17 +43,19 @@ describe("artifact download command", () => {
     expect(exitCode).toBe(0);
     await expect(readFile(outputPath)).resolves.toEqual(content);
     expect(JSON.parse(capture.stdout()).data).toEqual({
+      organizationId: "org-1",
+      artifactId: "artifact-1",
       bytes: content.length,
       path: outputPath,
       sha256,
+      verified: true,
     });
   });
 
   it("deletes the temporary output and fails on a digest mismatch", async () => {
     const capture = await makeCliCapture();
-    const server = await startCliServer((_request, response) => {
-      response.end("wrong bytes");
-    });
+    const server = await downloadServer(Buffer.from("wrong bytes"), "a".repeat(64));
+    await authenticate(capture, server.url);
     const outputPath = join(capture.directory, "video.webm");
     await writeFile(outputPath, "existing destination");
 
@@ -60,11 +66,9 @@ describe("artifact download command", () => {
         server.url,
         "artifacts",
         "download",
-        `${server.url}/video.webm`,
+        "artifact-1",
         "--output",
         outputPath,
-        "--sha256",
-        "a".repeat(64),
         "--force",
       ],
       capture.dependencies,
@@ -72,7 +76,9 @@ describe("artifact download command", () => {
     await server.close();
 
     expect(exitCode).toBe(5);
-    expect(JSON.parse(capture.stderr()).code).toBe("ARTIFACT_HASH_MISMATCH");
+    expect(JSON.parse(capture.stderr().trim().split("\n").at(-1) ?? "{}").code).toBe(
+      "ARTIFACT_HASH_MISMATCH",
+    );
     await expect(readFile(outputPath, "utf8")).resolves.toBe("existing destination");
     expect((await readdir(capture.directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
@@ -96,22 +102,21 @@ describe("artifact publication safety", () => {
     const capture = await makeCliCapture();
     const replacement = Buffer.from("replacement bytes");
     const sha256 = createHash("sha256").update(replacement).digest("hex");
-    const server = await startCliServer((_request, response) => {
-      response.end(replacement);
-    });
+    const server = await downloadServer(replacement, sha256);
+    await authenticate(capture, server.url);
     const outputPath = join(capture.directory, "video.webm");
     await writeFile(outputPath, "existing destination");
 
     const exitCode = await runCli(
       [
         "--json",
+        "--api-url",
+        server.url,
         "artifacts",
         "download",
-        `${server.url}/video.webm`,
+        "artifact-1",
         "--output",
         outputPath,
-        "--sha256",
-        sha256,
         ...flags,
       ],
       capture.dependencies,
@@ -122,28 +127,52 @@ describe("artifact publication safety", () => {
     await expect(readFile(outputPath, "utf8")).resolves.toBe(expectedContent);
     expect((await readdir(capture.directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
     if (expectedExitCode !== 0) {
-      expect(JSON.parse(capture.stderr()).code).toBe("ARTIFACT_DESTINATION_EXISTS");
+      expect(JSON.parse(capture.stderr().trim().split("\n").at(-1) ?? "{}").code).toBe(
+        "ARTIFACT_DESTINATION_EXISTS",
+      );
     }
   });
-
-  it("rejects an artifact ID because downloads require the signed result URL", async () => {
-    const capture = await makeCliCapture();
-
-    const exitCode = await runCli(
-      [
-        "--json",
-        "artifacts",
-        "download",
-        "artifact-1",
-        "--output",
-        join(capture.directory, "video.webm"),
-        "--sha256",
-        "a".repeat(64),
-      ],
-      capture.dependencies,
-    );
-
-    expect(exitCode).toBe(2);
-    expect(JSON.parse(capture.stderr()).detail).toContain("signed HTTP(S) download URL");
-  });
 });
+
+const authenticate = (capture: Awaited<ReturnType<typeof makeCliCapture>>, apiUrl: string) =>
+  writeCredentials(capture.dependencies.credentialsPath, {
+    accessToken: "access",
+    refreshToken: "refresh",
+    accessTokenExpiresAt: "2026-07-11T14:00:00.000Z",
+    apiUrl,
+  });
+
+const downloadServer = async (content: Buffer, sha256: string) => {
+  const server = await startOrganizationCliServer((request, response) => {
+    if (request.url?.endsWith("/authorize")) {
+      sendEnvelope(
+        response,
+        {
+          organizationId: "org-1",
+          artifact: {
+            organizationId: "org-1",
+            id: "artifact-1",
+            filename: "video.webm",
+            kind: "video",
+            mediaType: "video/webm",
+            bytes: content.length,
+            sha256,
+            availability: "available",
+            retainedUntil: "2026-07-12T12:00:00.000Z",
+            authorizeUrl: `${server.url}/v1/organizations/org-1/artifacts/artifact-1/authorize`,
+            deleteUrl: `${server.url}/v1/organizations/org-1/artifacts/artifact-1`,
+          },
+          download: {
+            method: "GET",
+            url: `${server.url}/download`,
+            expiresAt: "2026-07-11T12:05:00.000Z",
+          },
+        },
+        201,
+      );
+      return;
+    }
+    response.end(content);
+  });
+  return server;
+};

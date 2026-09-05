@@ -4,7 +4,8 @@ import { RangeNotSatisfiable } from "../../storage/byte-range.ts";
 
 export const artifactNotFoundProblemDescriptor = defineProblem({
   code: "ARTIFACT_NOT_FOUND",
-  description: "The signed artifact URL is invalid or expired.",
+  description:
+    "The download grant is invalid, expired, or revoked, or the artifact is unavailable.",
   status: 404,
   title: "Artifact not found",
 });

@@ -39,7 +39,7 @@ const acquireLock = async (
       await rm(lockDirectory, { force: true, recursive: true });
       continue;
     }
-    await runtime.sleep(lockWaitMilliseconds);
+    await runtime.sleep(lockWaitMilliseconds, runtime.signal);
   }
   throw credentialLockTimeoutError();
 };

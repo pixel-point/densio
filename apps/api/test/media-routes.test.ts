@@ -1,293 +1,204 @@
-import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   CapabilitiesSchema,
-  JobCreatedResponseSchema,
+  PublicCapabilitiesSchema,
+  JobEventPageSchema,
+  JobListResponseSchema,
   JobStatusSchema,
   ProblemDetailsSchema,
-  UploadCompletedResponseSchema,
-  type Capabilities,
   type Plan,
   successEnvelope,
 } from "@densio/shared";
-import { eq } from "drizzle-orm";
 import { Effect, Schema } from "effect";
 import { Hono } from "hono";
 import { afterEach, expect, it } from "vitest";
 
+import { makeOrganizationService } from "../src/organizations/organization-service.ts";
+import { ensureOrganizationActor } from "./organization-fixture-identity.ts";
 import { makeAuthService } from "../src/auth/auth-service.ts";
 import { makeMagicLinkSealer } from "../src/auth/magic-link-secret.ts";
 import { createOpaqueToken, formatOpaqueToken, hashTokenSecret } from "../src/auth/opaque-token.ts";
 import { makeBillingService } from "../src/billing/billing-service.ts";
-import { StripeGateway } from "../src/billing/stripe-gateway.ts";
-import { registerArtifact } from "../src/database/artifact-repository.ts";
+import { unusedStripeGateway } from "./unused-stripe-gateway.ts";
+import { buildCapabilities, buildPublicCapabilities } from "../src/capabilities.ts";
+import { loadConfig } from "../src/config.ts";
 import { type Database, migrateDatabase, openDatabase } from "../src/database/database.ts";
-import { jobs, sessions, users } from "../src/database/schema.ts";
+import { sessions, users } from "../src/database/schema.ts";
 import { makeJobService } from "../src/jobs/job-service.ts";
 import { createArtifactRoutes } from "../src/routes/artifacts.ts";
 import { createCapabilitiesRoutes } from "../src/routes/capabilities.ts";
 import { createMediaJobRoutes } from "../src/routes/media-jobs.ts";
+import { queueCanonicalJob } from "./job-fixture.ts";
 
 const NOW = 1_800_000_000_000;
-const decodeCreated = Schema.decodeUnknownSync(successEnvelope(JobCreatedResponseSchema));
-const decodeUploaded = Schema.decodeUnknownSync(successEnvelope(UploadCompletedResponseSchema));
 const decodeStatus = Schema.decodeUnknownSync(successEnvelope(JobStatusSchema));
-const decodeCapabilities = Schema.decodeUnknownSync(successEnvelope(CapabilitiesSchema));
 const decodeProblem = Schema.decodeUnknownSync(ProblemDetailsSchema);
-
 const databases: Array<Database> = [];
 const temporaryDirectories: Array<string> = [];
-
 afterEach(async () => {
   databases.splice(0).forEach((database) => database.close());
   await Promise.all(
     temporaryDirectories
       .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
+      .map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
-it("creates, idempotently retries, uploads, reads, and cancels an owned job", async () => {
+it("reads and cancels a planned owned job while hiding foreign resources", async () => {
   const harness = await createHarness();
-  const ownerToken = seedAccess(harness.database, "owner", "owner@example.com");
-  const otherToken = seedAccess(harness.database, "other", "other@example.com");
-  const request = {
-    options: { audio: "remove" },
-    source: { bytes: 5, filename: "input.mp4" },
-  };
-
-  const firstResponse = await harness.app.request("/v1/compress", {
-    body: JSON.stringify(request),
-    headers: authHeaders(ownerToken, { "idempotency-key": "agent-request-1" }),
-    method: "POST",
+  const owner = seedAccess(harness.database, "owner", "owner@example.com");
+  const other = seedAccess(harness.database, "other", "other@example.com");
+  queueCanonicalJob(harness.database, {
+    organizationId: "org-1",
+    createdByUserId: "owner",
+    createdAt: NOW - 2,
   });
-  expect(firstResponse.status).toBe(201);
-  const first = decodeCreated(await firstResponse.json());
-  const retried = decodeCreated(
-    await (
-      await harness.app.request("/v1/compress", {
-        body: JSON.stringify(request),
-        headers: authHeaders(ownerToken, {
-          "idempotency-key": "agent-request-1",
-        }),
-        method: "POST",
-      })
-    ).json(),
-  );
-  expect(retried.data.jobId).toBe(first.data.jobId);
-  expect(harness.database.db.select().from(jobs).all()).toHaveLength(1);
-
-  const uploadResponse = await harness.app.request(`/v1/jobs/${first.data.jobId}/upload`, {
-    body: "hello",
-    headers: { authorization: `Bearer ${ownerToken}` },
-    method: "PUT",
+  const status = await harness.app.request("/v1/organizations/org-1/jobs/job-1", {
+    headers: authHeaders(owner),
   });
-  expect(uploadResponse.status).toBe(200);
-  expect(decodeUploaded(await uploadResponse.json()).data).toMatchObject({
-    bytes: 5,
+  expect(status.status).toBe(200);
+  expect(status.headers.get("cache-control")).toBe("no-store");
+  expect(decodeStatus(await status.json()).data).toMatchObject({
+    id: "job-1",
     state: "queued",
+    sourceId: "source-job-1",
+    executionPlanId: "plan-job-1",
   });
-
-  const statusResponse = await harness.app.request(`/v1/jobs/${first.data.jobId}`, {
-    headers: { authorization: `Bearer ${ownerToken}` },
-  });
-  expect(decodeStatus(await statusResponse.json()).data).toMatchObject({
-    id: first.data.jobId,
-    state: "queued",
-    workflow: "compress",
-  });
-  const hidden = await harness.app.request(`/v1/jobs/${first.data.jobId}`, {
-    headers: { authorization: `Bearer ${otherToken}` },
+  const hidden = await harness.app.request("/v1/organizations/org-1/jobs/job-1", {
+    headers: authHeaders(other),
   });
   expect(hidden.status).toBe(404);
-  expect(decodeProblem(await hidden.json()).code).toBe("JOB_NOT_FOUND");
-
-  const cancelResponse = await harness.app.request(`/v1/jobs/${first.data.jobId}/cancel`, {
-    headers: { authorization: `Bearer ${ownerToken}` },
+  expect(decodeProblem(await hidden.json()).code).toBe("ORGANIZATION_NOT_FOUND");
+  const canceled = await harness.app.request("/v1/organizations/org-1/jobs/job-1/cancel", {
     method: "POST",
+    headers: authHeaders(owner),
   });
-  expect(decodeStatus(await cancelResponse.json()).data.state).toBe("canceled");
-  await expect(
-    stat(join(harness.mediaRoot, "work", first.data.jobId, "input", "source-video")),
-  ).rejects.toThrow();
+  expect(canceled.status).toBe(200);
+  expect(decodeStatus(await canceled.json()).data).toMatchObject({
+    state: "canceled",
+    receipt: { execution: { attempts: 0, commands: [] } },
+  });
 });
 
-it("validates each media request and persists the authenticated Pro plan", async () => {
+it("discovers owner-scoped jobs by filters and recovery keys and pages events", async () => {
   const harness = await createHarness();
   const token = seedAccess(harness.database, "owner", "owner@example.com");
-  await Effect.runPromise(
-    harness.billingService.grantPro({
-      grantedBy: "root",
-      now: NOW,
-      userId: "owner",
-    }),
+  queueCanonicalJob(harness.database, {
+    organizationId: "org-1",
+    createdByUserId: "owner",
+    clientReference: "launch/hero",
+    idempotencyKey: "launch-hero",
+    createdAt: NOW - 2,
+  });
+  queueCanonicalJob(harness.database, {
+    id: "foreign",
+    organizationId: "org-2",
+    createdByUserId: "other",
+    createdAt: NOW - 2,
+  });
+  const listed = await harness.app.request(
+    "/v1/organizations/org-1/jobs?state=queued&workflow=compress&limit=1",
+    {
+      headers: authHeaders(token),
+    },
   );
-
-  const extraction = await postJson(harness.app, "/v1/extract-images", token, {
-    options: { format: "webp", intervalSeconds: 0.5 },
-    source: { bytes: 5, filename: "input.mp4" },
-  });
-  const comparison = await postJson(harness.app, "/v1/compare-quality", token, {
-    options: { codec: "av1", crfs: [30, 40] },
-    source: { bytes: 5, filename: "input.mp4" },
-  });
-  expect(extraction.status).toBe(201);
-  expect(comparison.status).toBe(201);
   expect(
-    harness.database.db
-      .select()
-      .from(jobs)
-      .all()
-      .map(({ kind, plan }) => ({ kind, plan })),
-  ).toEqual([
-    { kind: "extract-images", plan: "pro" },
-    { kind: "compare-quality", plan: "pro" },
-  ]);
-
-  const invalid = await postJson(harness.app, "/v1/compare-quality", token, {
-    options: { codec: "av1", crfs: [30] },
-    source: { bytes: 5, filename: "input.mp4" },
-  });
-  expect(invalid.status).toBe(400);
-  expect(decodeProblem(await invalid.json()).code).toBe("INVALID_REQUEST");
+    Schema.decodeUnknownSync(successEnvelope(JobListResponseSchema))(await listed.json()).data.jobs,
+  ).toMatchObject([{ id: "job-1" }]);
+  for (const query of ["clientReference=launch%2Fhero", "idempotencyKey=launch-hero"]) {
+    const found = await harness.app.request(`/v1/organizations/org-1/jobs/lookup?${query}`, {
+      headers: authHeaders(token),
+    });
+    expect(decodeStatus(await found.json()).data.id).toBe("job-1");
+  }
+  const events = await harness.app.request(
+    "/v1/organizations/org-1/jobs/job-1/events?after=0&limit=1",
+    {
+      headers: authHeaders(token),
+    },
+  );
+  const page = Schema.decodeUnknownSync(successEnvelope(JobEventPageSchema))(
+    await events.json(),
+  ).data;
+  expect(page.events).toHaveLength(1);
+  const rest = await harness.app.request(
+    `/v1/organizations/org-1/jobs/job-1/events?after=${page.nextCursor}`,
+    {
+      headers: authHeaders(token),
+    },
+  );
+  const later = Schema.decodeUnknownSync(successEnvelope(JobEventPageSchema))(
+    await rest.json(),
+  ).data;
+  expect(later.events.every(({ sequence }) => sequence > page.nextCursor)).toBe(true);
 });
 
-it("authenticates, validates, and applies frame-rate decisions", async () => {
+it.each([
+  "/v1/organizations/org-1/jobs?cursor=malformed",
+  "/v1/organizations/org-1/jobs?limit=0",
+  "/v1/organizations/org-1/jobs?state=awaiting-upload",
+  "/v1/organizations/org-1/jobs?since=not-a-date",
+  "/v1/organizations/org-1/jobs/lookup",
+  "/v1/organizations/org-1/jobs/lookup?clientReference=a&idempotencyKey=b",
+  "/v1/organizations/org-1/jobs/job-1/events?after=-1",
+  "/v1/organizations/org-1/jobs/job-1/events?limit=101",
+])("rejects invalid query contracts: %s", async (path) => {
   const harness = await createHarness();
-  const ownerToken = seedAccess(harness.database, "owner", "owner@example.com");
-  const otherToken = seedAccess(harness.database, "other", "other@example.com");
-  insertJob(harness.database, "job-decision", "owner");
-  harness.database.db
-    .update(jobs)
-    .set({
-      decisionJson: JSON.stringify({
-        kind: "frame-rate",
-        recommended: { maximum: 30, mode: "cap" },
-        source: { denominator: 1, framesPerSecond: 60, numerator: 60 },
-      }),
-      progress: 5,
-      state: "awaiting-decision",
-    })
-    .where(eq(jobs.id, "job-decision"))
-    .run();
-
-  const invalid = await postJson(
-    harness.app,
-    "/v1/jobs/job-decision/frame-rate-decision",
-    ownerToken,
-    { frameRate: { maximum: 60, mode: "cap" } },
-  );
-  expect(invalid.status).toBe(400);
-  expect(decodeProblem(await invalid.json()).code).toBe("INVALID_REQUEST");
-
-  const hidden = await postJson(
-    harness.app,
-    "/v1/jobs/job-decision/frame-rate-decision",
-    otherToken,
-    { frameRate: { maximum: 30, mode: "cap" } },
-  );
-  expect(hidden.status).toBe(404);
-
-  const decided = await postJson(
-    harness.app,
-    "/v1/jobs/job-decision/frame-rate-decision",
-    ownerToken,
-    { frameRate: { maximum: 30, mode: "cap" } },
-  );
-  expect(decided.status).toBe(200);
-  expect(decodeStatus(await decided.json()).data).toMatchObject({ state: "queued" });
-
-  const conflicting = await postJson(
-    harness.app,
-    "/v1/jobs/job-decision/frame-rate-decision",
-    ownerToken,
-    { frameRate: { mode: "preserve" } },
-  );
-  expect(conflicting.status).toBe(409);
-  expect(decodeProblem(await conflicting.json()).code).toBe("JOB_STATE_CONFLICT");
+  const token = seedAccess(harness.database, "owner", "owner@example.com");
+  const response = await harness.app.request(path, { headers: authHeaders(token) });
+  expect(response.status).toBe(400);
+  expect(decodeProblem(await response.json()).code).toBe("INVALID_REQUEST");
 });
 
-it("serves signed artifacts with ETags, safe filenames, and RFC byte ranges", async () => {
+it.each([
+  ["POST", "/v1/compress"],
+  ["POST", "/v1/extract-images"],
+  ["POST", "/v1/compare-quality"],
+  ["PUT", "/v1/organizations/org-1/jobs/job-1/upload"],
+  ["POST", "/v1/organizations/org-1/jobs/job-1/frame-rate-decision"],
+])("does not expose removed %s %s routes", async (method, path) => {
   const harness = await createHarness();
-  seedAccess(harness.database, "owner", "owner@example.com");
-  insertJob(harness.database, "job-artifact", "owner");
-  const directory = join(harness.mediaRoot, "job-artifact", "artifacts");
-  const path = join(directory, "video.webm");
-  const content = "0123456789";
-  await mkdir(directory, { recursive: true });
-  await writeFile(path, content);
-  const registered = await Effect.runPromise(
-    registerArtifact(harness.database, {
-      expiresAt: NOW + 60_000,
-      filename: "video.webm",
-      jobId: "job-artifact",
-      kind: "video",
-      mediaType: "video/webm",
-      now: NOW,
-      path,
-      publicBaseUrl: "https://media.example",
-      sha256: createHash("sha256").update(content).digest("hex"),
-      sizeBytes: content.length,
-    }),
-  );
-  const artifactPath = new URL(registered.downloadUrl).pathname;
-
-  const full = await harness.app.request(artifactPath);
-  expect(full.status).toBe(200);
-  expect(await full.text()).toBe(content);
-  expect(full.headers.get("accept-ranges")).toBe("bytes");
-  expect(full.headers.get("cache-control")).toBe("private, max-age=60, immutable");
-  expect(full.headers.get("etag")).toMatch(/^"sha256-[a-f0-9]{64}"$/);
-
-  const partial = await harness.app.request(artifactPath, {
-    headers: { range: "bytes=2-5" },
-  });
-  expect(partial.status).toBe(206);
-  expect(await partial.text()).toBe("2345");
-  expect(partial.headers.get("content-range")).toBe("bytes 2-5/10");
-
-  const notModified = await harness.app.request(artifactPath, {
-    headers: { "if-none-match": full.headers.get("etag") ?? "" },
-  });
-  expect(notModified.status).toBe(304);
-  const wrongFilename = artifactPath.replace("video.webm", "other.webm");
-  expect((await harness.app.request(wrongFilename)).status).toBe(404);
-
-  const invalidRange = await harness.app.request(artifactPath, {
-    headers: { range: "bytes=20-30" },
-  });
-  expect(invalidRange.status).toBe(416);
-  expect(invalidRange.headers.get("content-range")).toBe("bytes */10");
+  expect((await harness.app.request(path, { method })).status).toBe(404);
 });
 
-it("returns injected free capabilities publicly and Pro capabilities to an owner", async () => {
+it("requires authentication for job discovery and status", async () => {
+  const harness = await createHarness();
+  for (const path of [
+    "/v1/organizations/org-1/jobs",
+    "/v1/organizations/org-1/jobs/job-1",
+    "/v1/organizations/org-1/jobs/job-1/events",
+    "/v1/organizations/org-1/jobs/lookup?clientReference=x",
+  ]) {
+    expect((await harness.app.request(path)).status).toBe(401);
+  }
+});
+
+it("projects public and authenticated capabilities through the canonical contract", async () => {
   const harness = await createHarness();
   const token = seedAccess(harness.database, "owner", "owner@example.com");
   const publicResponse = await harness.app.request("/v1/capabilities");
-  const publicCapabilities = decodeCapabilities(await publicResponse.json()).data;
-  expect(publicCapabilities.plan).toBe("free");
-  expect(publicCapabilities.codecs.find(({ codec }) => codec === "av1")).toMatchObject({
-    minimumPlan: "basic",
+  expect(publicResponse.headers.get("cache-control")).toBeNull();
+  expect(
+    Schema.decodeUnknownSync(successEnvelope(PublicCapabilitiesSchema))(await publicResponse.json())
+      .data,
+  ).toMatchObject({
+    scope: "public",
+    controlPlane: { sourceListing: true },
+    options: { comparisonSampleCount: { minimum: 1 } },
   });
-
   await Effect.runPromise(
-    harness.billingService.grantPro({
-      grantedBy: "root",
-      now: NOW,
-      userId: "owner",
-    }),
+    harness.billingService.grantPro({ grantedBy: "test-admin", now: NOW, organizationId: "org-1" }),
   );
-  const proResponse = await harness.app.request("/v1/capabilities", {
-    headers: { authorization: `Bearer ${token}` },
+  const paidResponse = await harness.app.request("/v1/organizations/org-1/capabilities", {
+    headers: authHeaders(token),
   });
-  const capabilities = decodeCapabilities(await proResponse.json()).data;
-  expect(capabilities.plan).toBe("pro");
-  expect(capabilities.codecs.find(({ codec }) => codec === "av1")).toMatchObject({
-    minimumPlan: "basic",
-  });
+  expect(
+    Schema.decodeUnknownSync(successEnvelope(CapabilitiesSchema))(await paidResponse.json()).data
+      .plan,
+  ).toBe("pro");
 });
 
 interface Harness {
@@ -307,13 +218,12 @@ const createHarness = async (): Promise<Harness> => {
   const authService = makeAuthService(database, makeMagicLinkSealer("0123456789abcdef".repeat(4)));
   const billingService = makeBillingService(database, unusedStripeGateway);
   const jobService = makeJobService(database, {
-    maxComparisonSeconds: 3,
-    maxUploadBytes: 1_000,
     mediaRoot,
+    now: () => NOW,
     publicBaseUrl: "https://media.example",
-    uploadTtlMs: 60_000,
   });
   const common = {
+    organizationService: makeOrganizationService(database),
     authService,
     billingService,
     createCorrelationId: () => "media-route-correlation",
@@ -339,28 +249,19 @@ const createHarness = async (): Promise<Harness> => {
     createCapabilitiesRoutes({
       ...common,
       capabilitiesForPlan,
+      publicCapabilities: buildPublicCapabilities(loadConfig({}), {
+        encoders: ["libvpx-vp9", "libx265", "libsvtav1"],
+        ffmpegVersion: "7.1-static",
+        ffprobeVersion: "7.1-static",
+      }),
     }),
   );
   return { app, billingService, database, mediaRoot };
 };
 
-const unusedStripeGateway = StripeGateway.of({
-  createCheckoutSession: Effect.fn("MediaRoutes.unusedCheckout")(() =>
-    Effect.die("Stripe Checkout was not expected"),
-  ),
-  createPortalSession: Effect.fn("MediaRoutes.unusedPortal")(() =>
-    Effect.die("Stripe Portal was not expected"),
-  ),
-  parseWebhook: Effect.fn("MediaRoutes.unusedWebhook")(() =>
-    Effect.die("Stripe webhook parsing was not expected"),
-  ),
-  retrieveSubscription: Effect.fn("MediaRoutes.unusedSubscription")(() =>
-    Effect.die("Stripe subscription retrieval was not expected"),
-  ),
-});
-
 const seedAccess = (database: Database, userId: string, email: string) => {
   database.db.insert(users).values({ createdAt: NOW, email, id: userId, updatedAt: NOW }).run();
+  ensureOrganizationActor(database, userId === "owner" ? "org-1" : "org-2", userId);
   const access = createOpaqueToken();
   database.db
     .insert(sessions)
@@ -378,92 +279,14 @@ const seedAccess = (database: Database, userId: string, email: string) => {
   return formatOpaqueToken(access);
 };
 
-const authHeaders = (token: string, extra: Readonly<Record<string, string>> = {}) => ({
-  authorization: `Bearer ${token}`,
-  "content-type": "application/json",
-  ...extra,
-});
-
-const postJson = (app: Hono, path: string, token: string, body: unknown) =>
-  app.request(path, {
-    body: JSON.stringify(body),
-    headers: authHeaders(token),
-    method: "POST",
-  });
-
-const insertJob = (database: Database, id: string, userId: string) => {
-  database.db
-    .insert(jobs)
-    .values({
-      createdAt: NOW,
-      declaredBytes: 10,
-      id,
-      kind: "compress",
-      optionsJson: "{}",
-      plan: "free",
-      sourceFilename: "input.mp4",
-      state: "succeeded",
-      updatedAt: NOW,
-      userId,
-    })
-    .run();
-};
-
-const capabilitiesForPlan = (plan: Plan): Capabilities => ({
-  apiVersion: "v1",
-  codecs: [
+const authHeaders = (token: string) => ({ authorization: `Bearer ${token}` });
+const capabilitiesForPlan = (plan: Plan) =>
+  buildCapabilities(
+    loadConfig({}),
     {
-      codec: "vp9",
-      container: "webm",
-      crfRange: { maximum: 63, minimum: 0 },
-      defaultCrf: 42,
-      minimumPlan: "free",
+      encoders: ["libvpx-vp9", "libx265", "libsvtav1"],
+      ffmpegVersion: "7.1-static",
+      ffprobeVersion: "7.1-static",
     },
-    {
-      codec: "h265",
-      container: "mp4",
-      crfRange: { maximum: 51, minimum: 0 },
-      defaultCrf: 30,
-      minimumPlan: "free",
-    },
-    {
-      codec: "av1",
-      container: "webm",
-      crfRange: { maximum: 63, minimum: 0 },
-      defaultCrf: 42,
-      minimumPlan: "basic",
-    },
-  ],
-  defaults: {
-    audio: "auto",
-    comparisonDurationSeconds: 1,
-    comparisonPositionSeconds: 0,
-    compressionCodecs: ["vp9", "h265"],
-    extractionFormat: "jpeg",
-    extractionIntervalSeconds: 1,
-  },
-  limits: {
-    artifactRetentionSeconds: 86_400,
-    maxComparisonCrfs: 8,
-    maxComparisonDurationSeconds: 3,
-    maxExtractionImages: 2_000,
-    maxUploadBytes: 1_000,
-    maxVideoDurationSeconds: 1_800,
-  },
-  options: {
-    audioModes: ["auto", "keep", "remove"],
-    comparisonCrfCount: { maximum: 8, minimum: 2 },
-    comparisonDurationSeconds: { default: 1, maximum: 3, minimum: 1 },
-    comparisonPositionKinds: ["seconds", "timecode", "frame"],
-    cropKinds: ["aspect-ratio", "rectangle"],
-    imageFormats: ["jpeg", "png", "webp"],
-    scaleDimensions: ["width", "height"],
-  },
-  plan,
-  server: {
-    ffmpegVersion: "7.1-static",
-    ffprobeVersion: "7.1-static",
-    maxConcurrentMediaProcesses: 3,
-  },
-  workflows: ["compress", "extract-images", "compare-quality"],
-});
+    plan,
+  );

@@ -1,15 +1,15 @@
 import { Effect } from "effect";
 import { expect, it } from "vitest";
 
-import { startUploadLifecycleSupervisor } from "../src/jobs/upload-lifecycle-supervisor.ts";
+import { startLifecycleSupervisor } from "../src/services/lifecycle-supervisor.ts";
 
-it("maintains uploads immediately and stops without waiting for the next interval", async () => {
+it("runs lifecycle maintenance immediately and stops without waiting for the next interval", async () => {
   const invocations: Array<number> = [];
 
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const supervisor = yield* startUploadLifecycleSupervisor(
+        const supervisor = yield* startLifecycleSupervisor(
           ({ now }) => Effect.sync(() => invocations.push(now)),
           60_000,
         );
@@ -28,5 +28,5 @@ const waitUntil = (predicate: () => boolean) =>
       if (predicate()) return;
       yield* Effect.sleep(5);
     }
-    return yield* Effect.die("Timed out waiting for upload maintenance");
+    return yield* Effect.die("Timed out waiting for lifecycle maintenance");
   });

@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 
 import { Effect } from "effect";
 
-import { MediaProcessRunner } from "../src/media/process/media-process-runner.ts";
+import {
+  type MediaProcessCommand,
+  MediaProcessRunner,
+} from "../src/media/process/media-process-runner.ts";
 import { makeJobStoragePaths, prepareJobWorkspace } from "../src/storage/workspace.ts";
 
 const fixtureSource = fileURLToPath(
@@ -27,8 +30,24 @@ export const makeWorkflowTestContext = async (mode: string) => {
   return { executable, paths } as const;
 };
 
-export const provideWorkflowRunner = <A, E>(effect: Effect.Effect<A, E, MediaProcessRunner>) =>
-  effect.pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 })));
+export const provideWorkflowRunner = <A, E>(
+  effect: Effect.Effect<A, E, MediaProcessRunner>,
+  observe?: (command: MediaProcessCommand) => void,
+) =>
+  Effect.gen(function* () {
+    const runner = yield* MediaProcessRunner;
+    return yield* effect.pipe(
+      Effect.provideService(
+        MediaProcessRunner,
+        MediaProcessRunner.of({
+          run: (command) => {
+            observe?.(command);
+            return runner.run(command);
+          },
+        }),
+      ),
+    );
+  }).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 3 })));
 
 export const cleanupWorkflowTestRoots = async () => {
   await Promise.all(

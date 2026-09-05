@@ -1,4 +1,4 @@
 interface:
   display_name: "Densio"
-  short_description: "Agent-first video optimization through the densio CLI"
-  default_prompt: "Use $densio to optimize, inspect, or extract media with resumable jobs and JSON output."
+  short_description: "Compress videos for the web and compare quality"
+  default_prompt: "Use $densio to optimize a video for my website and save the compressed outputs in my project."

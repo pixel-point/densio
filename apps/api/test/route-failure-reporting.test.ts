@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { expect, it } from "vitest";
 
 import { InvalidEmailAddress } from "../src/auth/email-address.ts";
-import { JobRepositoryError } from "../src/jobs/job-service.ts";
+import { JobRepositoryError } from "../src/jobs/job-errors.ts";
 import { runRouteEffect, type RouteFailureReport } from "../src/routes/route-support.ts";
 
 it("reports one sanitized internal failure with its correlation ID", async () => {
@@ -59,4 +59,22 @@ it("does not report expected client failures", async () => {
 
   expect(response.status).toBe(400);
   expect(reports).toEqual([]);
+});
+
+it("maps invalid trim bounds and unsupported timelines to actionable client problems", async () => {
+  const { TrimRangeInvalid, TrimTimelineUnsupported } =
+    await import("../src/media/inspection/trim-errors.ts");
+  const { classifyRouteFailure } = await import("../src/routes/route-failure.ts");
+  expect(
+    classifyRouteFailure(
+      new TrimRangeInvalid({ message: "End frame is outside the source." }),
+      "trim-test",
+    ).problem,
+  ).toMatchObject({ status: 400, code: "INVALID_REQUEST" });
+  expect(
+    classifyRouteFailure(
+      new TrimTimelineUnsupported({ message: "Missing timestamps." }),
+      "trim-test",
+    ).problem,
+  ).toMatchObject({ status: 422, code: "TRIM_TIMELINE_UNSUPPORTED" });
 });

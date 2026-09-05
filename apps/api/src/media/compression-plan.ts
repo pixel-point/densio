@@ -1,8 +1,11 @@
+import type { ResolvedTrimRange } from "@densio/shared";
+import { trimVideoFilters, trimAudioFilters } from "./trim-filters.ts";
 import {
   MEDIA_CODEC_POLICY,
   type AudioMode,
   type FrameRatePolicy,
   type MediaCodec,
+  type MediaBitDepth,
 } from "@densio/shared";
 
 import { assertCommandPath, createCommandPlan } from "./command-plan.ts";
@@ -20,6 +23,9 @@ interface SegmentOptions {
 }
 
 export interface CompressionPlanOptions {
+  readonly bitDepth?: MediaBitDepth;
+  readonly trim?: ResolvedTrimRange;
+  readonly audioStreamIndex?: number;
   readonly executable?: string;
   readonly inputPath: string;
   readonly outputPath: string;
@@ -35,6 +41,7 @@ export interface CompressionPlanOptions {
 }
 
 export interface DefaultCompressionPlanOptions {
+  readonly bitDepth?: MediaBitDepth;
   readonly executable?: string;
   readonly inputPath: string;
   readonly outputPaths: { readonly vp9: string; readonly h265: string };
@@ -71,6 +78,7 @@ export const buildCompressionPlan = (options: CompressionPlanOptions) => {
   const audio = resolveAudioDecision(options.audio ?? "auto", options.audioAnalysis);
   const frameRateFilter = buildFrameRateFilter(options.sourceFrameRate, options.frameRate);
   const filters = [
+    ...(options.trim ? trimVideoFilters(options.trim) : []),
     ...buildVideoFilters(options.source, options.transform),
     ...(frameRateFilter === undefined ? [] : [frameRateFilter]),
   ];
@@ -78,17 +86,22 @@ export const buildCompressionPlan = (options: CompressionPlanOptions) => {
     "-hide_banner",
     "-nostdin",
     "-y",
+    ...(options.trim ? ["-copyts"] : []),
     "-i",
     options.inputPath,
     ...segmentArguments(options.segment),
     "-map",
-    "0:v:0",
-    ...(audio === "keep" ? ["-map", "0:a:0"] : []),
+    options.trim ? `0:${options.trim.videoStreamIndex}` : "0:v:0",
+    ...(audio === "keep"
+      ? ["-map", options.audioStreamIndex === undefined ? "0:a:0" : `0:${options.audioStreamIndex}`]
+      : []),
     ...codecArguments(options.codec, crf),
     ...(filters.length === 0 ? [] : ["-vf", filters.join(",")]),
     "-pix_fmt",
-    "yuv420p",
+    options.bitDepth === 10 ? "yuv420p10le" : "yuv420p",
     ...audioArguments(options.codec, audio),
+    ...(options.trim && audio === "keep" ? ["-af", trimAudioFilters(options.trim).join(",")] : []),
+    ...(options.trim ? ["-fps_mode", "passthrough", "-enc_time_base", "filter"] : []),
     options.outputPath,
   ];
 
@@ -106,6 +119,7 @@ export const assertCrf = (codec: MediaCodec, crf: number) => {
 };
 
 const sharedCompressionOptions = (options: DefaultCompressionPlanOptions) => ({
+  bitDepth: options.bitDepth ?? 8,
   executable: options.executable ?? "ffmpeg",
   inputPath: options.inputPath,
   source: options.source,
@@ -148,7 +162,10 @@ const audioArguments = (codec: MediaCodec, decision: "keep" | "remove") => {
   return ["-c:a", codecExecutionPolicyFor(codec).audioEncoder];
 };
 
-const resolveAudioDecision = (mode: AudioMode, analysis?: AudioAnalysis): "keep" | "remove" => {
+export const resolveAudioDecision = (
+  mode: AudioMode,
+  analysis?: AudioAnalysis,
+): "keep" | "remove" => {
   if (mode === "keep" || mode === "remove") return mode;
   if (mode !== "auto") {
     throw new MediaPlanError("INVALID_AUDIO_MODE", "Audio mode is invalid");

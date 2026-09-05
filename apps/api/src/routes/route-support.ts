@@ -40,7 +40,7 @@ export const decodeRequestJson = Effect.fn("Routes.decodeRequestJson")(
       try: () => readJsonBody(request),
     }).pipe(
       Effect.flatMap((body) =>
-        Schema.decodeUnknownEffect(schema)(body).pipe(
+        Schema.decodeUnknownEffect(schema, { onExcessProperty: "error" })(body).pipe(
           Effect.mapError(() => invalidRequestProblem()),
         ),
       ),

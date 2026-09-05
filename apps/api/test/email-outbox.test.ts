@@ -74,7 +74,7 @@ it("renders and sends a magic link before marking the email sent", async () => {
   ]);
   expect(deliveries[0]?.html).toContain("https://media.example/v1/auth/confirm?token=secret");
   expect(readEmail(database)).toMatchObject({
-    encryptedConfirmationUrl: null,
+    payloadJson: null,
     lastError: null,
     sentAt: NOW,
     status: "sent",
@@ -100,7 +100,7 @@ it("schedules bounded retries without persisting provider error details", async 
     status: "failed",
   });
   expect(readEmail(database)?.lastError).not.toContain("secret");
-  expect(readEmail(database)?.encryptedConfirmationUrl).not.toBeNull();
+  expect(readEmail(database)?.payloadJson).not.toBeNull();
 });
 
 it("permanently fails and scrubs a corrupt payload without calling the sender", async () => {
@@ -121,7 +121,7 @@ it("permanently fails and scrubs a corrupt payload without calling the sender", 
   expect(outcome).toEqual({ kind: "failed" });
   expect(deliveries).toHaveLength(0);
   expect(readEmail(database)).toMatchObject({
-    encryptedConfirmationUrl: null,
+    payloadJson: null,
     lastError: "invalid-outbox-secret",
     status: "failed",
   });
@@ -160,14 +160,18 @@ const seedEmail = (database: Database, encryptedConfirmationUrl?: string) => {
   database.db
     .insert(emailOutbox)
     .values({
-      challengeId: "challenge-1",
-      encryptedConfirmationUrl:
-        encryptedConfirmationUrl ??
-        sealMagicLink("https://media.example/v1/auth/confirm?token=secret", {
-          challengeId: "challenge-1",
-          emailId: "email-1",
-          recipient: "agent@example.com",
-        }),
+      resourceKey: "magic-login:challenge-1",
+      payloadJson: JSON.stringify({
+        kind: "magic-login",
+        challengeId: "challenge-1",
+        encryptedConfirmationUrl:
+          encryptedConfirmationUrl ??
+          sealMagicLink("https://media.example/v1/auth/confirm?token=secret", {
+            challengeId: "challenge-1",
+            emailId: "email-1",
+            recipient: "agent@example.com",
+          }),
+      }),
       createdAt: NOW,
       id: "email-1",
       nextAttemptAt: NOW,

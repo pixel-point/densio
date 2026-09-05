@@ -24,7 +24,7 @@ export const workflowFileOperation = <Value>(operation: string, run: () => Promi
         operation,
       }),
     try: run,
-  });
+  }).pipe(Effect.uninterruptible);
 
 export const resetWorkflowStaging = Effect.fn("MediaWorkflow.resetStaging")(function* (
   paths: JobStoragePaths,

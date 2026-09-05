@@ -19,4 +19,5 @@
 !packages/shared/src/**
 
 !skill-bundle/
+# Runtime entrypoint and all on-demand Markdown references are embedded by the API.
 !skill-bundle/**

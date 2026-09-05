@@ -4,6 +4,8 @@ import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
 import { openAPIRouteHandler } from "hono-openapi";
 
+import { apiOverview, apiTags } from "./documentation-overview.ts";
+
 const scalarCdn = "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.63.0";
 const scalarCdnOrigin = "https://cdn.jsdelivr.net";
 
@@ -18,10 +20,11 @@ export const registerDocumentationRoutes = (app: Hono) => {
           },
         },
         info: {
-          description: "Media compression, extraction, and quality comparison API.",
+          description: apiOverview,
           title: "Densio API",
           version: "1.0.0",
         },
+        tags: apiTags,
       },
       exclude: [/^\/billing(?:\/|$)/, "/docs", "/openapi.json"],
     }),

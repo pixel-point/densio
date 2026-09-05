@@ -65,3 +65,58 @@ export const sendEnvelope = (response: ServerResponse, data: unknown, status = 2
     JSON.stringify({ correlationId: "test-correlation", data, ok: true, schemaVersion: 1 }),
   );
 };
+
+export const sendRouteNotFound = (response: ServerResponse) => {
+  response.statusCode = 404;
+  response.setHeader("content-type", "application/json");
+  response.end(
+    JSON.stringify({
+      code: "ROUTE_NOT_FOUND",
+      correlationId: "test-correlation",
+      detail: "The route does not exist on this server version.",
+      retryable: false,
+      schemaVersion: 1,
+      status: 404,
+      suggestedAction: "Use job status polling.",
+      title: "Not found",
+      type: "about:blank",
+    }),
+  );
+};
+
+export const startOrganizationCliServer = (handler: Parameters<typeof startCliServer>[0]) =>
+  startCliServer((request, response) => {
+    if (request.url === "/v1/auth/status") {
+      sendEnvelope(response, {
+        authenticated: true,
+        user: { id: "user-1", email: "owner@example.com" },
+        defaultOrganizationId: "org-1",
+        sessionExpiresAt: "2026-07-12T12:00:00.000Z",
+      });
+      return;
+    }
+    if (request.url === "/v1/organizations/org-1") {
+      sendEnvelope(response, {
+        organization: {
+          organizationId: "org-1",
+          name: "Team",
+          billingEmail: "owner@example.com",
+          state: "active",
+          createdByUserId: "user-1",
+          createdAt: "2026-07-11T12:00:00.000Z",
+          updatedAt: "2026-07-11T12:00:00.000Z",
+        },
+        membership: {
+          organizationId: "org-1",
+          membershipId: "membership-1",
+          userId: "user-1",
+          email: "owner@example.com",
+          role: "owner",
+          isDefault: true,
+          joinedAt: "2026-07-11T12:00:00.000Z",
+        },
+      });
+      return;
+    }
+    return handler(request, response);
+  });

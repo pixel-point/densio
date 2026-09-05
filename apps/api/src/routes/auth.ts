@@ -12,8 +12,6 @@ import { Hono, type Context as HonoContext } from "hono";
 import { describeRoute } from "hono-openapi";
 
 import type { AuthConfig, AuthService } from "../auth/auth-service.ts";
-import type { BillingService } from "../billing/billing-service.ts";
-import type { BillingPriceIds } from "../billing/billing-repository.ts";
 import {
   internalErrorProblemDescriptor,
   invalidRequestProblemDescriptor,
@@ -145,11 +143,9 @@ const authStatusDocumentation = describeRoute({
 export interface AuthRouteDependencies {
   readonly authConfig: AuthConfig;
   readonly authService: AuthService["Service"];
-  readonly billingService: BillingService["Service"];
   readonly createCorrelationId: () => string;
   readonly now: () => number;
   readonly pollAfterSeconds: number;
-  readonly priceIds: BillingPriceIds;
   readonly requestIpHash: (request: Request, context: HonoContext) => string;
 }
 
@@ -292,18 +288,13 @@ const registerStatusRoute = (routes: Hono, dependencies: AuthRouteDependencies) 
         accessToken: token,
         now: dependencies.now(),
       });
-      const billing = yield* dependencies.billingService.getEntitlement({
-        now: dependencies.now(),
-        priceIds: dependencies.priceIds,
-        userId: identity.userId,
-      });
       return {
         authenticated: true as const,
+        defaultOrganizationId: identity.defaultOrganizationId,
         sessionExpiresAt: toIso(identity.accessExpiresAt),
         user: {
           email: identity.email,
           id: identity.userId,
-          plan: billing.entitlements.plan,
         },
       };
     });

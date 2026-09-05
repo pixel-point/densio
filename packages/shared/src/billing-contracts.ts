@@ -1,7 +1,9 @@
 import { Schema } from "effect";
+import { EmailAddressSchema } from "./auth-contracts.ts";
 
 import {
   HttpUrlSchema,
+  IdentifierSchema,
   IsoTimestampSchema,
   NonNegativeFiniteSchema,
   PlanSchema,
@@ -13,15 +15,23 @@ export const CheckoutPlanRequestSchema = Schema.Struct({ plan: PaidPlanSchema })
 export type CheckoutPlanRequest = typeof CheckoutPlanRequestSchema.Type;
 
 const CheckoutSessionResponseSchema = Schema.Struct({
+  organizationId: IdentifierSchema,
   kind: Schema.Literal("checkout"),
   url: HttpUrlSchema,
   expiresAt: IsoTimestampSchema,
 });
 
 const PortalSessionResponseSchema = Schema.Struct({
+  organizationId: IdentifierSchema,
   kind: Schema.Literal("portal"),
   url: HttpUrlSchema,
-  expiresAt: IsoTimestampSchema,
+  expiresAt: Schema.optionalKey(Schema.Never),
+});
+
+export const BillingContactRequestSchema = Schema.Struct({ billingEmail: EmailAddressSchema });
+export const BillingContactResponseSchema = Schema.Struct({
+  organizationId: IdentifierSchema,
+  billingEmail: EmailAddressSchema,
 });
 
 export const BillingSessionResponseSchema = Schema.Union([
@@ -46,6 +56,8 @@ export const SubscriptionStatusSchema = Schema.Literals([
 export type SubscriptionStatus = typeof SubscriptionStatusSchema.Type;
 
 export const BillingStatusSchema = Schema.Struct({
+  organizationId: IdentifierSchema,
+  billingEmail: EmailAddressSchema,
   credits: Schema.Struct({
     available: NonNegativeFiniteSchema,
     monthly: PositiveIntegerSchema,

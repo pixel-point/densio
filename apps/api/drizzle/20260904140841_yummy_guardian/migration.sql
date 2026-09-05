@@ -1,0 +1,1 @@
+ALTER TABLE `jobs` ADD `organization_cleaned_at` integer;

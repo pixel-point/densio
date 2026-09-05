@@ -1,0 +1,34 @@
+name: Verify
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  fast:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: corepack enable && corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck && pnpm lint && pnpm format:check && pnpm test:fast
+  media-and-packaging:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: corepack enable && corepack prepare pnpm@11.7.0 --activate
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Require the golden journey encoders
+        run: |
+          ffmpeg -hide_banner -encoders > /tmp/encoders.txt
+          for encoder in libsvtav1 libvpx-vp9 libx265; do
+            grep -q "$encoder" /tmp/encoders.txt
+          done
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:media && pnpm build
+      - run: ./scripts/publish-cli.sh --dry-run
+      - run: docker build -t densio-api:check .

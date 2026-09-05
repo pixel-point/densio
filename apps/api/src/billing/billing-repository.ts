@@ -17,26 +17,30 @@ import {
   stripeCustomers,
   stripeEvents,
   stripeSubscriptions,
-  users,
+  organizations,
 } from "../database/schema.ts";
 import { type BillingEvent, normalizeStripeSubscriptionStatus } from "./stripe-gateway.ts";
+import { appendOrganizationAudit } from "../database/organization-audit-repository.ts";
+import { organizationFailure } from "../organizations/organization-errors.ts";
 
 type BillingTransaction = Parameters<Parameters<Database["db"]["transaction"]>[0]>[0];
 
 export interface BillingAccount {
   readonly customerId: string | null;
-  readonly email: string;
-  readonly userId: string;
+  readonly billingEmail: string;
+  readonly organizationId: string;
 }
 
 export interface ProGrant {
-  readonly email: string;
+  readonly billingEmail: string;
   readonly grantedAt: number;
   readonly grantedBy: string;
-  readonly userId: string;
+  readonly organizationId: string;
 }
 
 export interface EffectiveBillingEntitlement {
+  readonly organizationId: string;
+  readonly billingEmail: string;
   readonly credits: {
     readonly available: number;
     readonly monthly: number;
@@ -59,20 +63,28 @@ export type WebhookProcessOutcome =
 
 export type GrantProOutcome =
   | { readonly kind: "granted"; readonly created: boolean }
-  | { readonly kind: "user-missing" };
+  | { readonly kind: "organization-missing" };
 
 export const findBillingAccount = (
   { db }: Database,
-  userId: string,
+  organizationId: string,
 ): BillingAccount | undefined => {
-  const user = db.select().from(users).where(eq(users.id, userId)).get();
-  if (user === undefined) return undefined;
+  const organization = db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .get();
+  if (organization === undefined) return undefined;
   const customer = db
     .select()
     .from(stripeCustomers)
-    .where(eq(stripeCustomers.userId, userId))
+    .where(eq(stripeCustomers.organizationId, organizationId))
     .get();
-  return { customerId: customer?.customerId ?? null, email: user.email, userId };
+  return {
+    customerId: customer?.customerId ?? null,
+    billingEmail: organization.billingEmail,
+    organizationId,
+  };
 };
 
 export const processBillingWebhook = (
@@ -80,41 +92,53 @@ export const processBillingWebhook = (
   event: BillingEvent,
   now: number,
 ): WebhookProcessOutcome =>
-  db.transaction(
-    (transaction) => {
-      const duplicate = transaction
-        .select({ eventId: stripeEvents.eventId })
-        .from(stripeEvents)
-        .where(eq(stripeEvents.eventId, event.eventId))
-        .get();
-      if (duplicate !== undefined) return { kind: "duplicate" };
-      if (!applyBillingEvent(transaction, event, now)) return { kind: "unmatched" };
+  db.transaction((transaction) => applyBillingWebhook(transaction, event, now), {
+    behavior: "immediate",
+  });
 
-      transaction
-        .insert(stripeEvents)
-        .values({ eventId: event.eventId, eventType: event.kind, processedAt: now })
-        .run();
-      return { kind: "processed" };
-    },
-    { behavior: "immediate" },
-  );
+export const applyBillingWebhook = (
+  transaction: BillingTransaction,
+  event: BillingEvent,
+  now: number,
+): WebhookProcessOutcome => {
+  const duplicate = transaction
+    .select({ eventId: stripeEvents.eventId })
+    .from(stripeEvents)
+    .where(eq(stripeEvents.eventId, event.eventId))
+    .get();
+  if (duplicate !== undefined) return { kind: "duplicate" };
+  if (!applyBillingEvent(transaction, event, now)) return { kind: "unmatched" };
+
+  transaction
+    .insert(stripeEvents)
+    .values({ eventId: event.eventId, eventType: event.kind, processedAt: now })
+    .run();
+  return { kind: "processed" };
+};
 
 export const grantAdminPro = (
   { db }: Database,
-  input: { readonly grantedBy: string; readonly now: number; readonly userId: string },
+  input: { readonly grantedBy: string; readonly now: number; readonly organizationId: string },
 ): GrantProOutcome =>
   db.transaction(
     (transaction) => {
-      const user = transaction
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.id, input.userId))
+      const organization = transaction
+        .select({ id: organizations.id, state: organizations.state })
+        .from(organizations)
+        .where(eq(organizations.id, input.organizationId))
         .get();
-      if (user === undefined) return { kind: "user-missing" };
+      if (organization === undefined) return { kind: "organization-missing" };
+      if (organization.state !== "active")
+        throw organizationFailure(
+          "ORGANIZATION_NOT_ACTIVE",
+          "A closed organization cannot receive a new grant.",
+        );
       const existing = transaction
         .select({ id: adminGrants.id })
         .from(adminGrants)
-        .where(and(eq(adminGrants.userId, input.userId), isNull(adminGrants.revokedAt)))
+        .where(
+          and(eq(adminGrants.organizationId, input.organizationId), isNull(adminGrants.revokedAt)),
+        )
         .get();
       if (existing !== undefined) return { created: false, kind: "granted" };
 
@@ -124,9 +148,17 @@ export const grantAdminPro = (
           grantedAt: input.now,
           grantedBy: input.grantedBy,
           id: randomUUID(),
-          userId: input.userId,
+          organizationId: input.organizationId,
         })
         .run();
+      appendOrganizationAudit(transaction, {
+        organizationId: input.organizationId,
+        kind: "operator-grant-created",
+        actor: { kind: "platform-operator", name: input.grantedBy },
+        targetId: input.organizationId,
+        now: input.now,
+        correlationId: randomUUID(),
+      });
       return { created: true, kind: "granted" };
     },
     { behavior: "immediate" },
@@ -134,27 +166,51 @@ export const grantAdminPro = (
 
 export const revokeAdminPro = (
   { db }: Database,
-  input: { readonly now: number; readonly userId: string },
+  input: { readonly now: number; readonly organizationId: string; readonly revokedBy: string },
 ) =>
-  db
-    .update(adminGrants)
-    .set({ revokedAt: input.now })
-    .where(and(eq(adminGrants.userId, input.userId), isNull(adminGrants.revokedAt)))
-    .returning({ id: adminGrants.id })
-    .all().length;
+  db.transaction(
+    (transaction) => {
+      const organization = transaction
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, input.organizationId))
+        .get();
+      if (organization === undefined)
+        throw organizationFailure("ORGANIZATION_NOT_FOUND", "Organization not found.");
+      const revoked = transaction
+        .update(adminGrants)
+        .set({ revokedAt: input.now })
+        .where(
+          and(eq(adminGrants.organizationId, input.organizationId), isNull(adminGrants.revokedAt)),
+        )
+        .returning({ id: adminGrants.id })
+        .all().length;
+      if (revoked > 0)
+        appendOrganizationAudit(transaction, {
+          organizationId: input.organizationId,
+          kind: "operator-grant-revoked",
+          actor: { kind: "platform-operator", name: input.revokedBy },
+          targetId: input.organizationId,
+          now: input.now,
+          correlationId: randomUUID(),
+        });
+      return revoked;
+    },
+    { behavior: "immediate" },
+  );
 
 export const listAdminProGrants = ({ db }: Database): ReadonlyArray<ProGrant> =>
   db
     .select({
-      email: users.email,
+      billingEmail: organizations.billingEmail,
       grantedAt: adminGrants.grantedAt,
       grantedBy: adminGrants.grantedBy,
-      userId: adminGrants.userId,
+      organizationId: adminGrants.organizationId,
     })
     .from(adminGrants)
-    .innerJoin(users, eq(users.id, adminGrants.userId))
+    .innerJoin(organizations, eq(organizations.id, adminGrants.organizationId))
     .where(isNull(adminGrants.revokedAt))
-    .orderBy(asc(users.email))
+    .orderBy(asc(organizations.billingEmail))
     .all();
 
 export const findEffectiveBillingEntitlement = (
@@ -162,16 +218,22 @@ export const findEffectiveBillingEntitlement = (
   input: {
     readonly now: number;
     readonly priceIds: BillingPriceIds;
-    readonly userId: string;
+    readonly organizationId: string;
   },
 ): EffectiveBillingEntitlement | undefined => {
-  const user = db.select({ id: users.id }).from(users).where(eq(users.id, input.userId)).get();
-  if (user === undefined) return undefined;
+  const organization = db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, input.organizationId))
+    .get();
+  if (organization === undefined) return undefined;
   const hasAdminGrant =
     db
       .select({ id: adminGrants.id })
       .from(adminGrants)
-      .where(and(eq(adminGrants.userId, input.userId), isNull(adminGrants.revokedAt)))
+      .where(
+        and(eq(adminGrants.organizationId, input.organizationId), isNull(adminGrants.revokedAt)),
+      )
       .get() !== undefined;
   const subscription = db
     .select({
@@ -181,7 +243,7 @@ export const findEffectiveBillingEntitlement = (
       updatedAt: stripeSubscriptions.updatedAt,
     })
     .from(stripeSubscriptions)
-    .where(eq(stripeSubscriptions.userId, input.userId))
+    .where(eq(stripeSubscriptions.organizationId, input.organizationId))
     .orderBy(desc(stripeSubscriptions.updatedAt))
     .all()
     .flatMap((candidate) => {
@@ -206,7 +268,7 @@ export const findEffectiveBillingEntitlement = (
     .from(jobCreditEntries)
     .where(
       and(
-        eq(jobCreditEntries.userId, input.userId),
+        eq(jobCreditEntries.organizationId, input.organizationId),
         eq(jobCreditEntries.periodStart, creditPeriod.start),
       ),
     )
@@ -218,6 +280,8 @@ export const findEffectiveBillingEntitlement = (
   );
 
   return {
+    organizationId: organization.id,
+    billingEmail: organization.billingEmail,
     credits: {
       available: creditsFromUnits(availableUnits),
       monthly,
@@ -266,21 +330,40 @@ const utcCreditPeriod = (now: number) => {
 
 const applyBillingEvent = (transaction: BillingTransaction, event: BillingEvent, now: number) => {
   if (event.kind === "ignored") return true;
-  if (event.kind === "customer-map") {
-    if (!userExists(transaction, event.userId)) return false;
-    upsertCustomer(transaction, event.userId, event.customerId, now);
-    return true;
-  }
-
-  const userId =
-    event.userId ??
-    transaction
-      .select({ userId: stripeCustomers.userId })
-      .from(stripeCustomers)
-      .where(eq(stripeCustomers.customerId, event.customerId))
-      .get()?.userId;
-  if (userId === undefined || !userExists(transaction, userId)) return false;
-  upsertCustomer(transaction, userId, event.customerId, now);
+  const customer = transaction
+    .select()
+    .from(stripeCustomers)
+    .where(eq(stripeCustomers.customerId, event.customerId))
+    .get();
+  if (
+    customer === undefined ||
+    (event.organizationId !== null && event.organizationId !== customer.organizationId)
+  )
+    return false;
+  const organizationId = customer.organizationId;
+  const organization = transaction
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .get();
+  if (organization === undefined) return false;
+  if (event.kind === "customer-map") return organization.state === "active";
+  if (
+    organization.state !== "active" &&
+    event.status !== "canceled" &&
+    event.status !== "incomplete_expired"
+  )
+    return false;
+  const previous = transaction
+    .select()
+    .from(stripeSubscriptions)
+    .where(eq(stripeSubscriptions.subscriptionId, event.subscriptionId))
+    .get();
+  if (
+    previous !== undefined &&
+    (previous.organizationId !== organizationId || previous.customerId !== event.customerId)
+  )
+    return false;
   transaction
     .insert(stripeSubscriptions)
     .values({
@@ -291,7 +374,7 @@ const applyBillingEvent = (transaction: BillingTransaction, event: BillingEvent,
       status: event.status,
       subscriptionId: event.subscriptionId,
       updatedAt: now,
-      userId,
+      organizationId,
     })
     .onConflictDoUpdate({
       set: {
@@ -301,31 +384,12 @@ const applyBillingEvent = (transaction: BillingTransaction, event: BillingEvent,
         priceId: event.priceId,
         status: event.status,
         updatedAt: now,
-        userId,
+        organizationId,
       },
       target: stripeSubscriptions.subscriptionId,
     })
     .run();
   return true;
-};
-
-const userExists = (transaction: BillingTransaction, userId: string) =>
-  transaction.select({ id: users.id }).from(users).where(eq(users.id, userId)).get() !== undefined;
-
-const upsertCustomer = (
-  transaction: BillingTransaction,
-  userId: string,
-  customerId: string,
-  now: number,
-) => {
-  transaction
-    .insert(stripeCustomers)
-    .values({ createdAt: now, customerId, userId })
-    .onConflictDoUpdate({
-      set: { customerId },
-      target: stripeCustomers.userId,
-    })
-    .run();
 };
 
 const getEntitlementSource = (admin: boolean, stripe: boolean) => {

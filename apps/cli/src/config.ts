@@ -24,11 +24,14 @@ export const resolveApiUrl = ({ configApiUrl, environmentApiUrl, flagApiUrl }: A
   normalizeApiUrl(flagApiUrl ?? environmentApiUrl ?? configApiUrl ?? "https://api.densio.sh");
 
 export const writeCredentials = async (path: string, credentials: CliCredentials) => {
+  await writePrivateJson(path, { ...credentials, apiUrl: credentialApiOrigin(credentials.apiUrl) });
+};
+
+export const writePrivateJson = async (path: string, value: unknown) => {
   const directory = dirname(path);
   const temporaryPath = `${path}.${randomUUID()}.tmp`;
-  const storedCredentials = { ...credentials, apiUrl: credentialApiOrigin(credentials.apiUrl) };
   await mkdir(directory, { mode: 0o700, recursive: true });
-  await writeFile(temporaryPath, `${JSON.stringify(storedCredentials, null, 2)}\n`, {
+  await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, {
     flag: "wx",
     mode: 0o600,
   });

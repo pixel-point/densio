@@ -49,7 +49,8 @@ describe("authentication responses", () => {
     expect(
       decode({
         authenticated: true,
-        user: { id: "user-1", email: "person@example.test", plan: "pro" },
+        user: { id: "user-1", email: "person@example.test" },
+        defaultOrganizationId: "org-1",
         sessionExpiresAt: "2026-08-11T12:00:00.000Z",
       }),
     ).toMatchObject({ authenticated: true });
@@ -60,15 +61,29 @@ describe("billing responses", () => {
   it.each(["checkout", "portal"])("accepts a signed %s URL", (kind) => {
     const response = {
       kind,
+      organizationId: "org-1",
       url: "https://billing.example.test/session/123",
-      expiresAt: "2026-07-11T12:10:00.000Z",
+      ...(kind === "checkout" ? { expiresAt: "2026-07-11T12:10:00.000Z" } : {}),
     };
 
     expect(Schema.decodeUnknownSync(BillingSessionResponseSchema)(response)).toEqual(response);
   });
 
+  it("rejects a fabricated portal expiry", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(BillingSessionResponseSchema)({
+        kind: "portal",
+        organizationId: "org-1",
+        url: "https://billing.example.test/session/123",
+        expiresAt: "2026-07-11T12:10:00.000Z",
+      }),
+    ).toThrow();
+  });
+
   it("reports independent Stripe and administrator entitlements", () => {
     const status = {
+      organizationId: "org-1",
+      billingEmail: "person@example.test",
       credits: {
         available: 4_998.7,
         monthly: 5_000,
@@ -114,11 +129,12 @@ describe("transport envelopes", () => {
       title: "Credits exhausted",
       status: 402,
       detail: "All 30 monthly credits are used or reserved.",
-      instance: "/v1/jobs/job-1",
+      details: { availableCredits: 0, monthlyCredits: 30 },
+      instance: "/v1/organizations/org-1/jobs/job-1",
       schemaVersion: 1,
       code: "CREDITS_EXHAUSTED",
       retryable: false,
-      suggestedAction: "Wait for the monthly reset or upgrade the account plan.",
+      suggestedAction: "Wait for the monthly reset or upgrade the organization plan.",
       correlationId: "request-1",
       jobId: "job-1",
     };

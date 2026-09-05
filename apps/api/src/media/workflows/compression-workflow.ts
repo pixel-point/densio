@@ -1,13 +1,16 @@
+import type { ResolvedTrimRange } from "@densio/shared";
 import {
   DEFAULT_COMPRESSION_CODECS,
   type AudioMode,
   type FrameRatePolicy,
   type MediaCodec,
+  type MediaBitDepth,
   type TransformOptions,
 } from "@densio/shared";
 import { Effect } from "effect";
 
 import { buildCompressionPlan, type AudioAnalysis } from "../compression-plan.ts";
+import { verifyVideoBitDepth } from "../inspection/video-bit-depth.ts";
 import type { RationalFrameRate } from "../frame-rate.ts";
 import { MEDIA_CODEC_EXECUTION_POLICY } from "../codec-execution-policy.ts";
 import type { VideoDimensions } from "../video-filter.ts";
@@ -26,6 +29,10 @@ interface CompressionCrfs {
 }
 
 export interface CompressionWorkflowOptions {
+  readonly bitDepth?: MediaBitDepth;
+  readonly probeExecutable?: string;
+  readonly trim?: ResolvedTrimRange;
+  readonly audioStreamIndex?: number;
   readonly audio?: AudioMode;
   readonly audioAnalysis?: AudioAnalysis;
   readonly codecs?: ReadonlyArray<MediaCodec>;
@@ -34,6 +41,7 @@ export interface CompressionWorkflowOptions {
   readonly frameRate?: FrameRatePolicy;
   readonly paths: JobStoragePaths;
   readonly source: VideoDimensions;
+  readonly sourceDurationSeconds?: number;
   readonly sourceFrameRate?: RationalFrameRate;
   readonly transform?: TransformOptions;
 }
@@ -60,7 +68,12 @@ const executeCompressionWorkflow = Effect.fn("MediaWorkflow.executeCompression")
   );
   const plans = codecs.map((codec, index) =>
     buildCompressionPlan({
+      bitDepth: options.bitDepth ?? 8,
       codec,
+      ...(options.trim ? { trim: options.trim } : {}),
+      ...(options.audioStreamIndex === undefined
+        ? {}
+        : { audioStreamIndex: options.audioStreamIndex }),
       executable: options.executable ?? "ffmpeg",
       inputPath: options.paths.inputFile,
       outputPath: outputPaths[index] ?? "",
@@ -75,8 +88,25 @@ const executeCompressionWorkflow = Effect.fn("MediaWorkflow.executeCompression")
       ...(options.transform === undefined ? {} : { transform: options.transform }),
     }),
   );
-  const commands = yield* runWorkflowCommands(plans);
+  const sourceDurationSeconds = options.trim?.durationSeconds ?? options.sourceDurationSeconds;
+  const commands = yield* runWorkflowCommands(
+    plans,
+    sourceDurationSeconds === undefined
+      ? undefined
+      : outputs.map((output, index) => ({
+          ...(output.codec === undefined ? {} : { codec: output.codec }),
+          filename: output.artifactFilename,
+          index: index + 1,
+          phase: "encoding" as const,
+          total: outputs.length,
+          totalDurationSeconds: sourceDurationSeconds,
+        })),
+  );
 
+  if (options.bitDepth === 10)
+    yield* Effect.forEach(outputPaths, (path) =>
+      verifyVideoBitDepth(options.probeExecutable ?? "ffprobe", path, 10),
+    );
   return { commands, outputs } satisfies CompressionWorkflowResult;
 });
 

@@ -4,6 +4,7 @@
   "private": true,
   "workspaces": [
     "apps/*",
+    "e2e",
     "packages/*"
   ],
   "type": "module",
@@ -15,12 +16,18 @@
     "format:check": "oxfmt --check --disable-nested-config .",
     "lint": "oxlint --disable-nested-config .",
     "lint:fix": "oxlint --disable-nested-config . --fix",
+    "synthetic:production": "pnpm build && pnpm --filter @densio/e2e synthetic:production",
+    "synthetic:staging": "pnpm build && pnpm --filter @densio/e2e synthetic:staging",
     "test": "turbo run test",
-    "typecheck": "turbo run typecheck"
+    "test:e2e": "turbo run test --filter=@densio/e2e",
+    "typecheck": "turbo run typecheck",
+    "typecheck:e2e": "turbo run typecheck --filter=@densio/e2e",
+    "test:fast": "turbo run test:fast",
+    "test:media": "turbo run test:media"
   },
   "devDependencies": {
     "@types/archiver": "^8.0.0",
-    "@types/node": "^25.0.0",
+    "@types/node": "^22.18.0",
     "@typescript/native-preview": "^7.0.0-dev.20260703.1",
     "drizzle-kit": "1.0.0-rc.4",
     "esbuild": "^0.28.1",

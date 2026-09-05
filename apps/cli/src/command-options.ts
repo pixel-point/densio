@@ -1,4 +1,4 @@
-import { Result, Schema } from "effect";
+import { Result, Schema, SchemaIssue } from "effect";
 
 import type { TransformOptions } from "@densio/shared";
 
@@ -99,8 +99,28 @@ export const decodeCliOptions = <S extends Schema.ConstraintDecoder<unknown>>(
   input: unknown,
   command: string,
 ): S["Type"] => {
-  const result = Schema.decodeUnknownResult(schema)(input);
-  if (Result.isFailure(result)) throw new CliUsageError(`${command} options are invalid.`);
+  const result = Schema.decodeUnknownResult(schema, { onExcessProperty: "error" })(input);
+  if (Result.isFailure(result)) {
+    const issues = SchemaIssue.makeFormatterStandardSchemaV1({
+      leafHook: () => "Invalid value",
+      checkHook: () => undefined,
+    })(result.failure.issue).issues;
+    const paths = [
+      ...new Set(
+        issues.map(
+          (issue) =>
+            issue.path
+              ?.map((segment) =>
+                typeof segment === "object" ? String(segment.key) : String(segment),
+              )
+              .join(".") || "options",
+        ),
+      ),
+    ];
+    throw new CliUsageError(
+      `${command} options are invalid at ${paths.join(", ")}. Check the command help for accepted values.`,
+    );
+  }
   return result.success;
 };
 
@@ -113,13 +133,12 @@ const parseRectangle = (input: string): NonNullable<TransformOptions["crop"]> =>
   return { height: height ?? 0, kind: "rectangle", width: width ?? 0, x: x ?? 0, y: y ?? 0 };
 };
 
-export const commonMediaValueFlags = new Set([
-  "--crop-aspect",
-  "--crop-rect",
-  "--height",
-  "--idempotency-key",
-  "--timeout",
-  "--width",
-]);
-
-export const commonMediaBooleanFlags = new Set(["--allow-upscale", "--no-wait"]);
+export const requiredCommandFlag = (parsed: ParsedCommandArguments, flag: string) => {
+  const value = singleFlag(parsed, flag);
+  if (value === undefined || value.trim().length === 0)
+    throw new CliUsageError(`${flag} is required.`);
+  return value;
+};
+export const idempotencyHeaders = (parsed: ParsedCommandArguments) => ({
+  "idempotency-key": requiredCommandFlag(parsed, "--idempotency-key"),
+});

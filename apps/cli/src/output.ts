@@ -20,9 +20,6 @@ export const formatJsonSuccess = (envelope: SuccessEnvelope<unknown>) =>
 
 export const formatJsonProblem = (problem: unknown) => `${JSON.stringify(problem)}\n`;
 
-export const formatProgress = (jobId: string, state: string, progressPercent: number) =>
-  `${jobId} ${state} ${Math.round(progressPercent)}%\n`;
-
 export const exitCodeForProblem = ({
   code,
   status,
@@ -33,9 +30,15 @@ export const exitCodeForProblem = ({
   if (status === 401 || code.startsWith("AUTH_")) return CLI_EXIT_CODES.authentication;
   if (
     code.startsWith("PLAN_") ||
+    code.startsWith("EXECUTION_PLAN_") ||
+    code === "STORAGE_UPGRADE_REQUIRED" ||
+    code === "STORAGE_QUOTA_EXCEEDED" ||
     code === "CREDITS_EXHAUSTED" ||
     code === "CODEC_NOT_ENTITLED" ||
-    code === "DURATION_LIMIT_EXCEEDED"
+    code === "DURATION_LIMIT_EXCEEDED" ||
+    code === "MAX_CREDITS_EXCEEDED" ||
+    code === "OUTPUT_LIMIT_EXCEEDED" ||
+    code === "OUTPUT_SIZE_LIMIT_EXCEEDED"
   ) {
     return CLI_EXIT_CODES.entitlement;
   }

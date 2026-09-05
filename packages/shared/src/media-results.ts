@@ -1,73 +1,36 @@
+import { HlsResultSchema } from "./hls-contracts.ts";
 import { Schema } from "effect";
-
-import { ArtifactMetadataSchema, MediaCommandSchema } from "./artifact-contracts.ts";
 import {
-  NonNegativeFiniteSchema,
-  NonNegativeIntegerSchema,
+  IdentifierSchema,
   PositiveFiniteSchema,
   PositiveIntegerSchema,
 } from "./common-contracts.ts";
-import { Av1CrfSchema, H265CrfSchema, MediaCodecSchema, Vp9CrfSchema } from "./media-options.ts";
-
-const ArtifactsSchema = Schema.Array(ArtifactMetadataSchema).check(Schema.isMinLength(1));
-const CommandsSchema = Schema.Array(MediaCommandSchema).check(Schema.isMinLength(1));
+import { CompareQualityResultSchema } from "./quality-comparison-results.ts";
 
 export const CompressionResultSchema = Schema.Struct({
   kind: Schema.Literal("compress"),
-  artifacts: ArtifactsSchema,
+  artifactIds: Schema.UniqueArray(IdentifierSchema).check(Schema.isMinLength(1)),
   html: Schema.NonEmptyString,
-  commands: CommandsSchema,
 });
 export type CompressionResult = typeof CompressionResultSchema.Type;
 
-const ImageArchiveArtifactSchema = Schema.Struct({
-  ...ArtifactMetadataSchema.fields,
-  kind: Schema.Literal("image-archive"),
-});
-
 export const ExtractImagesResultSchema = Schema.Struct({
   kind: Schema.Literal("extract-images"),
-  archive: ImageArchiveArtifactSchema,
+  archiveArtifactId: IdentifierSchema,
   imageCount: PositiveIntegerSchema,
   intervalSeconds: PositiveFiniteSchema,
-  commands: CommandsSchema,
 });
 export type ExtractImagesResult = typeof ExtractImagesResultSchema.Type;
 
-const PreviewVideoArtifactSchema = Schema.Struct({
-  ...ArtifactMetadataSchema.fields,
-  kind: Schema.Literal("preview-video"),
+export const TrimResultSchema = Schema.Struct({
+  kind: Schema.Literal("trim"),
+  artifactIds: Schema.Array(IdentifierSchema).check(Schema.isLengthBetween(1, 1)),
 });
-
-const PreviewImageArtifactSchema = Schema.Struct({
-  ...ArtifactMetadataSchema.fields,
-  kind: Schema.Literal("preview-image"),
-});
-
-export const ComparisonVariantSchema = Schema.Struct({
-  crf: Schema.Union([Vp9CrfSchema, H265CrfSchema, Av1CrfSchema]),
-  preview: PreviewVideoArtifactSchema,
-  still: PreviewImageArtifactSchema,
-  sampleBytes: NonNegativeIntegerSchema,
-  estimatedFullVideoBytes: NonNegativeIntegerSchema,
-  estimateBasis: Schema.Literal("sample-bitrate-extrapolation"),
-});
-export type ComparisonVariant = typeof ComparisonVariantSchema.Type;
-
-export const CompareQualityResultSchema = Schema.Struct({
-  kind: Schema.Literal("compare-quality"),
-  codec: MediaCodecSchema,
-  normalizedStartSeconds: NonNegativeFiniteSchema,
-  actualSampleDurationSeconds: Schema.Finite.check(
-    Schema.isGreaterThan(0),
-    Schema.isLessThanOrEqualTo(3),
-  ),
-  variants: Schema.Array(ComparisonVariantSchema).check(Schema.isMinLength(1)),
-  commands: CommandsSchema,
-});
-export type CompareQualityResult = typeof CompareQualityResultSchema.Type;
+export type TrimResult = typeof TrimResultSchema.Type;
 
 export const JobResultSchema = Schema.Union([
+  TrimResultSchema,
+  HlsResultSchema,
   CompressionResultSchema,
   ExtractImagesResultSchema,
   CompareQualityResultSchema,

@@ -1,480 +1,293 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
+import {
+  ensureOrganizationActor,
+  fixtureOrganizationActor,
+} from "./organization-fixture-identity.ts";
 import { eq } from "drizzle-orm";
 import { afterEach, expect, it } from "vitest";
-
-import { migrateDatabase, openDatabase } from "../src/database/database.ts";
-import { requeueFrameRateDecision } from "../src/database/job-lifecycle-repository.ts";
 import {
   claimNextJob,
-  cancelClaimedJob,
-  completeJob,
   createJob,
-  failJob,
   isJobCancellationRequested,
-  pauseJobForDecision,
-  renewJobLease,
   recoverExpiredJobs,
-  requestJobCancellation,
-  reserveJobCreditsAndMarkProcessing,
 } from "../src/database/job-repository.ts";
-import { jobs, users } from "../src/database/schema.ts";
+import { transitionJob, cancelOrganizationJob } from "../src/database/job-transition-repository.ts";
+import { jobAttempts, jobCreditEntries, jobEvents, jobs } from "../src/database/schema.ts";
+import {
+  seedJobInput,
+  createJobTestContext,
+  cleanupJobFixtures,
+  queueCanonicalJob,
+  seedCanonicalJob,
+} from "./job-fixture.ts";
 
-const temporaryDirectories: Array<string> = [];
+afterEach(cleanupJobFixtures);
+const admission = {
+  actor: fixtureOrganizationActor,
+  now: 1,
+  priceIds: { basic: "price_basic", pro: "price_pro", scale: "price_scale" },
+};
+const fence = { workerId: "worker-1", attempt: 1 };
 
-afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
-  );
-});
-
-it("claims queued jobs oldest-first with an atomic lease", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  database.db.insert(jobs).values(jobValues("job-newer", 20)).run();
-  database.db.insert(jobs).values(jobValues("job-older", 10)).run();
-
-  const first = claimNextJob(database, {
-    leaseDurationMs: 60_000,
-    now: 100,
-    workerId: "worker-1",
-  });
-  const second = claimNextJob(database, {
-    leaseDurationMs: 60_000,
-    now: 101,
-    workerId: "worker-2",
-  });
-
-  expect(first).toMatchObject({
-    attemptCount: 1,
-    id: "job-older",
-    leaseExpiresAt: 60_100,
-    leaseOwner: "worker-1",
+it("claims paid work first, then oldest queued work, with exclusive attempt leases", async () => {
+  const { database } = await createJobTestContext();
+  queueCanonicalJob(database, { id: "new", createdAt: 20 });
+  queueCanonicalJob(database, { id: "old", createdAt: 10 });
+  queueCanonicalJob(database, { id: "paid", createdAt: 30, subscriptionPlan: "basic" });
+  const claim = (now: number) =>
+    claimNextJob(database, { now, workerId: "worker-1", leaseDurationMs: 100 });
+  expect(claim(100)).toMatchObject({
+    id: "paid",
     state: "analyzing",
+    attemptCount: 1,
+    leaseOwner: "worker-1",
+    leaseExpiresAt: 200,
   });
-  expect(second?.id).toBe("job-newer");
-  expect(
-    claimNextJob(database, {
-      leaseDurationMs: 60_000,
-      now: 102,
-      workerId: "worker-3",
-    }),
-  ).toBeUndefined();
-
-  database.close();
+  expect(claim(101)?.id).toBe("old");
+  expect(claim(102)?.id).toBe("new");
+  expect(claim(103)).toBeUndefined();
+  expect(database.db.select().from(jobAttempts).all()).toHaveLength(3);
 });
 
-it("claims paid work before older Free work", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  database.db.insert(jobs).values(jobValues("job-free", 10)).run();
-  database.db
-    .insert(jobs)
-    .values({ ...jobValues("job-paid", 20), plan: "basic", queuePriority: 10 })
-    .run();
-
-  const claimed = claimNextJob(database, {
-    leaseDurationMs: 60_000,
-    now: 100,
-    workerId: "worker-1",
+it("atomically creates one job, exact hold, and event per owner/key/digest", async () => {
+  const { database } = await createJobTestContext();
+  const values = seedJobInput(database, { quoteCreditUnits: 25, idempotencyKey: "same-key" });
+  const policy = admission;
+  expect(createJob(database, values, policy)).toMatchObject({
+    created: true,
+    job: { state: "preparing" },
   });
-
-  expect(claimed?.id).toBe("job-paid");
-  database.close();
-});
-
-it("claims by the snapshotted numeric queue priority instead of plan name", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  database.db.insert(jobs).values(jobValues("job-lower", 10)).run();
-  database.db
-    .insert(jobs)
-    .values({ ...jobValues("job-higher", 20), queuePriority: 30 })
-    .run();
-
-  const claimed = claimNextJob(database, {
-    leaseDurationMs: 60_000,
-    now: 100,
-    workerId: "worker-1",
+  expect(createJob(database, { ...values, id: "retry" }, policy)).toMatchObject({
+    created: false,
+    job: { id: values.id },
   });
-
-  expect(claimed?.id).toBe("job-higher");
-  database.close();
-});
-
-it("returns the original job when an idempotency key is retried", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-
-  const first = createJob(
-    database,
-    {
-      ...jobValues("job-first", 10),
-      idempotencyKey: "request-1",
-      state: "awaiting-upload",
-    },
-    { creditPeriodStart: 0, monthlyCredits: 1 },
-  );
-  const retried = createJob(
-    database,
-    {
-      ...jobValues("job-retry", 20),
-      idempotencyKey: "request-1",
-      state: "awaiting-upload",
-    },
-    { creditPeriodStart: 0, monthlyCredits: 1 },
-  );
-
-  expect(first).toMatchObject({ created: true, job: { id: "job-first" } });
-  expect(retried).toMatchObject({ created: false, job: { id: "job-first" } });
+  expect(createJob(database, { ...values, requestDigest: "b".repeat(64) }, policy)).toEqual({
+    kind: "idempotency-conflict",
+  });
   expect(database.db.select().from(jobs).all()).toHaveLength(1);
-
-  database.close();
+  expect(database.db.select().from(jobCreditEntries).all()).toMatchObject([
+    { kind: "hold", units: 25 },
+  ]);
+  expect(database.db.select().from(jobEvents).all()).toMatchObject([
+    { kind: "created", state: "preparing" },
+  ]);
 });
 
-it("snapshots queue priority from the plan when creating a job", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-
-  const created = createJob(
-    database,
-    { ...jobValues("job-basic", 10), plan: "basic" },
-    { creditPeriodStart: 0, monthlyCredits: 750 },
-  );
-
-  expect(created).toMatchObject({ created: true, job: { queuePriority: 10 } });
-  database.close();
-});
-
-it("atomically reserves the minimum job cost and rejects work after the allowance", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-
-  const first = createJob(database, jobValues("job-1", 100), {
-    creditPeriodStart: 0,
-    monthlyCredits: 0.1,
+it("keeps recovery references unique per owner without consuming a second hold", async () => {
+  const { database } = await createJobTestContext();
+  seedCanonicalJob(database, { id: "first", clientReference: "hero" });
+  const values = seedJobInput(database, { id: "second", clientReference: "hero" });
+  expect(createJob(database, values, admission)).toEqual({
+    kind: "client-reference-conflict",
   });
-  const second = createJob(database, jobValues("job-2", 101), {
-    creditPeriodStart: 0,
-    monthlyCredits: 0.1,
-  });
-  const exhausted = createJob(database, jobValues("job-3", 102), {
-    creditPeriodStart: 0,
-    monthlyCredits: 0.1,
-  });
-
-  expect(first).toMatchObject({ created: true, job: { id: "job-1" } });
-  expect(second).toMatchObject({ created: true, job: { id: "job-2" } });
-  expect(exhausted).toEqual({ availableCredits: 0, kind: "insufficient-credits" });
-  expect(database.db.select().from(jobs).all()).toHaveLength(2);
-
-  database.close();
-});
-
-it("does not count released or previous-period entries against the allowance", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  createJob(database, jobValues("job-old", 99), { creditPeriodStart: 0, monthlyCredits: 0.05 });
-  requestJobCancellation(database, "job-old", "user-1", 100);
-
   expect(
-    createJob(database, jobValues("job-current", 102), {
-      creditPeriodStart: 100,
-      monthlyCredits: 0.05,
-    }),
-  ).toMatchObject({ created: true, job: { id: "job-current" } });
-
-  database.close();
+    seedCanonicalJob(database, {
+      id: "other",
+      organizationId: "org-2",
+      createdByUserId: "user-2",
+      clientReference: "hero",
+    }).id,
+  ).toBe("other");
+  expect(database.db.select().from(jobCreditEntries).all()).toHaveLength(2);
 });
 
-it("cancels queued work and requests cooperative cancellation for active work", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  database.db.insert(jobs).values(jobValues("job-queued", 10)).run();
-  database.db
-    .insert(jobs)
-    .values({
-      ...jobValues("job-active", 20),
-      leaseExpiresAt: 1_000,
-      leaseOwner: "worker-1",
-      state: "processing",
-    })
-    .run();
-
-  const queued = requestJobCancellation(database, "job-queued", "user-1", 50);
-  const active = requestJobCancellation(database, "job-active", "user-1", 60);
-
-  expect(queued).toMatchObject({ completedAt: 50, state: "canceled" });
-  expect(active).toMatchObject({ cancelRequestedAt: 60, state: "processing" });
-  expect(isJobCancellationRequested(database, "job-active", "worker-1")).toBe(true);
-
-  database.close();
-});
-
-it("completes only the worker-owned attempt and persists its result atomically", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  createJob(database, jobValues("job-1", 10), { creditPeriodStart: 0, monthlyCredits: 1 });
-  claimNextJob(database, { leaseDurationMs: 100, now: 20, workerId: "worker-1" });
-
+it("fences every visible mutation by owner, live lease, attempt, and current row revision", async () => {
+  const { database } = await createJobTestContext();
+  queueCanonicalJob(database);
+  const claimed = claimNextJob(database, {
+    now: 10,
+    workerId: fence.workerId,
+    leaseDurationMs: 100,
+  });
+  if (claimed === undefined) throw new Error("Expected a claimed job");
+  const command = {
+    type: "processing",
+    ...fence,
+    creditUnits: claimed?.quoteCreditUnits ?? 0,
+    leaseDurationMs: 100,
+  } as const;
   expect(
-    reserveJobCreditsAndMarkProcessing(database, {
-      creditUnits: 5,
-      jobId: "job-1",
-      leaseDurationMs: 100,
-      monthlyCreditUnits: 100,
-      now: 30,
-      workerId: "another-worker",
-    }),
+    transitionJob(database, { jobId: "job-1", now: 20, expectedRevision: 0, command }),
   ).toBeUndefined();
   expect(
-    reserveJobCreditsAndMarkProcessing(database, {
-      creditUnits: 5,
+    transitionJob(database, { jobId: "job-1", now: 20, command: { ...command, attempt: 0 } }),
+  ).toBeUndefined();
+  expect(
+    transitionJob(database, {
       jobId: "job-1",
-      leaseDurationMs: 100,
-      monthlyCreditUnits: 100,
-      now: 30,
-      workerId: "worker-1",
+      now: 20,
+      command: { ...command, workerId: "foreign" },
     }),
-  ).toMatchObject({ progress: 10, state: "processing" });
+  ).toBeUndefined();
+  expect(transitionJob(database, { jobId: "job-1", now: 111, command })).toBeUndefined();
+  expect(
+    transitionJob(database, {
+      jobId: "job-1",
+      now: 20,
+      expectedRevision: claimed.revision,
+      command,
+    }),
+  ).toMatchObject({ state: "processing" });
+});
 
-  const completed = completeJob(database, {
-    jobId: "job-1",
-    now: 40,
-    resultJson: '{"kind":"compress"}',
-    workerId: "worker-1",
+it("publishes and completes once, atomically freezing evidence and closing the attempt", async () => {
+  const { database } = await createJobTestContext();
+  const queued = queueCanonicalJob(database, { quoteCreditUnits: 25 });
+  claimNextJob(database, { now: 10, workerId: fence.workerId, leaseDurationMs: 100 });
+  transitionJob(database, {
+    jobId: queued.id,
+    now: 15,
+    command: {
+      type: "provenance",
+      ...fence,
+      toolchainJson: '{"ffmpegVersion":"actual","ffprobeVersion":"actual"}',
+    },
   });
-
-  expect(completed).toMatchObject({
-    completedAt: 40,
-    leaseOwner: null,
-    progress: 100,
-    resultJson: '{"kind":"compress"}',
-    state: "succeeded",
+  transitionJob(database, {
+    jobId: queued.id,
+    now: 20,
+    command: { type: "processing", ...fence, creditUnits: 25, leaseDurationMs: 100 },
   });
-  expect(database.sqlite.prepare("select outcome from job_attempts").get()).toEqual({
+  const resultJson = JSON.stringify({
+    kind: "compress",
+    artifactIds: ["artifact-1"],
+    html: "<video></video>",
+  });
+  expect(
+    transitionJob(database, {
+      jobId: queued.id,
+      now: 21,
+      command: { type: "complete", ...fence, resultJson },
+    }),
+  ).toBeUndefined();
+  transitionJob(database, { jobId: queued.id, now: 22, command: { type: "publishing", ...fence } });
+  const completed = transitionJob(database, {
+    jobId: queued.id,
+    now: 23,
+    command: { type: "complete", ...fence, resultJson },
+  });
+  expect(completed).toMatchObject({ state: "succeeded", leaseOwner: null });
+  expect(JSON.parse(completed?.receiptJson ?? "{}")).toMatchObject({
+    intent: { sourceId: queued.sourceId, executionPlanId: queued.executionPlanId },
+    execution: { attempts: 1, ffmpegVersion: "actual", commands: [] },
+    billing: { actualCreditUnits: 25, actualCredits: 0.25 },
+  });
+  expect(
+    transitionJob(database, {
+      jobId: queued.id,
+      now: 24,
+      command: { type: "complete", ...fence, resultJson },
+    }),
+  ).toBeUndefined();
+  expect(database.db.select().from(jobAttempts).get()).toMatchObject({
     outcome: "succeeded",
+    completedAt: 23,
   });
-
-  database.close();
+  expect(
+    database.db
+      .select({ kind: jobEvents.kind })
+      .from(jobEvents)
+      .all()
+      .map(({ kind }) => kind),
+  ).toEqual([
+    "created",
+    "state-changed",
+    "state-changed",
+    "state-changed",
+    "state-changed",
+    "terminal",
+  ]);
 });
 
-it("requeues interrupted leases but terminally fails exhausted attempts", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  database.db.insert(jobs).values(jobValues("job-exhausted", 20)).run();
-  claimNextJob(database, { leaseDurationMs: 10, now: 10, workerId: "worker-0" });
-  expect(recoverExpiredJobs(database, { maxAttempts: 2, now: 21 })).toEqual({
-    canceled: [],
-    failed: [],
-    requeued: ["job-exhausted"],
-  });
-
-  database.db.insert(jobs).values(jobValues("job-retry", 10)).run();
-  claimNextJob(database, { leaseDurationMs: 10, now: 30, workerId: "worker-1" });
-  claimNextJob(database, { leaseDurationMs: 10, now: 31, workerId: "worker-2" });
-
-  expect(recoverExpiredJobs(database, { maxAttempts: 2, now: 50 })).toEqual({
-    canceled: [],
-    failed: ["job-exhausted"],
-    requeued: ["job-retry"],
-  });
-  expect(database.db.select().from(jobs).where(eq(jobs.id, "job-retry")).get()).toMatchObject({
-    leaseOwner: null,
-    state: "queued",
-  });
-  expect(database.db.select().from(jobs).where(eq(jobs.id, "job-exhausted")).get()).toMatchObject({
-    errorCode: "JOB_ATTEMPTS_EXHAUSTED",
-    state: "failed",
-  });
-
-  database.close();
-});
-
-it("does not count a decision pause against interrupted-attempt recovery", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  database.db.insert(jobs).values(jobValues("job-decision", 10)).run();
-  claimNextJob(database, { leaseDurationMs: 10, now: 20, workerId: "worker-1" });
-  pauseJobForDecision(database, {
-    decisionJson: JSON.stringify({
-      kind: "frame-rate",
-      recommended: { maximum: 30, mode: "cap" },
-      source: { denominator: 1, framesPerSecond: 60, numerator: 60 },
+it("cancels queued work immediately and active work cooperatively", async () => {
+  const { database } = await createJobTestContext();
+  queueCanonicalJob(database);
+  expect(
+    cancelOrganizationJob(database, {
+      jobId: "job-1",
+      actor: ensureOrganizationActor(database, "org-2", "user-2"),
+      now: 3,
     }),
-    jobId: "job-decision",
-    now: 25,
-    workerId: "worker-1",
+  ).toBeUndefined();
+  claimNextJob(database, { now: 10, workerId: fence.workerId, leaseDurationMs: 100 });
+  expect(
+    cancelOrganizationJob(database, {
+      jobId: "job-1",
+      actor: fixtureOrganizationActor,
+      now: 20,
+    }),
+  ).toMatchObject({ state: "analyzing", cancelRequestedAt: 20 });
+  expect(isJobCancellationRequested(database, "job-1", fence.workerId, 1)).toBe(true);
+  expect(isJobCancellationRequested(database, "job-1", fence.workerId, 0)).toBe(false);
+  expect(
+    transitionJob(database, {
+      jobId: "job-1",
+      now: 21,
+      command: { type: "confirm-canceled", ...fence },
+    }),
+  ).toMatchObject({ state: "canceled" });
+  expect(database.db.select().from(jobAttempts).get()).toMatchObject({ outcome: "interrupted" });
+  seedCanonicalJob(database, { id: "never-started" });
+  const canceled = transitionJob(database, {
+    jobId: "never-started",
+    now: 22,
+    command: { type: "cancel" },
   });
-  requeueFrameRateDecision(database, {
-    jobId: "job-decision",
-    now: 26,
-    optionsJson: '{"frameRate":{"maximum":30,"mode":"cap"}}',
-    userId: "user-1",
+  expect(JSON.parse(canceled?.receiptJson ?? "{}").execution).toEqual({
+    attempts: 0,
+    completedAt: new Date(22).toISOString(),
+    commands: [],
   });
-  claimNextJob(database, { leaseDurationMs: 10, now: 30, workerId: "worker-2" });
+});
 
-  expect(recoverExpiredJobs(database, { maxAttempts: 2, now: 41 })).toEqual({
+it("recovers interrupted leases without allowing an old same-worker attempt to alter new work", async () => {
+  const { database } = await createJobTestContext();
+  queueCanonicalJob(database);
+  claimNextJob(database, { now: 10, workerId: fence.workerId, leaseDurationMs: 100 });
+  expect(recoverExpiredJobs(database, { now: 110, maxAttempts: 2 })).toEqual({
     canceled: [],
     failed: [],
-    requeued: ["job-decision"],
+    requeued: ["job-1"],
   });
-
-  claimNextJob(database, { leaseDurationMs: 10, now: 42, workerId: "worker-3" });
-  expect(recoverExpiredJobs(database, { maxAttempts: 2, now: 53 })).toEqual({
+  expect(
+    claimNextJob(database, { now: 111, workerId: fence.workerId, leaseDurationMs: 100 }),
+  ).toMatchObject({ attemptCount: 2 });
+  expect(
+    transitionJob(database, {
+      jobId: "job-1",
+      now: 112,
+      command: { type: "fail", ...fence, code: "STALE", message: "stale", details: {} },
+    }),
+  ).toBeUndefined();
+  expect(recoverExpiredJobs(database, { now: 211, maxAttempts: 2 })).toEqual({
     canceled: [],
-    failed: ["job-decision"],
+    failed: ["job-1"],
     requeued: [],
   });
-  database.close();
-});
-
-it("records a typed worker failure and clears its lease", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  database.db.insert(jobs).values(jobValues("job-1", 10)).run();
-  claimNextJob(database, { leaseDurationMs: 100, now: 20, workerId: "worker-1" });
-
-  const failed = failJob(database, {
-    errorCode: "MEDIA_PROCESS_FAILED",
-    errorJson: '{"detail":"bad input"}',
-    jobId: "job-1",
-    now: 30,
-    workerId: "worker-1",
-  });
-
-  expect(failed).toMatchObject({
-    completedAt: 30,
-    errorCode: "MEDIA_PROCESS_FAILED",
-    leaseExpiresAt: null,
-    leaseOwner: null,
+  expect(database.db.select().from(jobs).get()).toMatchObject({
     state: "failed",
+    errorCode: "JOB_ATTEMPTS_EXHAUSTED",
   });
-  expect(database.sqlite.prepare("select outcome from job_attempts").get()).toEqual({
-    outcome: "failed",
-  });
-
-  database.close();
 });
 
-it("renews only a live lease owned by the calling worker", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  database.db.insert(jobs).values(jobValues("job-1", 10)).run();
-  claimNextJob(database, { leaseDurationMs: 100, now: 20, workerId: "worker-1" });
-
+it("renews only a current live lease without emitting a progress event", async () => {
+  const { database } = await createJobTestContext();
+  queueCanonicalJob(database);
+  claimNextJob(database, { now: 10, workerId: fence.workerId, leaseDurationMs: 100 });
+  const before = database.db.select().from(jobEvents).all().length;
   expect(
-    renewJobLease(database, {
+    transitionJob(database, {
       jobId: "job-1",
-      leaseDurationMs: 100,
-      now: 50,
-      workerId: "worker-1",
+      now: 20,
+      command: { type: "lease", ...fence, leaseDurationMs: 100 },
     }),
-  ).toMatchObject({ leaseExpiresAt: 150, updatedAt: 50 });
+  ).toMatchObject({ leaseExpiresAt: 120 });
   expect(
-    renewJobLease(database, {
+    transitionJob(database, {
       jobId: "job-1",
-      leaseDurationMs: 100,
-      now: 60,
-      workerId: "worker-2",
+      now: 120,
+      command: { type: "lease", ...fence, leaseDurationMs: 100 },
     }),
   ).toBeUndefined();
-  expect(
-    renewJobLease(database, {
-      jobId: "job-1",
-      leaseDurationMs: 100,
-      now: 151,
-      workerId: "worker-1",
-    }),
-  ).toBeUndefined();
-
-  database.close();
-});
-
-it("cancels only worker-owned active work and closes its attempt", async () => {
-  const database = await createTestDatabase();
-  database.db
-    .insert(users)
-    .values({ id: "user-1", email: "a@example.com", createdAt: 1, updatedAt: 1 })
-    .run();
-  database.db.insert(jobs).values(jobValues("job-1", 10)).run();
-  claimNextJob(database, { leaseDurationMs: 100, now: 20, workerId: "worker-1" });
-  requestJobCancellation(database, "job-1", "user-1", 30);
-
-  expect(
-    cancelClaimedJob(database, { jobId: "job-1", now: 40, workerId: "worker-2" }),
-  ).toBeUndefined();
-  expect(
-    cancelClaimedJob(database, { jobId: "job-1", now: 40, workerId: "worker-1" }),
-  ).toMatchObject({ completedAt: 40, leaseOwner: null, state: "canceled" });
-  expect(database.sqlite.prepare("select outcome from job_attempts").get()).toEqual({
-    outcome: "interrupted",
-  });
-
-  database.close();
-});
-
-const createTestDatabase = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "densio-repository-"));
-  temporaryDirectories.push(directory);
-  const database = openDatabase(join(directory, "database.sqlite"));
-  migrateDatabase(database);
-  return database;
-};
-
-const jobValues = (id: string, createdAt: number) => ({
-  createdAt,
-  declaredBytes: 100,
-  maxUploadBytes: 1_000_000_000,
-  id,
-  kind: "compress" as const,
-  optionsJson: "{}",
-  plan: "free" as const,
-  sourceFilename: "input.mp4",
-  state: "queued" as const,
-  updatedAt: createdAt,
-  userId: "user-1",
+  expect(database.db.select().from(jobEvents).all()).toHaveLength(before);
+  expect(database.db.select().from(jobs).where(eq(jobs.id, "job-1")).get()?.revision).toBe(3);
 });

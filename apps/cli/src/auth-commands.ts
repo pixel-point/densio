@@ -54,7 +54,7 @@ const status = async (argumentsInput: ReadonlyArray<string>, runtime: CliRuntime
     decodeAuthStatus,
   );
   const humanText = response.data.authenticated
-    ? `Authenticated as ${response.data.user.email} (${response.data.user.plan}).\n`
+    ? `Authenticated as ${response.data.user.email}; default organization ${response.data.defaultOrganizationId}.\n`
     : "Not authenticated.\n";
   emitSuccess(runtime, response, humanText);
 };
@@ -144,9 +144,9 @@ const pollForConfirmation = async (
     isRetryableFailure: (cause) =>
       cause instanceof CliProblemError &&
       (cause.exitCode === CLI_EXIT_CODES.network || cause.problem.retryable),
-    poll: () =>
+    poll: (signal: AbortSignal) =>
       requestJson(
-        runtime,
+        { ...runtime, signal },
         "/v1/auth/poll",
         jsonRequest("POST", { pollToken: start.pollToken }),
         decodeAuthPoll,

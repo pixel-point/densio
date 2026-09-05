@@ -62,6 +62,16 @@ const makeReleaseRepository = async () => {
   temporaryDirectories.push(directory);
   await mkdir(join(directory, "apps/cli"), { recursive: true });
   await mkdir(join(directory, "scripts"));
+  const workspace = JSON.parse(await readFile(join(repositoryRoot, "package.json"), "utf8")) as {
+    readonly packageManager: string;
+  };
+  await writeFile(
+    join(directory, "package.json"),
+    JSON.stringify({
+      private: true,
+      packageManager: workspace.packageManager,
+    }),
+  );
   await writeFile(
     join(directory, "apps/cli/package.json"),
     `${JSON.stringify({ name: "densio", version: "0.1.0" }, undefined, 2)}\n`,

@@ -10,6 +10,7 @@ Encoders:
  V....D libvpx-vp9          libvpx VP9
  V....D libx265             libx265 H.265 / HEVC
  V..... libsvtav1           SVT-AV1 encoder
+ A..... aac                AAC encoder
 `;
 
 describe("media capabilities", () => {
@@ -29,19 +30,19 @@ describe("media capabilities", () => {
     });
   });
 
-  it("fails closed when a required encoder is absent", async () => {
+  it.each(["libsvtav1", "aac"])("fails closed when %s is absent", async (encoder) => {
     const error = await Effect.runPromise(
       Effect.flip(
         decodeMediaCapabilities(
           "ffmpeg version 7.1\n",
           "ffprobe version 7.1\n",
-          encoders.replace("libsvtav1", "libaom-av1"),
+          encoders.replace(encoder, "missing"),
         ),
       ),
     );
 
     expect(error).toMatchObject({ reason: "missing-required-encoder" });
-    expect(error.message).toContain("libsvtav1");
+    expect(error.message).toContain(encoder);
   });
 
   it.each([

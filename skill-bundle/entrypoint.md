@@ -1,49 +1,63 @@
 ---
 name: densio
-description: Use when a user wants to compress or optimize video for the web, extract timed screenshots, compare CRF quality and estimated sizes, manage an asynchronous Densio job, or download a temporary Densio artifact through the agent-first CLI.
+description: Use when a user wants to compress or optimize videos for websites, compare visual quality and file sizes, extract screenshots, trim clips, prepare streaming video, or manage Densio jobs and outputs.
+compatibility: Requires a terminal-capable agent, Node.js 22.18 or later, npm/npx, internet access, and email confirmation on first use.
 ---
 
 # Densio
 
-Use the CLI through `npx densio` instead of constructing FFmpeg commands or calling the HTTP API directly. The server owns codec policy, inspection, audio decisions, queueing, and cleanup.
+Help the user get usable video outputs. The API owns media inspection, codec policy, limits, exact credit quotes, and processing. Basic compression can follow this page without loading references.
 
-## Start safely
+## Keep this workflow consistent
 
-1. Run `npx densio --json capabilities` before choosing flags. Treat its plan, codec, CRF, duration, and upload limits as authoritative.
-2. If the command returns `AUTH_REQUIRED`, ask the user for their email and run `npx densio --json auth login EMAIL`. Tell them to open the link sent by email. The CLI polls until confirmation; never ask for, print, or copy login tokens.
-3. Keep stdout and stderr separate. With `--json`, stdout is exactly one schema-versioned success document. Progress is NDJSON on stderr.
-4. Read [references/commands.md](references/commands.md) before constructing media or transform flags.
+Retain `data.cliVersion` as `CLI_VERSION` and `data.skillVersion` as `SKILL_VERSION` from the bootstrap response. Replace those placeholders in every command. Always use `npx --yes densio@CLI_VERSION` for this workflow, including reference requests. Keep an explicit `--api-url` and disposable `--credentials` path on every command when testing locally; preserve a user's custom API target in all requests.
 
-## Choose the workflow
+Load a reference only when the task calls for it:
 
-- Use `compress` for ready-to-publish video. With no media flags it creates both VP9/WebM and H.265/MP4, preserves source resolution, detects audible audio, and returns signed links plus an HTML `<video>` snippet.
-- Compression sources above 30 fps require an explicit cadence decision before encoding. Recommend `cap-30` for typical web video; preserve the source for sports, gameplay, smooth screen recordings, slow-motion material, or when the user asks for 60 fps.
-- Use `extract-images` for a ZIP of timed frames. The default is JPEG every 1 second.
-- Use `compare-quality` when the user complains about output quality, asks to increase or decrease quality, explicitly requests a comparison, or wants output-size estimates at different quality levels. Compare both H.265 and VP9 by default; the command accepts one codec at a time, so run a separate comparison for each. Respect an explicit request for different or fewer codecs. Unless the user specifies CRFs, choose seven values independently for each codec, centered on that codec's default CRF and separated by increments of 2: three below, the default, and three above. Keep automatically selected values within both the preferred 20–50 comparison window and the codec-specific range returned by `capabilities`. Go outside 20–50 only when the user asks, and never exceed the codec's supported range. Optionally choose seconds, timecode, or an exact zero-based frame. Samples default to 1 second and may be explicitly extended only through 3 seconds.
-- AV1 is explicit and requires Basic or higher. Do not silently replace a requested AV1 workflow; refresh capabilities and report the upgrade requirement when the current plan is Free.
+```sh
+npx --yes densio@CLI_VERSION --json skill references/commands.md --skill-version SKILL_VERSION
+```
 
-## Manage asynchronous work
+Read its single `data.files` entry in memory; relative links resolve against that document's path. `data.references` lists available paths. On `SKILL_VERSION_CHANGED`, reload `skill`, replace the previous instructions and versions, and retain all existing resource IDs and retry keys. Do not mix versions or create replacement jobs merely because instructions changed. If loading fails, explain the failure and stop.
 
-Media commands wait by default. Prefer this when the caller can remain connected.
+## First compression
 
-Use `--no-wait` for long-running or externally orchestrated work. Preserve `data.jobId` and `data.resumeCommand`, then resume with `npx densio --json jobs wait JOB_ID`. An interrupted wait does not cancel server work. Cancel only when the user explicitly requests it with `jobs cancel`.
+1. Check sign-in. If unauthenticated, obtain the user's email and start login. Tell them to open the emailed link while the command waits; keep that process alive until confirmation. Never request tokens or read the user's mailbox. First registration creates “My organization” with a Free allowance automatically; no separate workspace setup or paid subscription is needed for default compression.
 
-If a wait returns `state: "awaiting-decision"` with `decision.kind: "frame-rate"`, show the detected source rate and ask the user whether to apply the recommended 30 fps cap or preserve it. Resume the same job with `npx densio --json jobs decide-frame-rate JOB_ID cap-30` or `npx densio --json jobs decide-frame-rate JOB_ID preserve`; never create a replacement job. When the user's intent is already explicit, pass `--frame-rate cap-30|preserve` to `compress` so the job does not pause.
+```sh
+npx --yes densio@CLI_VERSION --json auth status
+npx --yes densio@CLI_VERSION --json auth login EMAIL
+```
 
-Supply one stable `--idempotency-key` when retrying creation after a network ambiguity. Reuse it only with the identical file and options. Never retry by creating several unkeyed jobs.
+2. Discover memberships. Use the existing explicit/local/server selection, or the sole membership for a new account. Ask only if the intended organization remains ambiguous. Disclose its name and pin its ID as `ORG_ID` across the flow. Invalid selections fail; never switch organizations to bypass missing resources or credits. Read scoped capabilities for defaults, limits, codecs, and shared credits.
 
-Job creation automatically reserves the 0.05-credit minimum. After trusted media inspection and any required high-frame-rate decision, compression adjusts that reservation for duration, average input/output resolution, and output codec count before encoding. A five-minute 1080p source costs 1 credit per output codec; charges round up to 0.05 credits. Image extraction and quality comparison currently cost 0.05 credits. There is no quote confirmation. Success consumes the final reservation; failure, cancellation, upload expiry, or insufficient post-analysis credits releases it.
+```sh
+npx --yes densio@CLI_VERSION --json orgs list
+npx --yes densio@CLI_VERSION --org ORG_ID --json capabilities
+```
 
-## Consume results
+3. Upload once and preserve `SOURCE_ID`. Choose fresh, stable `SOURCE_KEY` and `JOB_KEY` values for this intent and reuse each for its exact retries. Submit compression and save verified files into an appropriate `OUTPUT_DIR` in the user's project.
 
-- Compression: use each `data.result.artifacts[]` entry's `downloadUrl`, `sha256`, and `expiresAt`; also return `data.result.html` when useful. `data.result.commands` contains the exact executable, argv, and safely escaped display form used by the server.
-- Extraction: use `data.result.archive.downloadUrl` and its SHA-256.
-- Comparison: combine all requested codec variants into one Markdown table with the columns `CRF`, `Estimated full size`, `Codec`, and `Preview`, in that order. Use `data.result.codec` for the codec, format `estimatedFullVideoBytes` as a human-readable size, and make `preview.downloadUrl` a clickable preview link. Describe the size as a coarse sample-bitrate extrapolation, not a guaranteed final size.
-- Base downloaded filenames on the original upload's stem. Normalize the stem to lowercase ASCII kebab-case by replacing runs of non-alphanumeric characters with one hyphen and trimming leading or trailing hyphens; only lowercase letters, numbers, and hyphens are allowed. Preserve the downloaded artifact's extension, and append a kebab-case codec, CRF, or other differentiator when multiple artifacts would otherwise have the same name. For example, `My Video (Final) 02.mov` becomes `my-video-final-02.webm`.
-- Download before `expiresAt`. Use `npx densio --json artifacts download SIGNED_URL --output PATH --sha256 HEX`; the CLI streams to a temporary file, verifies SHA-256, then renames atomically.
+```sh
+npx --yes densio@CLI_VERSION --org ORG_ID --json inspect FILE --idempotency-key SOURCE_KEY
+npx --yes densio@CLI_VERSION --org ORG_ID --json jobs create SOURCE_ID compress --idempotency-key JOB_KEY --output-dir OUTPUT_DIR
+```
 
-Treat signed artifact URLs as temporary bearer secrets. Avoid copying them into long-lived logs or documents, and disclose that command arguments may be visible in shell history or process inspection. Source uploads and intermediates are deleted after terminal processing; outputs expire on the server.
+Default compression produces VP9/WebM and H.265/MP4 at source resolution, with automatic audible-audio detection. Jobs wait by default. Use `--max-credits` for a known spending limit; respect existing authorization without adding a mandatory preview or approval step. `plans create` is an optional exact quote and configuration preview. Each job has an immutable execution plan internally.
 
-## Recover from failure
+If the source exceeds 30 fps, `MEDIA_DECISION_REQUIRED` means no job or credit hold was created. Recommend `cap-30` for ordinary web playback, honor a preference to preserve motion, and clarify if needed. Resubmit with `--frame-rate cap-30|preserve`; never silently change cadence.
 
-Read [references/errors.md](references/errors.md) when a command fails. Follow `code`, `retryable`, `suggestedAction`, and the stable exit code instead of matching human text. Do not retry validation, entitlement, hash-mismatch, or media-encoding failures unchanged.
+4. Report output paths, source/output sizes, and the actual charged credits from the terminal receipt. Local materialization verifies byte counts and SHA-256 and includes relative-path HTML. Preserve the original file and existing outputs; use `--force` only for intentional replacement. Temporary remote outputs have retention deadlines; local downloads do not delete remote media.
+
+With `--json`, stdout is one success document; stderr contains progress JSONL, early job IDs, or problems. A timeout/interruption leaves the remote job running. Preserve its job ID and resume with `jobs wait JOB_ID --output-dir OUTPUT_DIR`; do not submit again with a new key.
+
+## Load further guidance as needed
+
+- [Commands](references/commands.md): custom codecs, resize/crop, comparison, extraction, trim, optional plans, job recovery, and artifact operations.
+- [Workflow guidance](references/workflows.md): advanced policy and interpretation, including requested 10-bit output, frame-rate choices, comparisons, and cleanup.
+- [Organizations](references/organizations.md): multiple workspaces, membership, billing, and closure. Ordinary processing does not authorize account changes.
+- [HLS](references/hls.md): streaming packages, rendition ladders, playback support, and downloads.
+- [Storage](references/storage.md): durable hosting, public/private delivery, and storage connections.
+- [Errors](references/errors.md): recovery for the actual returned error; retain job IDs and retry keys.
+
+Before advanced processing, load Commands and the relevant workflow guidance. Read HLS for streaming and Storage for durable delivery. When the user explicitly requests 10-bit output, preserve that request and load the bit-depth guidance before submission.

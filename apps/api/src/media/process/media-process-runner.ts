@@ -1,11 +1,26 @@
 import { spawn } from "node:child_process";
 
-import { Context, Deferred, Effect, Layer, Schema, Semaphore } from "effect";
+import type { JobProgress, MediaCodec } from "@densio/shared";
+import { Context, Deferred, Effect, Layer, Option, Schema, Semaphore } from "effect";
+import { ProcessWriteActivity } from "../../services/process-write-activity.ts";
+
+import { type FfmpegProgressRecord, makeFfmpegProgressParser } from "./ffmpeg-progress.ts";
 
 export interface MediaProcessCommand {
   readonly executable: string;
   readonly arguments: ReadonlyArray<string>;
   readonly cwd?: string;
+  readonly stdoutObserver?: (chunk: string) => void;
+  readonly progressContext?: {
+    readonly codec?: MediaCodec;
+    readonly filename?: string;
+    readonly index: number;
+    readonly phase: JobProgress["phase"];
+    readonly total: number;
+    readonly totalDurationSeconds: number;
+    readonly variantId?: string;
+  };
+  readonly progressObserver?: (record: FfmpegProgressRecord) => void;
 }
 
 export interface MediaProcessResult {
@@ -59,6 +74,7 @@ export class MediaProcessRunner extends Context.Service<
         const run = Effect.fn("MediaProcessRunner.run")((command: MediaProcessCommand) =>
           Effect.uninterruptibleMask((restore) =>
             Effect.gen(function* () {
+              const activity = yield* Effect.serviceOption(ProcessWriteActivity);
               const completion = yield* Deferred.make<MediaProcessResult, MediaProcessError>();
               const cancellation = new ProcessCancellation();
               const ownedProcess = semaphore
@@ -66,18 +82,22 @@ export class MediaProcessRunner extends Context.Service<
                   Effect.suspend(() =>
                     cancellation.requested
                       ? Effect.fail(processIoError(command.executable))
-                      : runProcess(command, limits, cancellation),
+                      : runProcess(command, limits, cancellation, Option.getOrUndefined(activity)),
                   ),
                 )
                 .pipe(
-                  Effect.exit,
-                  Effect.flatMap((exit) => Deferred.done(completion, exit)),
+                  Effect.interruptible,
+                  Effect.onExit((exit) => Deferred.done(completion, exit)),
                   Effect.asVoid,
                 );
               yield* Effect.forkIn(ownedProcess, ownerScope, { startImmediately: true });
 
               return yield* restore(Deferred.await(completion)).pipe(
-                Effect.onInterrupt(() => Effect.sync(() => cancellation.request())),
+                Effect.onInterrupt(() =>
+                  Effect.sync(() => cancellation.request()).pipe(
+                    Effect.andThen(Deferred.await(completion).pipe(Effect.result, Effect.asVoid)),
+                  ),
+                ),
               );
             }),
           ),
@@ -92,6 +112,7 @@ const runProcess = (
   command: MediaProcessCommand,
   limits: ResolvedRunnerOptions,
   cancellation: ProcessCancellation,
+  activity: ProcessWriteActivity["Service"] | undefined,
 ): Effect.Effect<MediaProcessResult, MediaProcessError> =>
   Effect.callback((resume) => {
     const child = spawn(command.executable, command.arguments, {
@@ -101,31 +122,58 @@ const runProcess = (
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
+    const completion = Promise.withResolvers<void>();
     let closed = false;
     let forceKillTimer: NodeJS.Timeout | undefined;
     let stderrTail = Buffer.alloc(0);
     let stdout = Buffer.alloc(0);
     let stdoutTruncated = false;
+    let releaseActivity: (() => void) | undefined;
+    let ioFailed = false;
+    const progressParser =
+      command.progressObserver === undefined
+        ? undefined
+        : makeFfmpegProgressParser(command.progressObserver);
 
     child.stdout.on("data", (chunk: Buffer) => {
-      const remaining = Math.max(0, limits.stdoutLimitBytes - stdout.length);
-      stdout = Buffer.concat([stdout, chunk.subarray(0, remaining)]);
-      stdoutTruncated ||= chunk.length > remaining;
+      if (command.stdoutObserver !== undefined) {
+        command.stdoutObserver(chunk.toString("utf8"));
+        return;
+      }
+      if (progressParser !== undefined) {
+        progressParser.push(chunk);
+        return;
+      }
+      const appended = appendBounded(stdout, chunk, limits.stdoutLimitBytes);
+      stdout = appended.value;
+      stdoutTruncated ||= appended.truncated;
     });
     child.stderr.on("data", (chunk: Buffer) => {
       stderrTail = Buffer.concat([stderrTail, chunk]).subarray(-limits.stderrLimitBytes);
     });
     child.once("error", () => {
-      closed = true;
-      unsubscribeCancellation();
-      if (forceKillTimer !== undefined) clearTimeout(forceKillTimer);
-      resume(Effect.fail(processIoError(command.executable)));
+      ioFailed = true;
     });
     child.once("close", (exitCode) => {
+      releaseActivity?.();
       closed = true;
+      completion.resolve();
       unsubscribeCancellation();
       if (forceKillTimer !== undefined) clearTimeout(forceKillTimer);
-      resume(processExit(command.executable, exitCode, stdout, stdoutTruncated, stderrTail));
+      if (progressParser !== undefined) {
+        const appended = appendBounded(
+          stdout,
+          Buffer.from(progressParser.finish()),
+          limits.stdoutLimitBytes,
+        );
+        stdout = appended.value;
+        stdoutTruncated ||= appended.truncated;
+      }
+      resume(
+        ioFailed
+          ? Effect.fail(processIoError(command.executable))
+          : processExit(command.executable, exitCode, stdout, stdoutTruncated, stderrTail),
+      );
     });
 
     const terminate = () => {
@@ -137,12 +185,30 @@ const runProcess = (
       forceKillTimer.unref();
     };
     const unsubscribeCancellation = cancellation.subscribe(terminate);
+    child.once("spawn", () => {
+      try {
+        if (child.pid !== undefined && activity !== undefined)
+          releaseActivity = activity.track(child.pid);
+      } catch {
+        ioFailed = true;
+        terminate();
+      }
+    });
 
-    return Effect.sync(() => {
+    return Effect.promise(async () => {
       unsubscribeCancellation();
       terminate();
+      await completion.promise;
     });
   });
+
+const appendBounded = (current: Buffer, chunk: Buffer, limit: number) => {
+  const remaining = Math.max(0, limit - current.length);
+  return {
+    truncated: chunk.length > remaining,
+    value: Buffer.concat([current, chunk.subarray(0, remaining)]),
+  };
+};
 
 class ProcessCancellation {
   readonly #listeners = new Set<() => void>();

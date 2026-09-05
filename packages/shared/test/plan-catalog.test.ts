@@ -8,6 +8,8 @@ describe("plan catalog", () => {
     expect(PLAN_NAMES).toEqual(["free", "basic", "pro", "scale"]);
     expect(PLAN_CATALOG).toEqual({
       basic: {
+        customerStorage: true,
+        includedStorageBytes: 25_000_000_000,
         maxUploadBytes: 10_000_000_000,
         maxVideoDurationSeconds: 10_800,
         monthlyCredits: 750,
@@ -15,6 +17,8 @@ describe("plan catalog", () => {
         rank: 1,
       },
       free: {
+        customerStorage: true,
+        includedStorageBytes: 0,
         maxUploadBytes: 1_000_000_000,
         maxVideoDurationSeconds: 1_800,
         monthlyCredits: 30,
@@ -22,6 +26,8 @@ describe("plan catalog", () => {
         rank: 0,
       },
       scale: {
+        customerStorage: true,
+        includedStorageBytes: 500_000_000_000,
         maxUploadBytes: 10_000_000_000,
         maxVideoDurationSeconds: 10_800,
         monthlyCredits: 7_500,
@@ -29,6 +35,8 @@ describe("plan catalog", () => {
         rank: 3,
       },
       pro: {
+        customerStorage: true,
+        includedStorageBytes: 100_000_000_000,
         maxUploadBytes: 10_000_000_000,
         maxVideoDurationSeconds: 10_800,
         monthlyCredits: 5_000,

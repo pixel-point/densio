@@ -40,9 +40,12 @@ describe("image extraction workflow", () => {
     expect(result).toMatchObject({
       archive: {
         artifactFilename: "images.zip",
+        durationSeconds: 1.2,
+        height: 720,
         kind: "image-archive",
         mediaType: "application/zip",
         stagedFilename: "extracted-images.zip",
+        width: 1_280,
       },
       imageCount: 3,
       intervalSeconds: 0.5,
@@ -60,6 +63,7 @@ describe("image extraction workflow", () => {
       },
     });
     expect(result.commands).toHaveLength(1);
+    expect(result.commands[0]?.arguments).toEqual(expect.arrayContaining(["-progress", "pipe:1"]));
     expect(await readdir(paths.stagingDirectory)).toEqual(["extracted-images.zip"]);
     const archivePath = `${paths.stagingDirectory}/extracted-images.zip`;
     expect((await readFile(archivePath)).subarray(0, 2).toString("ascii")).toBe("PK");
@@ -77,6 +81,24 @@ describe("image extraction workflow", () => {
     ]);
     expect(JSON.parse(archivedManifest.stdout)).toEqual(result.manifest);
     await expect(access(paths.artifactDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("carries transformed output dimensions on the staged archive", async () => {
+    const { executable, paths } = await makeWorkflowTestContext("success");
+
+    const result = await Effect.runPromise(
+      provideWorkflowRunner(
+        runImageExtractionWorkflow({
+          executable,
+          paths,
+          source: { height: 1_080, width: 1_920 },
+          sourceDurationSeconds: 2,
+          transform: { scale: { width: 640 } },
+        }),
+      ),
+    );
+
+    expect(result.archive).toMatchObject({ width: 640, height: 360 });
   });
 });
 

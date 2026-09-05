@@ -1,0 +1,21 @@
+{
+  "name": "@densio/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "synthetic:production": "tsx deployed/production.ts",
+    "synthetic:staging": "tsx deployed/staging.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsgo --noEmit --project tsconfig.json --pretty false",
+    "test:fast": "vitest run --config vitest.config.ts --exclude golden-path.test.ts",
+    "test:media": "vitest run --config vitest.config.ts golden-path.test.ts"
+  },
+  "dependencies": {
+    "@densio/api": "workspace:*",
+    "@densio/shared": "workspace:*",
+    "densio": "workspace:*",
+    "effect": "4.0.0-beta.93",
+    "stripe": "^22.3.1"
+  }
+}

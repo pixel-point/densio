@@ -60,17 +60,21 @@ const verifyJobStoragePaths = Effect.fn("Storage.verifyJobStoragePaths")(functio
 export const makeJobStoragePaths = Effect.fn("Storage.makeJobStoragePaths")(function* (
   mediaRootInput: string,
   jobIdInput: unknown,
+  attempt?: number,
 ) {
   const jobId = yield* decodeJobId(jobIdInput).pipe(Effect.mapError(invalidPath));
+  if (attempt !== undefined && (!Number.isSafeInteger(attempt) || attempt < 1))
+    return yield* invalidPath();
   const mediaRoot = resolve(mediaRootInput);
   const workspaceDirectory = yield* resolveContained(mediaRoot, "work", jobId);
-  const artifactDirectory = yield* resolveContained(mediaRoot, "artifacts", jobId);
+  const attemptPath = attempt === undefined ? [] : [`attempt-${attempt}`];
+  const artifactDirectory = yield* resolveContained(mediaRoot, "artifacts", jobId, ...attemptPath);
 
   const paths = {
     artifactDirectory,
     inputFile: yield* resolveContained(workspaceDirectory, "input", "source-video"),
     mediaRoot,
-    stagingDirectory: yield* resolveContained(workspaceDirectory, "staging"),
+    stagingDirectory: yield* resolveContained(workspaceDirectory, "staging", ...attemptPath),
     workspaceDirectory,
   };
   Object.defineProperty(paths, jobStoragePathsBrand, { value: true });
@@ -106,7 +110,7 @@ const storageOperation = (operation: string, run: () => Promise<unknown>) =>
   Effect.tryPromise({
     catch: () => new StorageOperationError({ message: "The storage operation failed.", operation }),
     try: run,
-  }).pipe(Effect.asVoid);
+  }).pipe(Effect.asVoid, Effect.uninterruptible);
 
 export const prepareJobWorkspace = Effect.fn("Storage.prepareJobWorkspace")(function* (
   paths: JobStoragePaths,
@@ -131,6 +135,15 @@ export const cleanupJobWorkspace = Effect.fn("Storage.cleanupJobWorkspace")(func
     rm(paths.workspaceDirectory, { force: true, recursive: true }),
   );
 });
+
+export const cleanupJobArtifactDirectory = Effect.fn("Storage.cleanupJobArtifactDirectory")(
+  function* (paths: JobStoragePaths) {
+    yield* verifyJobStoragePaths(paths);
+    yield* storageOperation("cleanup-job-artifacts", () =>
+      rm(paths.artifactDirectory, { force: true, recursive: true }),
+    );
+  },
+);
 
 export const cleanupJobStaging = Effect.fn("Storage.cleanupJobStaging")(function* (
   paths: JobStoragePaths,

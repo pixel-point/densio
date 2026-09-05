@@ -28,7 +28,29 @@ export const openDatabase = (path: string) => {
 };
 
 export type Database = ReturnType<typeof openDatabase>;
+export type DatabaseTransaction = Parameters<Parameters<Database["db"]["transaction"]>[0]>[0];
 
-export const migrateDatabase = ({ db }: Database) => {
-  migrate(db, { migrationsFolder });
+export const migrateDatabase = ({ db, sqlite }: Database) => {
+  const tables = sqlite.prepare("select name from sqlite_schema where type = 'table'").all();
+  if (
+    tables.some((table) => table.name === "users") &&
+    !tables.some((table) => table.name === "organizations")
+  ) {
+    if (sqlite.prepare("select 1 from users limit 1").get() !== undefined) {
+      throw new Error(
+        "Organization ownership requires a fresh database path. Existing development data was not changed.",
+      );
+    }
+  }
+  // SQLite ignores foreign_keys changes inside Drizzle's migration transaction.
+  // Generated table rebuilds require it off before BEGIN, never during application work.
+  sqlite.exec("pragma foreign_keys = off");
+  try {
+    migrate(db, { migrationsFolder });
+    if (sqlite.prepare("pragma foreign_key_check").all().length !== 0) {
+      throw new Error("Database migration failed foreign-key integrity verification.");
+    }
+  } finally {
+    sqlite.exec("pragma foreign_keys = on");
+  }
 };

@@ -1,24 +1,19 @@
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 
 import type { Database } from "../database/database.ts";
-import { authChallenges, emailOutbox } from "../database/schema.ts";
+import { emailOutbox } from "../database/schema.ts";
 
 export type OutboxEmail = typeof emailOutbox.$inferSelect;
-
-export interface ClaimedOutboxEmail extends OutboxEmail {
-  readonly challengeExpiresAt: number;
-}
 
 export const claimNextEmail = (
   { db }: Database,
   input: { readonly leaseMs: number; readonly now: number },
-): ClaimedOutboxEmail | undefined =>
+): OutboxEmail | undefined =>
   db.transaction(
     (transaction) => {
       const due = transaction
-        .select({ challengeExpiresAt: authChallenges.expiresAt, email: emailOutbox })
+        .select()
         .from(emailOutbox)
-        .innerJoin(authChallenges, eq(emailOutbox.challengeId, authChallenges.id))
         .where(
           or(
             and(
@@ -39,12 +34,11 @@ export const claimNextEmail = (
           nextAttemptAt: input.now + input.leaseMs,
           status: "sending",
         })
-        .where(eq(emailOutbox.id, due.email.id))
+        .where(eq(emailOutbox.id, due.id))
         .run();
       return {
-        ...due.email,
-        attempts: due.email.attempts + 1,
-        challengeExpiresAt: due.challengeExpiresAt,
+        ...due,
+        attempts: due.attempts + 1,
         nextAttemptAt: input.now + input.leaseMs,
         status: "sending" as const,
       };
@@ -54,7 +48,7 @@ export const claimNextEmail = (
 
 export const markEmailSent = ({ db }: Database, id: string, now: number) => {
   db.update(emailOutbox)
-    .set({ encryptedConfirmationUrl: null, lastError: null, sentAt: now, status: "sent" })
+    .set({ payloadJson: null, lastError: null, sentAt: now, status: "sent" })
     .where(eq(emailOutbox.id, id))
     .run();
 };
@@ -77,7 +71,7 @@ export const markEmailFailed = (
     : Number.MAX_SAFE_INTEGER;
   db.update(emailOutbox)
     .set({
-      ...(canRetry ? {} : { encryptedConfirmationUrl: null }),
+      ...(canRetry ? {} : { payloadJson: null }),
       lastError: input.providerCode.slice(0, 200),
       nextAttemptAt: retryAt,
       status: "failed",

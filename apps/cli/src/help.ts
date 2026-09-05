@@ -1,66 +1,52 @@
+import { renderCommandHelp } from "./command-catalog.ts";
+
 export const CLI_HELP = `densio — agent-first video processing
 
 Usage:
-  densio [--api-url URL] [--json] <command>
+  densio [--api-url URL] [--org ORG_ID] [--json] <command>
 
-Commands:
-  auth login|status|logout       Authenticate with a magic email link
-  capabilities                  Inspect codecs, limits, and server defaults
-  compress <video>              Create optimized web video outputs
-  extract-images <video>        Extract interval images into a ZIP archive
-  compare-quality <video>       Compare codec CRFs at a source position
-  jobs get|wait|cancel           Inspect, resume, or cancel asynchronous jobs
-  jobs decide-frame-rate        Resume a job with cap-30 or preserve
-  artifacts download            Download and SHA-256 verify an artifact
-  billing subscribe PLAN|portal Open Stripe Checkout or Customer Portal
-  skill                          Retrieve the current Densio skill bundle
-
-Agent behavior:
-  --json emits one success document on stdout; problems use stderr.
-  Waiting media commands report the resumable job ID on stderr immediately.
-  Media commands wait by default. Use --no-wait for a resumable job ID.
+Workflow:
+  inspect VIDEO → jobs create SOURCE_ID WORKFLOW → artifacts materialize JOB_ID
+  Sources are reusable uploads. Plans are immutable; resolving a decision creates a child plan.
+  Direct submission resolves intent and reserves credits atomically; plans are optional previews. Deleting a source does not delete attached job inputs.
 
 Global options:
-  --api-url URL                 API URL (DENSIO_API_URL; default: https://api.densio.sh)
-  --credentials PATH           Override the owner-only credential file
-  --json                       Stable schema-versioned machine output
+  --api-url URL       API URL (DENSIO_API_URL; default: https://api.densio.sh)
+  --credentials PATH  Override the owner-only credential file
+  --org ORG_ID        Pin organization for the entire command (overrides DENSIO_ORG_ID, local selection, server default)
+  --json              One success document on stdout; problems and event JSONL on stderr
 
-Compression options:
-  --codec vp9,h265,av1         Select outputs (default: vp9,h265)
-  --vp9-crf N                  VP9 CRF 0-63
-  --h265-crf N                 H.265 CRF 0-51
-  --av1-crf N                  AV1 CRF 0-63
-  --audio auto|keep|remove     Audio policy (default: auto)
-  --frame-rate preserve|cap-30 Preselect high-frame-rate handling
+Commands:
+${renderCommandHelp()}
 
-Extraction options:
-  --interval SECONDS           Positive fractional interval (default: 1)
-  --format jpeg|png|webp       Archive image format (default: jpeg)
-
-Comparison options:
-  --codec vp9|h265|av1         Preview codec (default: vp9)
-  --crf N,N                    Two to eight unique CRFs
-  --duration SECONDS           Sample duration from 1 to 3 (default: 1)
-  --at SECONDS|TIMECODE        Sample start, such as 62.5 or 01:02.500
-  --frame N                    Exact zero-based source frame instead of --at
-
-Shared media options:
-  --width N | --height N       Proportional output scale
-  --allow-upscale              Explicitly permit scaling above source size
-  --crop-aspect W:H            Center crop to an aspect ratio
-  --crop-rect W:H:X:Y          Explicit crop rectangle
-  --idempotency-key KEY        Safe creation retry key
-  --timeout SECONDS            Stop waiting without canceling the server job
-  --no-wait                    Return job ID and resume command after upload
-
-Artifact download:
-  artifacts download SIGNED_URL --output PATH --sha256 HEX
-  --force                      Explicitly replace an existing output path
+Agent behavior:
+  skill returns only SKILL.md by default. Load skill PATH --skill-version VERSION for an on-demand reference.
+  Pin npx --yes densio@CLI_VERSION to the returned cliVersion throughout the workflow.
+  Choose and disclose the organization before spending credits or deleting shared resources.
+  Organizations own uploads, plans, jobs, artifacts, subscriptions, and pooled monthly usage; pricing is not per seat.
+  orgs use changes local selection only; orgs default changes the server default only. Creating or joining changes neither.
+  Positional organization IDs override environment/local selection; a conflicting --org is an error.
+  capabilities --public is anonymous. Other media and billing commands require authentication and an organization.
+  jobs create and plans execute wait by default and reports the resumable job ID on stderr immediately.
+  --no-wait returns that ID without waiting. Interrupted or timed-out waits do not cancel jobs.
+  jobs wait and jobs watch consume ordered events and confirm completion with authoritative status.
+  Job receipts preserve execution facts; live artifact availability is separate from temporary access grants.
+  Credential refresh preserves the command's verified user and organization; account changes fail closed.
+  Retry uncertain checkout with the same key and contact changes with the same email; persistent billing uncertainty needs a platform operator.
+  Deletion revokes access immediately; physical cleanup waits for active writers. Organization cleanup completes at state deleted.
+  Trimming uses zero-based source frames with an inclusive start and exclusive end; omitted end means video EOF.
+  Standalone trim re-encodes one chosen codec and preserves cadence with even-dimension normalization; compression trims before transforms.
+  Output-byte limits are checked after encoding: completed encoding work is charged even when oversized.
+  Compression and quality comparison default to 8-bit. Use --bit-depth 10 when requested, keeping comparison and final compression at the same depth.
 
 Examples:
-  densio capabilities --json
-  densio skill --json
-  densio compress input.mp4 --json
-  densio compare-quality input.mp4 --crf 28,34,40 --at 01:12.500 --json
-  densio jobs wait JOB_ID --json
+  densio orgs list --json
+  densio --org ORG_ID capabilities --json
+  densio --org ORG_ID inspect input.mp4 --idempotency-key source-1 --json
+  densio --org ORG_ID sources list --state ready --json
+  densio --org ORG_ID jobs create SOURCE_ID compress --codec vp9 --idempotency-key compress-1 --json
+  densio --org ORG_ID jobs create SOURCE_ID compare-quality --matrix vp9:36,42 --matrix h265:26,30 --samples 3 --idempotency-key compare-1 --json
+  densio --org ORG_ID jobs create SOURCE_ID hls --destination densio --idempotency-key hls-1 --until stored --json
+  densio --org ORG_ID plans execute PLAN_ID --idempotency-key execution-1 --no-wait --json
+  densio --org ORG_ID jobs wait JOB_ID --output-dir public/media --json
 `;

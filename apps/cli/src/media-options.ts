@@ -1,3 +1,4 @@
+import { parseTrimRange } from "./trim-options.ts";
 import {
   CompareQualityOptionsSchema,
   CompressionOptionsSchema,
@@ -7,38 +8,16 @@ import {
 import {
   buildTransformOptions,
   commaSeparatedFlags,
-  commonMediaBooleanFlags,
-  commonMediaValueFlags,
   decodeCliOptions,
   numberFlag,
-  parseCommandArguments,
-  requireSinglePositional,
+  type ParsedCommandArguments,
   singleFlag,
 } from "./command-options.ts";
 import { CliUsageError } from "./cli-errors.ts";
 
-export interface ParsedMediaCommand<Options> {
-  readonly idempotencyKey?: string;
-  readonly inputPath: string;
-  readonly noWait: boolean;
-  readonly options: Options;
-  readonly timeoutSeconds?: number;
-}
-
-export const parseCompressionCommand = (argv: ReadonlyArray<string>) => {
-  const parsed = parseCommandArguments(
-    argv,
-    new Set([
-      ...commonMediaValueFlags,
-      "--audio",
-      "--av1-crf",
-      "--codec",
-      "--frame-rate",
-      "--h265-crf",
-      "--vp9-crf",
-    ]),
-    commonMediaBooleanFlags,
-  );
+export const parseCompressionOptions = (parsed: ParsedCommandArguments) => {
+  const bitDepth = numberFlag(parsed, "--bit-depth");
+  const trim = parseTrimRange(parsed);
   const codecs = commaSeparatedFlags(parsed, "--codec");
   const crf = compactRecord({
     av1: numberFlag(parsed, "--av1-crf"),
@@ -50,7 +29,9 @@ export const parseCompressionCommand = (argv: ReadonlyArray<string>) => {
   const options = decodeCliOptions(
     CompressionOptionsSchema,
     {
+      ...(bitDepth === undefined ? {} : { bitDepth }),
       ...(codecs.length === 0 ? {} : { codecs }),
+      ...(trim === undefined ? {} : { trim }),
       ...(Object.keys(crf).length === 0 ? {} : { crf }),
       ...(singleFlag(parsed, "--audio") === undefined
         ? {}
@@ -61,15 +42,10 @@ export const parseCompressionCommand = (argv: ReadonlyArray<string>) => {
     "compress",
   );
 
-  return mediaCommand(parsed, options, "compress requires exactly one video path.");
+  return options;
 };
 
-export const parseExtractionCommand = (argv: ReadonlyArray<string>) => {
-  const parsed = parseCommandArguments(
-    argv,
-    new Set([...commonMediaValueFlags, "--format", "--interval"]),
-    commonMediaBooleanFlags,
-  );
+export const parseExtractionOptions = (parsed: ParsedCommandArguments) => {
   const transform = buildTransformOptions(parsed);
   const options = decodeCliOptions(
     ExtractImagesOptionsSchema,
@@ -84,66 +60,62 @@ export const parseExtractionCommand = (argv: ReadonlyArray<string>) => {
     },
     "extract-images",
   );
-  return mediaCommand(parsed, options, "extract-images requires exactly one video path.");
+  return options;
 };
 
-export const parseComparisonCommand = (argv: ReadonlyArray<string>) => {
-  const parsed = parseCommandArguments(
-    argv,
-    new Set([...commonMediaValueFlags, "--at", "--codec", "--crf", "--duration", "--frame"]),
-    commonMediaBooleanFlags,
-  );
-  const crfs = commaSeparatedFlags(parsed, "--crf").map(Number);
-  const codec = singleFlag(parsed, "--codec") ?? "vp9";
+export const parseComparisonOptions = (parsed: ParsedCommandArguments) => {
+  const bitDepth = numberFlag(parsed, "--bit-depth");
+  const automaticSamples = numberFlag(parsed, "--samples");
+  const explicitSamples = parsed.flags.get("--sample") ?? [];
+  if (automaticSamples !== undefined && explicitSamples.length > 0) {
+    throw new CliUsageError("Use only one of --samples or --sample.");
+  }
   const transform = buildTransformOptions(parsed);
-  const position = comparisonPosition(parsed);
-  const options = decodeCliOptions(
+  const durationSeconds = numberFlag(parsed, "--sample-duration");
+  return decodeCliOptions(
     CompareQualityOptionsSchema,
     {
-      codec,
-      crfs,
-      ...(numberFlag(parsed, "--duration") === undefined
-        ? {}
-        : { durationSeconds: numberFlag(parsed, "--duration") }),
-      ...(position === undefined ? {} : { position }),
+      ...(bitDepth === undefined ? {} : { bitDepth }),
+      ...(parsed.flags.has("--metric")
+        ? { objectiveMetrics: commaSeparatedFlags(parsed, "--metric") }
+        : {}),
+      variants: (parsed.flags.get("--matrix") ?? []).flatMap(parseMatrixVariants),
+      ...(automaticSamples === undefined
+        ? explicitSamples.length === 0
+          ? {}
+          : { samples: { mode: "positions", positions: explicitSamples.map(parseSamplePosition) } }
+        : { samples: { count: automaticSamples, mode: "auto" } }),
+      ...(durationSeconds === undefined ? {} : { durationSeconds }),
       ...(transform === undefined ? {} : { transform }),
     },
     "compare-quality",
   );
-  return mediaCommand(parsed, options, "compare-quality requires exactly one video path.");
 };
 
-const mediaCommand = <Options>(
-  parsed: Parameters<typeof requireSinglePositional>[0],
-  options: Options,
-  usage: string,
-): ParsedMediaCommand<Options> => {
-  const idempotencyKey = singleFlag(parsed, "--idempotency-key");
-  const timeoutSeconds = numberFlag(parsed, "--timeout");
-  if (timeoutSeconds !== undefined && timeoutSeconds <= 0) {
-    throw new CliUsageError("--timeout must be positive.");
+const parseMatrixVariants = (value: string) => {
+  const separator = value.indexOf(":");
+  if (separator <= 0 || separator === value.length - 1 || value.indexOf(":", separator + 1) >= 0) {
+    throw new CliUsageError("--matrix must use CODEC:CRF,CRF.");
   }
-  return {
-    inputPath: requireSinglePositional(parsed, usage),
-    noWait: parsed.switches.has("--no-wait"),
-    options,
-    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
-    ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
-  };
+  const codec = value.slice(0, separator);
+  return value
+    .slice(separator + 1)
+    .split(",")
+    .map((crf) => {
+      if (crf.trim() === "")
+        throw new CliUsageError("--matrix requires a CRF for every candidate.");
+      return { codec, crf: Number(crf) };
+    });
 };
 
-const comparisonPosition = (parsed: Parameters<typeof singleFlag>[0]) => {
-  const at = singleFlag(parsed, "--at");
-  const frame = numberFlag(parsed, "--frame");
-  if (at !== undefined && frame !== undefined) {
-    throw new CliUsageError("Use only one of --at or --frame.");
+const parseSamplePosition = (value: string) => {
+  if (value.startsWith("frame:")) {
+    return { frame: Number(value.slice("frame:".length)), kind: "frame" as const };
   }
-  if (frame !== undefined) return { frame, kind: "frame" as const };
-  if (at === undefined) return undefined;
-  const seconds = Number(at);
+  const seconds = Number(value);
   return Number.isFinite(seconds)
     ? { kind: "seconds" as const, seconds }
-    : { kind: "timecode" as const, timecode: at };
+    : { kind: "timecode" as const, timecode: value };
 };
 
 const compactRecord = (record: Readonly<Record<string, number | undefined>>) =>

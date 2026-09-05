@@ -1,0 +1,1 @@
+ALTER TABLE `source_write_activities` ADD `process_identity` text NOT NULL;

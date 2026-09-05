@@ -1,15 +1,21 @@
 import { Effect } from "effect";
+import { videoStorageProblem } from "./problems/video-storage-problems.ts";
 
 import { AuthStorageError } from "../auth/auth-errors.ts";
 import { BillingStorageError } from "../billing/billing-errors.ts";
 import { ArtifactRepositoryError } from "../database/artifact-repository.ts";
 import { ApiProblem, unexpectedProblem } from "../errors/problem-details.ts";
-import { JobRepositoryError } from "../jobs/job-service.ts";
+import { JobRepositoryError } from "../jobs/job-errors.ts";
+import { ExecutionPlanStorageError } from "../execution-plans/execution-plan-errors.ts";
 import { StorageOperationError } from "../storage/workspace.ts";
 import { authProblem } from "./problems/auth-problems.ts";
 import { billingProblem } from "./problems/billing-problems.ts";
 import { jobProblem } from "./problems/job-problems.ts";
+import { executionPlanProblem } from "./problems/execution-plan-problems.ts";
 import { storageProblem } from "./problems/storage-problems.ts";
+import { organizationProblem } from "./problems/organization-problems.ts";
+import { OrganizationStorageError } from "../organizations/organization-errors.ts";
+import { VideoStorageError } from "../storage/storage-errors.ts";
 
 export interface RouteFailureReport {
   readonly correlationId: string;
@@ -22,8 +28,20 @@ export type RouteFailureReporter = (report: RouteFailureReport) => void | Promis
 export const classifyRouteFailure = (error: unknown, correlationId: string) => {
   if (error instanceof ApiProblem) return { problem: error };
   const expected =
-    authProblem(error) ?? billingProblem(error) ?? jobProblem(error) ?? storageProblem(error);
-  if (expected !== undefined) return { problem: expected };
+    videoStorageProblem(error) ??
+    organizationProblem(error) ??
+    authProblem(error) ??
+    billingProblem(error) ??
+    executionPlanProblem(error) ??
+    jobProblem(error) ??
+    storageProblem(error);
+  if (expected !== undefined)
+    return {
+      problem: expected,
+      ...(error instanceof VideoStorageError && error.code === "STORAGE_INTERNAL_ERROR"
+        ? { report: internalFailureReport(error, correlationId) }
+        : {}),
+    };
   return {
     problem: unexpectedProblem(error),
     report: internalFailureReport(error, correlationId),
@@ -49,10 +67,13 @@ const internalFailureReport = (error: unknown, correlationId: string): RouteFail
 const internalOperation = (error: unknown) => {
   if (
     error instanceof AuthStorageError ||
+    error instanceof OrganizationStorageError ||
     error instanceof BillingStorageError ||
     error instanceof JobRepositoryError ||
+    error instanceof ExecutionPlanStorageError ||
     error instanceof ArtifactRepositoryError ||
-    error instanceof StorageOperationError
+    error instanceof StorageOperationError ||
+    error instanceof VideoStorageError
   ) {
     return error.operation;
   }

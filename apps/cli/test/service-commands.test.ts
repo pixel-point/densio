@@ -7,13 +7,28 @@ import {
   makeCliCapture,
   readRequestBody,
   sendEnvelope,
-  startCliServer,
+  startOrganizationCliServer,
 } from "./cli-test-support.ts";
 
 afterEach(cleanupCliDirectories);
 
 const capabilities = {
+  scope: "organization",
+  organizationId: "org-1",
+  organizationName: "Team",
+  role: "owner",
+  actions: ["billing-write", "media-write"],
   apiVersion: "v1",
+  controlPlane: {
+    artifactAccessGrantTtlSeconds: 900,
+    executionPlans: true,
+    jobEvents: true,
+    planTtlSeconds: 3600,
+    preparedSources: true,
+    sourceListing: true,
+    sourceRetentionSeconds: 86400,
+    stableArtifacts: true,
+  },
   codecs: [
     {
       codec: "vp9",
@@ -26,14 +41,15 @@ const capabilities = {
   defaults: {
     audio: "auto",
     comparisonDurationSeconds: 1,
-    comparisonPositionSeconds: 0,
+    comparisonSamples: 3,
+    comparisonMetrics: ["ssim"],
     compressionCodecs: ["vp9", "h265"],
     extractionFormat: "jpeg",
     extractionIntervalSeconds: 1,
   },
   limits: {
     artifactRetentionSeconds: 86_400,
-    maxComparisonCrfs: 8,
+    maxComparisonVariants: 8,
     maxComparisonDurationSeconds: 3,
     maxExtractionImages: 1_000,
     maxUploadBytes: 1_000_000,
@@ -41,7 +57,9 @@ const capabilities = {
   },
   options: {
     audioModes: ["auto", "keep", "remove"],
-    comparisonCrfCount: { maximum: 8, minimum: 2 },
+    comparisonMetrics: ["ssim", "psnr"],
+    comparisonSampleCount: { default: 3, maximum: 5, minimum: 1 },
+    comparisonVariantCount: { maximum: 8, minimum: 2 },
     comparisonDurationSeconds: { default: 1, maximum: 3, minimum: 1 },
     comparisonPositionKinds: ["seconds", "timecode", "frame"],
     cropKinds: ["aspect-ratio", "rectangle"],
@@ -60,18 +78,21 @@ const capabilities = {
 describe("service commands", () => {
   it("decodes capabilities and authenticated billing session links", async () => {
     const checkoutBodies: Array<unknown> = [];
-    const server = await startCliServer(async (request, response) => {
-      if (request.url === "/v1/capabilities") {
+    const server = await startOrganizationCliServer(async (request, response) => {
+      if (request.url === "/v1/organizations/org-1/capabilities") {
         sendEnvelope(response, capabilities);
         return;
       }
-      if (request.url === "/v1/billing/checkout") {
+      if (request.url === "/v1/organizations/org-1/billing/checkout") {
         checkoutBodies.push(JSON.parse((await readRequestBody(request)).toString("utf8")));
       }
       sendEnvelope(
         response,
         {
-          expiresAt: "2026-07-11T13:00:00.000Z",
+          organizationId: "org-1",
+          ...(request.url?.endsWith("portal") === true
+            ? {}
+            : { expiresAt: "2026-07-11T13:00:00.000Z" }),
           kind: request.url?.endsWith("portal") === true ? "portal" : "checkout",
           url: "https://billing.example/session",
         },
@@ -79,6 +100,12 @@ describe("service commands", () => {
       );
     });
     const capabilityCapture = await makeCliCapture();
+    await writeCredentials(capabilityCapture.dependencies.credentialsPath, {
+      accessToken: "access",
+      refreshToken: "refresh",
+      apiUrl: server.url,
+      accessTokenExpiresAt: "2026-07-11T14:00:00.000Z",
+    });
 
     expect(
       await runCli(
@@ -87,7 +114,7 @@ describe("service commands", () => {
       ),
     ).toBe(0);
     expect(JSON.parse(capabilityCapture.stdout()).data.server.maxConcurrentMediaProcesses).toBe(3);
-    for (const command of [["subscribe", "scale"], ["portal"]]) {
+    for (const command of [["subscribe", "scale", "--idempotency-key", "checkout-1"], ["portal"]]) {
       const capture = await makeCliCapture();
       await writeCredentials(capture.dependencies.credentialsPath, {
         accessToken: "access",
@@ -113,8 +140,8 @@ describe("service commands", () => {
     expect(
       await runCli(["--json", "billing", "subscribe", "enterprise"], capture.dependencies),
     ).toBe(2);
-    expect(JSON.parse(capture.stderr()).detail).toBe(
-      "billing requires subscribe basic|pro|scale or portal.",
+    expect(JSON.parse(capture.stderr().trim().split("\n").at(-1) ?? "{}").detail).toBe(
+      "billing subscribe basic|pro|scale options are invalid at plan. Check the command help for accepted values.",
     );
   });
 });

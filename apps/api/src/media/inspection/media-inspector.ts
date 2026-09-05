@@ -1,3 +1,5 @@
+import { resolveTrimRange } from "./trim-timeline.ts";
+import type { TrimRange, ResolvedTrimRange } from "@densio/shared";
 import { Context, Effect, Layer } from "effect";
 
 import {
@@ -28,6 +30,11 @@ export class MediaInspector extends Context.Service<
   {
     checkCapabilities(): Effect.Effect<MediaCapabilities, InspectorError>;
     inspect(inputPath: string): Effect.Effect<MediaProbe, InspectorError>;
+    resolveTrimRange(
+      inputPath: string,
+      range: TrimRange,
+      videoStreamIndex: number,
+    ): Effect.Effect<ResolvedTrimRange, unknown>;
     resolveFrameTimestamp(
       inputPath: string,
       frameIndex: number,
@@ -36,6 +43,7 @@ export class MediaInspector extends Context.Service<
     classifyAudio(
       inputPath: string,
       audioStreamIndexes: ReadonlyArray<number>,
+      trim?: ResolvedTrimRange,
     ): Effect.Effect<AudioClassification, InspectorError>;
   }
 >()("densio/media/MediaInspector") {
@@ -77,13 +85,16 @@ export class MediaInspector extends Context.Service<
         const classifyAudio = Effect.fn("MediaInspector.classifyAudio")(function* (
           inputPath: string,
           audioStreamIndexes: ReadonlyArray<number>,
+          trim?: ResolvedTrimRange,
         ) {
           const outputs = yield* Effect.all(
             audioStreamIndexes.map((streamIndex) =>
-              runComplete(buildAudioAnalysisCommand(inputPath, streamIndex, ffmpegPath)),
+              runComplete(buildAudioAnalysisCommand(inputPath, streamIndex, ffmpegPath, trim)),
             ),
             { concurrency: "unbounded" },
           );
+          if (trim && outputs.length > 0 && outputs.every((output) => output.trim() === ""))
+            return "silent" as const;
           return yield* decodeAudioAnalysis(outputs, threshold);
         });
 
@@ -92,6 +103,10 @@ export class MediaInspector extends Context.Service<
           classifyAudio,
           inspect,
           resolveFrameTimestamp,
+          resolveTrimRange: (inputPath, range, streamIndex) =>
+            resolveTrimRange(ffprobePath, inputPath, range, streamIndex).pipe(
+              Effect.provideService(MediaProcessRunner, runner),
+            ),
         });
       }),
     );

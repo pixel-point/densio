@@ -93,8 +93,9 @@ describe("authenticated session commands", () => {
       }
       sendEnvelope(response, {
         authenticated: true,
+        defaultOrganizationId: "org-1",
         sessionExpiresAt: "2026-07-11T14:00:00.000Z",
-        user: { email: "agent@example.com", id: "user-1", plan: "pro" },
+        user: { email: "agent@example.com", id: "user-1" },
       });
     });
     await writeCredentials(capture.dependencies.credentialsPath, {
@@ -107,7 +108,7 @@ describe("authenticated session commands", () => {
     expect(
       await runCli(["--json", "--api-url", server.url, "auth", "status"], capture.dependencies),
     ).toBe(0);
-    expect(JSON.parse(capture.stdout()).data.user.plan).toBe("pro");
+    expect(JSON.parse(capture.stdout()).data.defaultOrganizationId).toBe("org-1");
     expect(await readCredentials(capture.dependencies.credentialsPath)).toMatchObject({
       accessToken: "new-access",
       refreshToken: "new-refresh",

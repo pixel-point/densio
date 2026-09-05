@@ -1,130 +1,107 @@
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { parsePlanCreate } from "../src/plan-options.ts";
 
-import { afterEach, describe, expect, it } from "vitest";
-
-import { runCli } from "../src/cli.ts";
-import { writeCredentials } from "../src/config.ts";
-import { parseCompressionCommand } from "../src/media-options.ts";
-import {
-  cleanupCliDirectories,
-  makeCliCapture,
-  readRequestBody,
-  sendEnvelope,
-  startCliServer,
-} from "./cli-test-support.ts";
-
-afterEach(cleanupCliDirectories);
-
-describe("compression frame-rate options", () => {
-  it("parses explicit compression frame-rate policies", () => {
-    expect(
-      parseCompressionCommand(["video.mp4", "--frame-rate", "preserve"]).options,
-    ).toMatchObject({
-      frameRate: { mode: "preserve" },
-    });
-    expect(parseCompressionCommand(["video.mp4", "--frame-rate", "cap-30"]).options).toMatchObject({
-      frameRate: { maximum: 30, mode: "cap" },
-    });
-    expect(() => parseCompressionCommand(["video.mp4", "--frame-rate", "60"])).toThrow(
-      /frame-rate/i,
-    );
-  });
-});
-
-describe("media option commands", () => {
-  it("rejects a non-positive client wait timeout before making requests", () => {
-    expect(() => parseCompressionCommand(["video.mp4", "--timeout", "0"])).toThrow(/positive/i);
-  });
-
+describe("canonical media planning options", () => {
   it.each([
-    {
-      arguments: ["extract-images", "--interval", "0.5", "--format", "webp", "--height", "360"],
-      endpoint: "/v1/extract-images",
-      options: { format: "webp", intervalSeconds: 0.5, transform: { scale: { height: 360 } } },
-    },
-    {
-      arguments: [
+    [["compress", "--frame-rate", "preserve"], { frameRate: { mode: "preserve" } }],
+    [["compress", "--frame-rate", "cap-30"], { frameRate: { mode: "cap", maximum: 30 } }],
+    [
+      ["extract-images", "--interval", "0.5", "--format", "webp", "--height", "360"],
+      { format: "webp", intervalSeconds: 0.5, transform: { scale: { height: 360 } } },
+    ],
+    [
+      [
         "compare-quality",
-        "--codec",
-        "h265",
-        "--crf",
-        "24,30",
-        "--duration",
+        "--matrix",
+        "h265:24,30",
+        "--sample-duration",
         "3",
-        "--at",
+        "--sample",
         "01:02.500",
         "--crop-rect",
         "640:360:10:20",
       ],
-      endpoint: "/v1/compare-quality",
-      options: {
-        codec: "h265",
-        crfs: [24, 30],
+      {
+        variants: [
+          { codec: "h265", crf: 24 },
+          { codec: "h265", crf: 30 },
+        ],
         durationSeconds: 3,
-        position: { kind: "timecode", timecode: "01:02.500" },
-        transform: {
-          crop: { height: 360, kind: "rectangle", width: 640, x: 10, y: 20 },
-        },
+        samples: { mode: "positions", positions: [{ kind: "timecode", timecode: "01:02.500" }] },
+        transform: { crop: { kind: "rectangle", width: 640, height: 360, x: 10, y: 20 } },
       },
-    },
-  ])("sends typed $endpoint options and returns a resume command", async (scenario) => {
-    const capture = await makeCliCapture();
-    const sourcePath = join(capture.directory, "source.mp4");
-    await writeFile(sourcePath, "video");
-    let creationBody = "";
-    const server = await startCliServer(async (request, response) => {
-      if (request.url === scenario.endpoint) {
-        creationBody = (await readRequestBody(request)).toString();
-        sendEnvelope(response, {
-          jobId: "job-resume",
-          state: "awaiting-upload",
-          statusUrl: `${server.url}/v1/jobs/job-resume`,
-          upload: {
-            expiresAt: "2026-07-11T13:00:00.000Z",
-            method: "PUT",
-            url: `${server.url}/upload/job-resume`,
-          },
-        });
-        return;
-      }
-      const uploaded = await readRequestBody(request);
-      sendEnvelope(response, {
-        bytes: uploaded.length,
-        jobId: "job-resume",
-        sha256: "b".repeat(64),
-        state: "queued",
-      });
-    });
-    await writeCredentials(capture.dependencies.credentialsPath, {
-      accessToken: "access",
-      accessTokenExpiresAt: "2026-07-11T14:00:00.000Z",
-      apiUrl: server.url,
-      refreshToken: "refresh",
-    });
+    ],
+  ])("parses workflow-specific options %j", (argv, options) => {
+    expect(parsePlanCreate(["source-1", ...argv]).request.options).toEqual(options);
+  });
+});
 
-    const exitCode = await runCli(
-      [
-        "--json",
-        "--api-url",
-        server.url,
-        ...scenario.arguments.slice(0, 1),
-        sourcePath,
-        ...scenario.arguments.slice(1),
-        "--no-wait",
+describe("matrix planning options", () => {
+  it("preserves candidate and metric order for a multi-codec matrix", () => {
+    expect(
+      parsePlanCreate([
+        "source-1",
+        "compare-quality",
+        "--matrix",
+        "vp9:30,36",
+        "--matrix",
+        "av1:40,45",
+        "--samples",
+        "3",
+        "--metric",
+        "ssim,psnr",
+      ]).request.options,
+    ).toEqual({
+      variants: [
+        { codec: "vp9", crf: 30 },
+        { codec: "vp9", crf: 36 },
+        { codec: "av1", crf: 40 },
+        { codec: "av1", crf: 45 },
       ],
-      capture.dependencies,
-    );
-    await server.close();
+      samples: { mode: "auto", count: 3 },
+      objectiveMetrics: ["ssim", "psnr"],
+    });
+  });
 
-    expect(exitCode).toBe(0);
-    expect(JSON.parse(creationBody)).toEqual({
-      options: scenario.options,
-      source: { bytes: 5, filename: "source.mp4" },
+  it("preserves ordered explicit positions and leaves metric defaults to the API", () => {
+    expect(
+      parsePlanCreate([
+        "source-1",
+        "compare-quality",
+        "--matrix",
+        "h265:24,30",
+        "--sample",
+        "12.5",
+        "--sample",
+        "01:02.500",
+        "--sample",
+        "frame:120",
+      ]).request.options,
+    ).toEqual({
+      variants: [
+        { codec: "h265", crf: 24 },
+        { codec: "h265", crf: 30 },
+      ],
+      samples: {
+        mode: "positions",
+        positions: [
+          { kind: "seconds", seconds: 12.5 },
+          { kind: "timecode", timecode: "01:02.500" },
+          { kind: "frame", frame: 120 },
+        ],
+      },
     });
-    expect(JSON.parse(capture.stdout()).data).toMatchObject({
-      jobId: "job-resume",
-      resumeCommand: "densio jobs wait job-resume",
-    });
+  });
+
+  it.each([
+    ["compress", "--frame-rate", "60"],
+    ["compress", "--timeout", "0"],
+    ["compress", "--client-reference", "hero"],
+    ["compress", "--force"],
+    ["compress", "--output-dir", "public/media"],
+    ["compare-quality", "--matrix", "vp9:30,36", "--codec", "vp9"],
+    ["compare-quality", "--matrix", "vp9:30,36", "--samples", "3", "--sample", "12"],
+  ])("rejects invalid and execution-only planning flags %j", (...argv) => {
+    expect(() => parsePlanCreate(["source-1", ...argv])).toThrow();
   });
 });

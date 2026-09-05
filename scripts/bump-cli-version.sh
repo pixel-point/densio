@@ -34,7 +34,7 @@ esac
 [ -z "$(git status --porcelain)" ] || fail "the Git worktree must be clean"
 
 previous_version=$(node -p "require('./apps/cli/package.json').version")
-pnpm --dir apps/cli version "$release" --no-git-tag-version >/dev/null
+(cd apps/cli && pnpm version "$release" --no-git-tag-version) >/dev/null
 version=$(node -p "require('./apps/cli/package.json').version")
 
 node -e '

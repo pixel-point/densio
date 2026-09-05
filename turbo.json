@@ -1,7 +1,33 @@
 {
   "$schema": "https://turborepo.com/schema.json",
+  "globalDependencies": ["tsconfig.base.json", "tsconfig.json", ".node-version"],
   "tasks": {
     "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@densio/shared#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@densio/api#build": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/skill-bundle/**"],
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@densio/api#test": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/skill-bundle/**"],
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": false
+    },
+    "densio#test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/skill-bundle/**",
+        "$TURBO_ROOT$/skills/densio/**",
+        "$TURBO_ROOT$/scripts/**"
+      ],
       "dependsOn": ["^build"],
       "outputs": []
     },
@@ -14,6 +40,55 @@
       "outputs": []
     },
     "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:fast": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:media": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "outputs": []
+    },
+    "@densio/api#test:fast": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/skill-bundle/**"],
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "densio#test:fast": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/skill-bundle/**",
+        "$TURBO_ROOT$/skills/densio/**",
+        "$TURBO_ROOT$/scripts/**"
+      ],
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@densio/e2e#test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/turbo.json",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/apps/*/src/**",
+        "$TURBO_ROOT$/packages/*/src/**"
+      ],
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": false
+    },
+    "@densio/e2e#test:fast": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/turbo.json",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/apps/*/src/**",
+        "$TURBO_ROOT$/packages/*/src/**"
+      ],
       "dependsOn": ["^build"],
       "outputs": []
     }

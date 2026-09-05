@@ -1,21 +1,18 @@
-import { PLAN_CATALOG, type JobDecision } from "@densio/shared";
+import { randomUUID } from "node:crypto";
+
 import { Clock, Context, Deferred, Effect, Fiber, Ref, Schema, type Scope } from "effect";
 
-import { creditsFromUnits, monthlyCreditUnits } from "../billing/credit-units.ts";
 import type { Database } from "../database/database.ts";
 import {
-  cancelClaimedJob,
   claimNextJob,
-  completeJob,
-  failJob,
   findJobsByIds,
   isJobCancellationRequested,
-  pauseJobForDecision,
   recoverExpiredJobs,
-  renewJobLease,
-  reserveJobCreditsAndMarkProcessing,
 } from "../database/job-repository.ts";
+import { transitionJob } from "../database/job-transition-repository.ts";
+import { isTerminalJob, type JobTransitionCommand } from "./job-transition.ts";
 import { jobs } from "../database/schema.ts";
+import { withJobWriteActivity } from "./job-write-activity.ts";
 
 export type Job = typeof jobs.$inferSelect;
 
@@ -35,21 +32,15 @@ class JobLeaseLost extends Schema.TaggedErrorClass<JobLeaseLost>()("JobLeaseLost
 export interface ReadyJobAnalysis {
   readonly kind: "ready";
   readonly creditUnits: number;
-  readonly data: Schema.Json;
+  readonly process: (job: Job) => Effect.Effect<Schema.Json, JobProcessorError>;
 }
 
-export interface DecisionRequiredJobAnalysis {
-  readonly kind: "decision-required";
-  readonly decision: JobDecision;
-}
-
-export type JobAnalysis = ReadyJobAnalysis | DecisionRequiredJobAnalysis;
+export type JobAnalysis = ReadyJobAnalysis;
 
 export class JobProcessor extends Context.Service<
   JobProcessor,
   {
     analyze(job: Job): Effect.Effect<JobAnalysis, JobProcessorError>;
-    process(job: Job, analysis: Schema.Json): Effect.Effect<Schema.Json, JobProcessorError>;
   }
 >()("densio/jobs/JobProcessor") {}
 
@@ -83,12 +74,20 @@ export const startJobWorker = Effect.fn("JobWorker.start")(function* (
   yield* Effect.forEach(recoveredTerminalJobs, cleanup.cleanup);
   const stopping = yield* Ref.make(false);
   const stopSignal = yield* Deferred.make<void>();
+  const workerRunId = `${options.workerId}-${randomUUID()}`;
   const fibers = yield* Effect.forEach(
     Array.from({ length: options.concurrency }, (_, index) => index),
     (index) =>
-      runWorkerSlot(database, options, processor, cleanup, stopping, stopSignal, index).pipe(
-        Effect.forkScoped({ startImmediately: true }),
-      ),
+      runWorkerSlot(
+        database,
+        options,
+        processor,
+        cleanup,
+        stopping,
+        stopSignal,
+        workerRunId,
+        index,
+      ).pipe(Effect.forkScoped({ startImmediately: true })),
   );
   const stop = Effect.fn("JobWorker.stop")(function* () {
     yield* Ref.set(stopping, true);
@@ -106,11 +105,12 @@ const runWorkerSlot = Effect.fn("JobWorker.runSlot")(function* (
   cleanup: JobCleanup["Service"],
   stopping: Ref.Ref<boolean>,
   stopSignal: Deferred.Deferred<void>,
+  workerRunId: string,
   slot: number,
 ) {
+  const workerId = `${workerRunId}-${slot}`;
   while (!(yield* Ref.get(stopping))) {
     const now = yield* Clock.currentTimeMillis;
-    const workerId = `${options.workerId}-${slot}`;
     const job = claimNextJob(database, {
       leaseDurationMs: options.leaseDurationMs,
       now,
@@ -120,6 +120,11 @@ const runWorkerSlot = Effect.fn("JobWorker.runSlot")(function* (
       yield* runClaimedJob(database, options, processor, cleanup, job, workerId);
       continue;
     }
+    const recovered = recoverExpiredJobs(database, { maxAttempts: options.maxAttempts, now });
+    yield* Effect.forEach(
+      findJobsByIds(database, [...recovered.failed, ...recovered.canceled]),
+      cleanup.cleanup,
+    );
     yield* Effect.raceFirst(Effect.sleep(options.pollIntervalMs), Deferred.await(stopSignal));
   }
 });
@@ -134,7 +139,7 @@ const runClaimedJob = Effect.fn("JobWorker.runClaimedJob")(function* (
 ) {
   const execution = Effect.catchDefect(
     Effect.raceFirst(
-      executeClaimedJob(database, options, processor, cleanup, job, workerId),
+      executeClaimedJob(database, options, processor, job, workerId),
       monitorClaim(database, options, job, workerId),
     ),
     () =>
@@ -146,68 +151,67 @@ const runClaimedJob = Effect.fn("JobWorker.runClaimedJob")(function* (
         }),
       ),
   );
-  yield* Effect.catchTags(execution, {
-    JobCanceled: () => persistCancellation(database, cleanup, job, workerId),
-    JobLeaseLost: () => Effect.void,
-    JobProcessorError: (error) => persistFailure(database, cleanup, job, workerId, error),
-  });
+  yield* withJobWriteActivity(
+    database,
+    job,
+    Effect.catchTags(execution, {
+      JobCanceled: () => persistCancellation(database, job, workerId),
+      JobLeaseLost: () => Effect.void,
+      JobProcessorError: (error) => persistFailure(database, job, workerId, error),
+    }),
+  );
+  const current = findJobsByIds(database, [job.id])[0];
+  if (current !== undefined && isTerminalJob(current.state)) yield* cleanup.cleanup(current);
 });
 
 const executeClaimedJob = Effect.fn("JobWorker.executeClaimedJob")(function* (
   database: Database,
   options: JobWorkerOptions,
   processor: JobProcessor["Service"],
-  cleanup: JobCleanup["Service"],
   job: Job,
   workerId: string,
 ) {
   const analysis = yield* processor.analyze(job);
-  if (analysis.kind === "decision-required") {
-    const decisionAt = yield* Clock.currentTimeMillis;
-    const paused = pauseJobForDecision(database, {
-      decisionJson: JSON.stringify(analysis.decision),
-      jobId: job.id,
-      now: decisionAt,
-      workerId,
+  if (analysis.creditUnits !== job.quoteCreditUnits) {
+    return yield* new JobProcessorError({
+      code: "PLAN_DIVERGED",
+      details: {
+        analyzedCreditUnits: analysis.creditUnits,
+        quotedCreditUnits: job.quoteCreditUnits,
+      },
+      message: "Trusted job analysis no longer matches the immutable execution plan quote.",
     });
-    if (paused === undefined) return yield* claimUnavailable(database, job, workerId);
-    return;
   }
   const processingAt = yield* Clock.currentTimeMillis;
-  const processing = reserveJobCreditsAndMarkProcessing(database, {
-    creditUnits: analysis.creditUnits,
+  const processing = transitionJob(database, {
     jobId: job.id,
-    leaseDurationMs: options.leaseDurationMs,
-    monthlyCreditUnits: monthlyCreditUnits(PLAN_CATALOG[job.plan].monthlyCredits),
     now: processingAt,
-    workerId,
+    command: {
+      type: "processing",
+      attempt: job.attemptCount,
+      workerId,
+      creditUnits: analysis.creditUnits,
+      leaseDurationMs: options.leaseDurationMs,
+    },
   });
   if (processing === undefined) return yield* claimUnavailable(database, job, workerId);
-  if (processing.kind === "insufficient-credits") {
-    return yield* new JobProcessorError({
-      code: "CREDITS_EXHAUSTED",
-      details: { availableCredits: creditsFromUnits(processing.availableUnits) },
-      message: "The compression requires more credits than the account has available.",
-    });
-  }
-  if (processing.kind === "missing-reservation") {
-    return yield* new JobProcessorError({
-      code: "CREDIT_RESERVATION_MISSING",
-      details: {},
-      message: "The job credit reservation is missing.",
-    });
+  if (processing.state === "failed") {
+    return;
   }
 
-  const result = yield* processor.process(processing, analysis.data);
+  const result = yield* analysis.process(processing);
   const completedAt = yield* Clock.currentTimeMillis;
-  const completed = completeJob(database, {
+  const completed = transitionJob(database, {
     jobId: job.id,
     now: completedAt,
-    resultJson: JSON.stringify(result),
-    workerId,
+    command: {
+      type: "complete",
+      attempt: job.attemptCount,
+      workerId,
+      resultJson: JSON.stringify(result),
+    },
   });
   if (completed === undefined) return yield* claimUnavailable(database, job, workerId);
-  yield* cleanup.cleanup(completed);
 });
 
 const monitorClaim = Effect.fn("JobWorker.monitorClaim")(function* (
@@ -218,15 +222,19 @@ const monitorClaim = Effect.fn("JobWorker.monitorClaim")(function* (
 ) {
   while (true) {
     yield* Effect.sleep(options.heartbeatIntervalMs);
-    if (isJobCancellationRequested(database, job.id, workerId)) {
+    if (isJobCancellationRequested(database, job.id, workerId, job.attemptCount)) {
       return yield* new JobCanceled();
     }
     const now = yield* Clock.currentTimeMillis;
-    const renewed = renewJobLease(database, {
+    const renewed = transitionJob(database, {
       jobId: job.id,
-      leaseDurationMs: options.leaseDurationMs,
       now,
-      workerId,
+      command: {
+        type: "lease",
+        attempt: job.attemptCount,
+        workerId,
+        leaseDurationMs: options.leaseDurationMs,
+      },
     });
     if (renewed === undefined) return yield* new JobLeaseLost();
   }
@@ -237,38 +245,59 @@ const claimUnavailable = (
   job: Job,
   workerId: string,
 ): Effect.Effect<never, JobCanceled | JobLeaseLost> =>
-  isJobCancellationRequested(database, job.id, workerId) ? new JobCanceled() : new JobLeaseLost();
+  isJobCancellationRequested(database, job.id, workerId, job.attemptCount)
+    ? new JobCanceled()
+    : new JobLeaseLost();
 
 const persistFailure = Effect.fn("JobWorker.persistFailure")(function* (
   database: Database,
-  cleanup: JobCleanup["Service"],
   job: Job,
   workerId: string,
   error: JobProcessorError,
 ) {
-  if (isJobCancellationRequested(database, job.id, workerId)) {
-    return yield* persistCancellation(database, cleanup, job, workerId);
+  if (isJobCancellationRequested(database, job.id, workerId, job.attemptCount)) {
+    return yield* persistCancellation(database, job, workerId);
   }
   const now = yield* Clock.currentTimeMillis;
-  const failed = failJob(database, {
-    errorCode: error.code,
-    errorJson: JSON.stringify({ message: error.message, details: error.details }),
+  const failed = transitionJob(database, {
     jobId: job.id,
     now,
-    workerId,
+    command: failureCommand(job, workerId, error),
   });
   if (failed === undefined) return;
-  yield* cleanup.cleanup(failed);
 });
 
 const persistCancellation = Effect.fn("JobWorker.persistCancellation")(function* (
   database: Database,
-  cleanup: JobCleanup["Service"],
   job: Job,
   workerId: string,
 ) {
   const now = yield* Clock.currentTimeMillis;
-  const canceled = cancelClaimedJob(database, { jobId: job.id, now, workerId });
+  const canceled = transitionJob(database, {
+    jobId: job.id,
+    now,
+    command: { type: "confirm-canceled", workerId, attempt: job.attemptCount },
+  });
   if (canceled === undefined) return;
-  yield* cleanup.cleanup(canceled);
 });
+
+const failureCommand = (
+  job: Job,
+  workerId: string,
+  error: JobProcessorError,
+): JobTransitionCommand => {
+  const fence = { workerId, attempt: job.attemptCount };
+  if (error.code === "OUTPUT_SIZE_LIMIT_EXCEEDED") {
+    const details = Schema.decodeUnknownSync(
+      Schema.Struct({ actualBytes: Schema.Int, limitBytes: Schema.Int }),
+    )(error.details);
+    return { type: "output-limit-exceeded", ...fence, ...details };
+  }
+  return {
+    type: "fail",
+    ...fence,
+    code: error.code,
+    details: error.details,
+    message: error.message,
+  };
+};

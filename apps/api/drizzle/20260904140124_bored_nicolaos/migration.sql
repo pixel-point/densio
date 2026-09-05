@@ -1,0 +1,1 @@
+ALTER TABLE `artifacts` ADD `organization_id` text NOT NULL REFERENCES organizations(id);

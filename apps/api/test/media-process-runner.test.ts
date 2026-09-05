@@ -53,34 +53,89 @@ describe("media process runner", () => {
 
   it("keeps a permit until an interrupted process exits", async () => {
     const logPath = await createLogPath();
-    const startedAt = Date.now();
     const program = Effect.gen(function* () {
       const runner = yield* MediaProcessRunner;
       const fiber = yield* Effect.forkChild(
         runner.run({
-          ...command(logPath, "400", "0"),
-          arguments: [fixturePath, logPath, "400", "0", "", "ignore-term"],
+          ...command(logPath, "30000", "0"),
+          arguments: [fixturePath, logPath, "30000", "0", "", "ignore-term"],
         }),
       );
       yield* waitForProcessStart(logPath);
       const firstPid = (yield* readProcessEvents(logPath))[0]?.pid;
       if (firstPid === undefined) return yield* Effect.die("First child PID was not recorded");
       yield* Fiber.interrupt(fiber);
-      const interruptedAfterMs = Date.now() - startedAt;
+      expect(() => process.kill(firstPid, 0)).toThrow();
       yield* runner.run({
         ...command(logPath, "0", "0"),
         arguments: [fixturePath, logPath, "0", "0", "", "default", String(firstPid)],
       });
 
-      return { interruptedAfterMs, events: yield* readProcessEvents(logPath) };
+      return { events: yield* readProcessEvents(logPath) };
     }).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 1, forceKillAfterMs: 25 })));
 
     const result = await Effect.runPromise(program);
 
-    expect(result.interruptedAfterMs).toBeLessThan(250);
     expect(result.events.map(({ event }) => event)).toEqual(["start", "start", "end"]);
     expect(result.events[1]?.peerAlive).toBe(false);
   });
+
+  it("streams FFmpeg progress records without leaking protocol text into stdout", async () => {
+    const logPath = await createLogPath();
+    const records: Array<unknown> = [];
+    const progress = [
+      "frame=10",
+      "out_time_us=2000000",
+      "speed=2x",
+      "progress=continue",
+      "diagnostic=keep",
+      "frame=20",
+      "out_time_us=4000000",
+      "progress=end",
+      "",
+    ].join("\n");
+    const result = await Effect.runPromise(
+      MediaProcessRunner.use((runner) =>
+        runner.run({
+          ...command(logPath, "0", "0"),
+          arguments: [fixturePath, logPath, "0", "0", "", "default", "", progress],
+          progressObserver: (record) => records.push(record),
+        }),
+      ).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 1 }))),
+    );
+
+    expect(records).toEqual([
+      { frame: 10, outTimeSeconds: 2, progress: "continue", speed: 2 },
+      { frame: 20, outTimeSeconds: 4, progress: "end" },
+    ]);
+    expect(result.stdout).toBe("diagnostic=keep\n");
+    expect(result.stdout).not.toContain("out_time_us");
+  });
+});
+
+it("waits for child process exit when the runner's owning scope closes", async () => {
+  const logPath = await createLogPath();
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const runner = yield* MediaProcessRunner;
+      const fiber = yield* Effect.forkDetach(
+        runner.run(command(logPath, "30000", "0", "", "ignore-term")),
+      );
+      yield* waitForProcessStart(logPath);
+      return { fiber, pid: (yield* readProcessEvents(logPath))[0]?.pid };
+    }).pipe(Effect.provide(MediaProcessRunner.layer({ concurrency: 1, forceKillAfterMs: 25 }))),
+  );
+  if (result.pid === undefined) throw new Error("Child PID was not recorded");
+  const wasAlive = (() => {
+    try {
+      process.kill(result.pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  await Effect.runPromise(Fiber.interrupt(result.fiber));
+  expect(wasAlive).toBe(false);
 });
 
 const createLogPath = async () => {

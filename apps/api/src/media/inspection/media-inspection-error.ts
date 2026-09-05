@@ -16,6 +16,7 @@ export class MediaInspectionError extends Schema.TaggedErrorClass<MediaInspectio
       "invalid-video-metadata",
       "missing-required-encoder",
       "no-video-stream",
+      "output-bit-depth-mismatch",
       "truncated-process-output",
     ]),
   },

@@ -4,6 +4,7 @@ import { Schema } from "effect";
 export class ApiProblem extends Schema.TaggedErrorClass<ApiProblem>()("ApiProblem", {
   code: Schema.String,
   detail: Schema.String,
+  details: Schema.optionalKey(Schema.Json),
   jobId: Schema.NullOr(Schema.String),
   retryable: Schema.Boolean,
   status: Schema.Number,
@@ -14,6 +15,7 @@ export class ApiProblem extends Schema.TaggedErrorClass<ApiProblem>()("ApiProble
 interface ProblemInput {
   readonly code: string;
   readonly detail: string;
+  readonly details?: Schema.Json;
   readonly jobId?: string;
   readonly retryable: boolean;
   readonly status: number;
@@ -54,6 +56,7 @@ export const toProblemDetails = (problem: ApiProblem, correlationId: string): Pr
   code: problem.code,
   correlationId,
   detail: problem.detail,
+  ...(problem.details === undefined ? {} : { details: problem.details }),
   retryable: problem.retryable,
   schemaVersion: 1,
   status: problem.status,

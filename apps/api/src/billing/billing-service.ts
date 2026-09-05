@@ -1,28 +1,20 @@
 import { Context, Effect } from "effect";
-import type Stripe from "stripe";
-import type { PaidPlan } from "@densio/shared";
-
 import type { Database } from "../database/database.ts";
+import { organizationFailure } from "../organizations/organization-errors.ts";
+import { organizationStorage } from "../organizations/organization-service.ts";
+import { BillingWebhookUnmatched } from "./billing-errors.ts";
 import {
-  BillingCustomerNotFound,
-  BillingStorageError,
-  BillingUserNotFound,
-  BillingWebhookUnmatched,
-  type InvalidStripeWebhook,
-  type StripeGatewayError,
-} from "./billing-errors.ts";
-import {
-  type EffectiveBillingEntitlement,
   type BillingPriceIds,
-  findBillingAccount,
   findEffectiveBillingEntitlement,
   grantAdminPro,
   listAdminProGrants,
   processBillingWebhook,
-  type ProGrant,
   revokeAdminPro,
 } from "./billing-repository.ts";
-import { type HostedStripeSession, type StripeGateway } from "./stripe-gateway.ts";
+import type { StripeGateway } from "./stripe-gateway.ts";
+import { makeOrganizationCheckout } from "./organization-checkout.ts";
+import { makeOrganizationBillingControl } from "./organization-billing-control.ts";
+import { reconcileSubscription } from "./subscription-reconciliation.ts";
 
 export interface BillingConfig {
   readonly checkoutCancelUrl: string;
@@ -32,191 +24,63 @@ export interface BillingConfig {
   readonly webhookSecret: string;
 }
 
-export interface BillingServiceDefinition {
-  readonly createCheckout: (input: {
-    readonly config: BillingConfig;
-    readonly plan: PaidPlan;
-    readonly userId: string;
-  }) => Effect.Effect<
-    HostedStripeSession,
-    BillingStorageError | BillingUserNotFound | StripeGatewayError
-  >;
-  readonly createPortal: (input: {
-    readonly config: BillingConfig;
-    readonly userId: string;
-  }) => Effect.Effect<
-    HostedStripeSession,
-    BillingCustomerNotFound | BillingStorageError | BillingUserNotFound | StripeGatewayError
-  >;
-  readonly getEntitlement: (input: {
-    readonly now: number;
-    readonly priceIds: BillingPriceIds;
-    readonly userId: string;
-  }) => Effect.Effect<EffectiveBillingEntitlement, BillingStorageError | BillingUserNotFound>;
-  readonly grantPro: (input: {
-    readonly grantedBy: string;
-    readonly now: number;
-    readonly userId: string;
-  }) => Effect.Effect<{ readonly created: boolean }, BillingStorageError | BillingUserNotFound>;
-  readonly handleWebhook: (input: {
-    readonly config: BillingConfig;
-    readonly now: number;
-    readonly rawBody: string | Uint8Array;
-    readonly signature: string;
-  }) => Effect.Effect<
-    { readonly processed: boolean },
-    BillingStorageError | BillingWebhookUnmatched | InvalidStripeWebhook | StripeGatewayError
-  >;
-  readonly listProGrants: () => Effect.Effect<ReadonlyArray<ProGrant>, BillingStorageError>;
-  readonly revokePro: (input: {
-    readonly now: number;
-    readonly userId: string;
-  }) => Effect.Effect<{ readonly revoked: number }, BillingStorageError | BillingUserNotFound>;
-}
+const createBillingService = (
+  database: Database,
+  gateway: StripeGateway["Service"],
+  now: () => number,
+) => ({
+  ...makeOrganizationBillingControl(database, gateway, now),
+  createCheckout: makeOrganizationCheckout(database, gateway, now),
+  getEntitlement: (input: Parameters<typeof findEffectiveBillingEntitlement>[1]) =>
+    organizationStorage("get-entitlement", () => {
+      const entitlement = findEffectiveBillingEntitlement(database, input);
+      if (entitlement === undefined)
+        throw organizationFailure("ORGANIZATION_NOT_FOUND", "Organization not found.");
+      return entitlement;
+    }),
+  grantPro: (input: Parameters<typeof grantAdminPro>[1]) =>
+    organizationStorage("grant-pro", () => {
+      const outcome = grantAdminPro(database, input);
+      if (outcome.kind === "organization-missing")
+        throw organizationFailure("ORGANIZATION_NOT_FOUND", "Organization not found.");
+      return { created: outcome.created };
+    }),
+  revokePro: (input: Parameters<typeof revokeAdminPro>[1]) =>
+    organizationStorage("revoke-pro", () => ({ revoked: revokeAdminPro(database, input) })),
+  listProGrants: () => organizationStorage("list-pro-grants", () => listAdminProGrants(database)),
+  handleWebhook: makeWebhookHandler(database, gateway),
+});
 
+export type BillingServiceDefinition = ReturnType<typeof createBillingService>;
 export class BillingService extends Context.Service<BillingService, BillingServiceDefinition>()(
   "densio/billing/BillingService",
 ) {}
+export const makeBillingService = (
+  database: Database,
+  gateway: StripeGateway["Service"],
+  now: () => number = Date.now,
+) => BillingService.of(createBillingService(database, gateway, now));
 
-type StripeGatewayService = StripeGateway["Service"];
-
-export const makeBillingService = (database: Database, stripeGateway: StripeGatewayService) => {
-  const createCheckout = Effect.fn("BillingService.createCheckout")(function* (input: {
-    readonly config: BillingConfig;
-    readonly plan: PaidPlan;
-    readonly userId: string;
-  }) {
-    const account = yield* findAccount(database, input.userId);
-    return yield* stripeGateway.createCheckoutSession(
-      buildCheckoutParams(account, input.config, input.plan),
-    );
-  });
-
-  const createPortal = Effect.fn("BillingService.createPortal")(function* (input: {
-    readonly config: BillingConfig;
-    readonly userId: string;
-  }) {
-    const account = yield* findAccount(database, input.userId);
-    if (account.customerId === null) {
-      return yield* new BillingCustomerNotFound({ userId: input.userId });
-    }
-    return yield* stripeGateway.createPortalSession({
-      customer: account.customerId,
-      return_url: input.config.portalReturnUrl,
-    });
-  });
-
-  const handleWebhook = makeWebhookHandler(database, stripeGateway);
-
-  const grantPro = Effect.fn("BillingService.grantPro")(function* (input: {
-    readonly grantedBy: string;
-    readonly now: number;
-    readonly userId: string;
-  }) {
-    const outcome = yield* tryStorage("grant-pro", () => grantAdminPro(database, input));
-    if (outcome.kind === "user-missing") {
-      return yield* new BillingUserNotFound({ userId: input.userId });
-    }
-    return { created: outcome.created };
-  });
-
-  const revokePro = Effect.fn("BillingService.revokePro")(function* (input: {
-    readonly now: number;
-    readonly userId: string;
-  }) {
-    yield* findAccount(database, input.userId);
-    const revoked = yield* tryStorage("revoke-pro", () => revokeAdminPro(database, input));
-    return { revoked };
-  });
-
-  const listProGrants = Effect.fn("BillingService.listProGrants")(function* () {
-    return yield* tryStorage("list-pro-grants", () => listAdminProGrants(database));
-  });
-
-  const getEntitlement = Effect.fn("BillingService.getEntitlement")(function* (input: {
-    readonly now: number;
-    readonly priceIds: BillingPriceIds;
-    readonly userId: string;
-  }) {
-    const entitlement = yield* tryStorage("get-entitlement", () =>
-      findEffectiveBillingEntitlement(database, input),
-    );
-    if (entitlement === undefined) {
-      return yield* new BillingUserNotFound({ userId: input.userId });
-    }
-    return entitlement;
-  });
-
-  return BillingService.of({
-    createCheckout,
-    createPortal,
-    getEntitlement,
-    grantPro,
-    handleWebhook,
-    listProGrants,
-    revokePro,
-  });
-};
-
-const makeWebhookHandler = (database: Database, stripeGateway: StripeGatewayService) =>
-  Effect.fn("BillingService.handleWebhook")(function* (input: {
+const makeWebhookHandler = (database: Database, gateway: StripeGateway["Service"]) =>
+  Effect.fn("Billing.handleWebhook")(function* (input: {
     readonly config: BillingConfig;
     readonly now: number;
     readonly rawBody: string | Uint8Array;
     readonly signature: string;
   }) {
-    const event = yield* stripeGateway.parseWebhook({
+    const event = yield* gateway.parseWebhook({
       rawBody: input.rawBody,
       signature: input.signature,
       webhookSecret: input.config.webhookSecret,
     });
-    const billingEvent =
-      event.kind === "subscription-sync"
-        ? {
-            ...(yield* stripeGateway.retrieveSubscription(event.subscriptionId)),
-            eventId: event.eventId,
-            kind: "subscription-upsert" as const,
-          }
-        : event;
-    const outcome = yield* tryStorage("process-webhook", () =>
-      processBillingWebhook(database, billingEvent, input.now),
-    );
-    if (outcome.kind === "unmatched") {
-      return yield* new BillingWebhookUnmatched({ eventId: billingEvent.eventId });
+    if (event.kind === "subscription-sync") {
+      const outcome = yield* reconcileSubscription(database, gateway, { ...event, now: input.now });
+      return { processed: outcome.kind === "processed" };
     }
+    const outcome = yield* organizationStorage("process-webhook", () =>
+      processBillingWebhook(database, event, input.now),
+    );
+    if (outcome.kind === "unmatched")
+      return yield* new BillingWebhookUnmatched({ eventId: event.eventId });
     return { processed: outcome.kind === "processed" };
   });
-
-const findAccount = Effect.fn("BillingService.findAccount")(function* (
-  database: Database,
-  userId: string,
-) {
-  const account = yield* tryStorage("find-account", () => findBillingAccount(database, userId));
-  if (account === undefined) return yield* new BillingUserNotFound({ userId });
-  return account;
-});
-
-const tryStorage = Effect.fn("BillingService.tryStorage")(
-  <Value>(operation: string, evaluate: () => Value) =>
-    Effect.try({
-      catch: (cause) => new BillingStorageError({ cause, operation }),
-      try: evaluate,
-    }),
-);
-
-const buildCheckoutParams = (
-  account: { readonly customerId: string | null; readonly email: string; readonly userId: string },
-  config: BillingConfig,
-  plan: PaidPlan,
-): Stripe.Checkout.SessionCreateParams => ({
-  cancel_url: config.checkoutCancelUrl,
-  client_reference_id: account.userId,
-  ...(account.customerId === null
-    ? { customer_email: account.email }
-    : { customer: account.customerId }),
-  line_items: [{ price: config.priceIds[plan], quantity: 1 }],
-  metadata: { userId: account.userId },
-  mode: "subscription",
-  subscription_data: { metadata: { userId: account.userId } },
-  success_url: config.checkoutSuccessUrl,
-});

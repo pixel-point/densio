@@ -11,7 +11,7 @@ interface PollingOptions<Response, Value> {
   readonly interruptedError: () => Error;
   readonly isRetryableFailure: (cause: unknown) => boolean;
   readonly maximumTransientFailures?: number;
-  readonly poll: () => Promise<Response>;
+  readonly poll: (signal: AbortSignal) => Promise<Response>;
   readonly runtime: Pick<CliRuntime, "now" | "signal" | "sleep">;
   readonly timeoutError: () => Error;
 }
@@ -19,49 +19,98 @@ interface PollingOptions<Response, Value> {
 export const pollUntilComplete = async <Response, Value>(
   options: PollingOptions<Response, Value>,
 ) => {
-  const maximumTransientFailures = options.maximumTransientFailures ?? 3;
-  let delayMilliseconds = options.initialDelayMilliseconds;
-  let transientFailures = 0;
-  while (options.deadlineAt === undefined || options.runtime.now() < options.deadlineAt) {
-    await sleepAbortably(options.runtime, delayMilliseconds, options.interruptedError);
-    if (options.deadlineAt !== undefined && options.runtime.now() >= options.deadlineAt) break;
-    const response = await options.poll().catch((cause: unknown) => {
-      if (options.runtime.signal?.aborted === true) throw options.interruptedError();
-      if (!options.isRetryableFailure(cause) || transientFailures >= maximumTransientFailures) {
-        throw cause;
-      }
-      transientFailures += 1;
-      return undefined;
-    });
-    if (response === undefined) {
-      delayMilliseconds = 1_000 * 2 ** (transientFailures - 1);
-      continue;
-    }
-    transientFailures = 0;
-    const decision = options.decide(response);
-    if (decision.kind === "complete") return decision.value;
-    delayMilliseconds = decision.delayMilliseconds;
+  const deadline = new AbortController();
+  const signal = AbortSignal.any([
+    deadline.signal,
+    ...(options.runtime.signal ? [options.runtime.signal] : []),
+  ]);
+  const stopTimer = scheduleDeadline(options.deadlineAt, options.runtime.now, deadline);
+  const stopped = () =>
+    options.runtime.signal?.aborted ? options.interruptedError() : options.timeoutError();
+  try {
+    return await runPolling(options, signal, stopped);
+  } finally {
+    stopTimer();
   }
-  throw options.timeoutError();
 };
 
-const sleepAbortably = (
-  runtime: Pick<CliRuntime, "signal" | "sleep">,
-  milliseconds: number,
-  interruptedError: () => Error,
+const runPolling = async <Response, Value>(
+  options: PollingOptions<Response, Value>,
+  signal: AbortSignal,
+  stopped: () => Error,
 ) => {
-  if (runtime.signal === undefined) return runtime.sleep(milliseconds);
-  if (runtime.signal.aborted) return Promise.reject(interruptedError());
-  const signal = runtime.signal;
-  return new Promise<void>((resolve, reject) => {
-    const abort = () => {
-      signal.removeEventListener("abort", abort);
-      reject(interruptedError());
-    };
+  const remaining = () =>
+    options.deadlineAt === undefined ? Infinity : options.deadlineAt - options.runtime.now();
+  let delay = options.initialDelayMilliseconds;
+  let failures = 0;
+  while (!signal.aborted && remaining() > 0) {
+    await abortably(
+      () => options.runtime.sleep(Math.min(delay, remaining()), signal),
+      signal,
+      stopped,
+    );
+    if (signal.aborted || remaining() <= 0) break;
+    const response = await abortably(() => options.poll(signal), signal, stopped).catch(
+      (cause: unknown) => {
+        if (signal.aborted || remaining() <= 0) throw stopped();
+        if (
+          !options.isRetryableFailure(cause) ||
+          failures >= (options.maximumTransientFailures ?? 3)
+        )
+          throw cause;
+        failures += 1;
+        return undefined;
+      },
+    );
+    if (signal.aborted || remaining() <= 0) break;
+    if (response === undefined) {
+      delay = 1_000 * 2 ** (failures - 1);
+      continue;
+    }
+    failures = 0;
+    const decision = options.decide(response);
+    if (decision.kind === "complete") return decision.value;
+    delay = decision.delayMilliseconds;
+  }
+  throw stopped();
+};
+
+const abortably = <Value>(
+  action: () => Promise<Value>,
+  signal: AbortSignal,
+  stopped: () => Error,
+) => {
+  if (signal.aborted) return Promise.reject(stopped());
+  return new Promise<Value>((resolve, reject) => {
+    const abort = () => reject(stopped());
     signal.addEventListener("abort", abort, { once: true });
-    void runtime.sleep(milliseconds).then(() => {
-      signal.removeEventListener("abort", abort);
-      resolve();
-    }, reject);
+    void Promise.resolve()
+      .then(() => {
+        if (signal.aborted) throw stopped();
+        return action();
+      })
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
   });
+};
+
+const scheduleDeadline = (
+  deadlineAt: number | undefined,
+  now: () => number,
+  controller: AbortController,
+) => {
+  if (deadlineAt === undefined) return () => undefined;
+  // Node timers overflow above 2^31-1 ms; long waits recheck instead of expiring early.
+  let timer: ReturnType<typeof setTimeout>;
+  const schedule = () => {
+    const remaining = deadlineAt - now();
+    if (remaining <= 0) {
+      controller.abort();
+      return;
+    }
+    timer = setTimeout(schedule, Math.min(remaining, 2_147_483_647));
+    timer.unref();
+  };
+  schedule();
+  return () => clearTimeout(timer);
 };

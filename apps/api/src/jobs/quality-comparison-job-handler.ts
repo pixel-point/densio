@@ -1,13 +1,14 @@
 import {
-  CompareQualityOptionsSchema,
-  type ArtifactMetadata,
-  type CompareQualityOptions,
+  ResolvedCompareQualityOptionsSchema,
+  type ArtifactReceipt,
+  type ResolvedCompareQualityOptions,
 } from "@densio/shared";
 import { Effect, Schema } from "effect";
 
+import { compressionCreditUnits } from "../billing/compression-credit-cost.ts";
 import { validateMediaEntitlements } from "../media/inspection/media-entitlement-check.ts";
-import type { MediaInspector } from "../media/inspection/media-inspector.ts";
 import { MediaProcessRunner } from "../media/process/media-process-runner.ts";
+import { resolveVideoDimensions } from "../media/video-filter.ts";
 import {
   type QualityComparisonVariantResult,
   runQualityComparisonWorkflow,
@@ -22,11 +23,11 @@ import {
   inspectJob,
   invalidJobResult,
   meteredAnalysis,
+  type JobMediaInspector,
   type MediaJobHandler,
   type MediaJobHandlerContext,
   positiveDurationSchema,
   prepareJobExecution,
-  sanitizeCommands,
   validateJobResult,
 } from "./media-job-handler-support.ts";
 import type { Job } from "./job-worker.ts";
@@ -35,15 +36,11 @@ const QualityComparisonAnalysisSchema = Schema.Struct({
   ...analysisIdentityFields,
   durationSeconds: positiveDurationSchema,
   kind: Schema.Literal("compare-quality"),
-  resolvedFrameTimestampSeconds: Schema.NullOr(
-    Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
-  ),
 });
 type QualityComparisonAnalysis = typeof QualityComparisonAnalysisSchema.Type;
-
 export const makeQualityComparisonJobHandler = (
   context: MediaJobHandlerContext,
-): MediaJobHandler => ({
+): MediaJobHandler<typeof QualityComparisonAnalysisSchema.Type> => ({
   analyze: Effect.fn("QualityComparisonJobHandler.analyze")((job) => analyze(context, job)),
   process: Effect.fn("QualityComparisonJobHandler.process")((job, analysis) =>
     process(context, job, analysis),
@@ -55,70 +52,80 @@ const analyze = Effect.fn("QualityComparisonJobHandler.inspect")(function* (
   job: Job,
 ) {
   const options = yield* decodeJobOptions(
-    CompareQualityOptionsSchema,
-    job.optionsJson,
+    ResolvedCompareQualityOptionsSchema,
+    job.resolvedOptionsJson,
     "quality comparison",
   );
-  const analysis = yield* inspectJob(context, job, (inspector, inputFile) =>
+  const inspection = yield* inspectJob(context, job, (inspector, inputFile) =>
     inspectComparison(inspector, job, inputFile, options),
   );
-  return meteredAnalysis(analysis);
+  return meteredAnalysis(inspection.analysis, inspection.creditUnits);
 });
 
 const inspectComparison = Effect.fn("QualityComparisonJobHandler.inspectMedia")(function* (
-  inspector: MediaInspector["Service"],
+  inspector: JobMediaInspector,
   job: Job,
   inputFile: string,
-  options: CompareQualityOptions,
+  options: ResolvedCompareQualityOptions,
 ) {
   const media = yield* inspector.inspect(inputFile);
-  yield* validateMediaEntitlements(media, [options.codec], entitlementsFor(job));
-  const resolvedFrameTimestampSeconds =
-    options.position?.kind === "frame"
-      ? yield* inspector.resolveFrameTimestamp(
-          inputFile,
-          options.position.frame,
-          media.videoStreamIndex,
-        )
-      : null;
+  yield* validateMediaEntitlements(
+    media,
+    [...new Set(options.variants.map(({ codec }) => codec))],
+    entitlementsFor(job),
+  );
+  const samples = options.samples;
+  const aggregateDurationSeconds = samples.reduce(
+    (total, sample) => total + sample.actualSampleDurationSeconds,
+    0,
+  );
   return {
-    attempt: job.attemptCount,
-    durationSeconds: media.durationSeconds,
-    jobId: job.id,
-    kind: "compare-quality",
-    resolvedFrameTimestampSeconds,
-    source: media.displayDimensions,
-  } satisfies QualityComparisonAnalysis;
+    analysis: {
+      attempt: job.attemptCount,
+      durationSeconds: media.durationSeconds,
+      jobId: job.id,
+      kind: "compare-quality",
+      source: media.displayDimensions,
+    } satisfies QualityComparisonAnalysis,
+    creditUnits: compressionCreditUnits({
+      codecCount: options.variants.length,
+      durationSeconds: aggregateDurationSeconds,
+      output: resolveVideoDimensions(media.displayDimensions, options.transform),
+      source: media.displayDimensions,
+    }),
+  };
 });
 
 const process = Effect.fn("QualityComparisonJobHandler.execute")(function* (
   context: MediaJobHandlerContext,
   job: Job,
-  input: Schema.Json,
+  input: typeof QualityComparisonAnalysisSchema.Type,
 ) {
   const analysis = yield* decodeJobAnalysis(QualityComparisonAnalysisSchema, input);
   assertCurrentAnalysis(job, analysis);
   const options = yield* decodeJobOptions(
-    CompareQualityOptionsSchema,
-    job.optionsJson,
+    ResolvedCompareQualityOptionsSchema,
+    job.resolvedOptionsJson,
     "quality comparison",
   );
   const { paths, recordingRunner } = yield* prepareJobExecution(context, job);
-  const workflow = yield* runQualityComparisonWorkflow({
-    codec: options.codec,
-    crfs: options.crfs,
-    executable: context.config.ffmpegPath,
-    paths,
-    source: analysis.source,
-    sourceDurationSeconds: analysis.durationSeconds,
-    ...(options.durationSeconds === undefined ? {} : { durationSeconds: options.durationSeconds }),
-    ...(options.position === undefined ? {} : { position: options.position }),
-    ...(analysis.resolvedFrameTimestampSeconds === null
-      ? {}
-      : { resolvedFrameTimestampSeconds: analysis.resolvedFrameTimestampSeconds }),
-    ...(options.transform === undefined ? {} : { transform: options.transform }),
-  }).pipe(Effect.provideService(MediaProcessRunner, recordingRunner));
-  const outputs = workflow.variants.flatMap((variant) => [variant.preview, variant.still]);
+  const workflow = yield* executeWorkflow(context, options, analysis, paths).pipe(
+    Effect.provideService(MediaProcessRunner, recordingRunner),
+  );
+  const dimensions = resolveVideoDimensions(analysis.source, options.transform);
+  const sampleDurationSeconds = workflow.samples.reduce(
+    (total, sample) => total + sample.actualSampleDurationSeconds,
+    0,
+  );
+  const outputs = workflow.variants.flatMap((variant) => [
+    {
+      ...variant.preview,
+      durationSeconds: sampleDurationSeconds,
+      height: dimensions.height,
+      width: dimensions.width,
+    },
+    { ...variant.still, height: dimensions.height, width: dimensions.width },
+  ]);
   const published = yield* publishAndRegisterArtifacts(
     context.database,
     context.config,
@@ -131,17 +138,30 @@ const process = Effect.fn("QualityComparisonJobHandler.execute")(function* (
     buildComparisonVariant(byFilename, variant),
   );
   return yield* validateJobResult({
-    actualSampleDurationSeconds: workflow.actualSampleDurationSeconds,
-    codec: workflow.codec,
-    commands: sanitizeCommands(workflow.commands),
+    decision: workflow.decision,
     kind: "compare-quality",
-    normalizedStartSeconds: workflow.normalizedStartSeconds,
+    samples: workflow.samples,
     variants,
   });
 });
 
+const executeWorkflow = (
+  context: MediaJobHandlerContext,
+  options: ResolvedCompareQualityOptions,
+  analysis: QualityComparisonAnalysis,
+  paths: Parameters<typeof runQualityComparisonWorkflow>[0]["paths"],
+) =>
+  runQualityComparisonWorkflow({
+    probeExecutable: context.config.ffprobePath,
+    executable: context.config.ffmpegPath,
+    paths,
+    resolvedOptions: options,
+    source: analysis.source,
+    sourceDurationSeconds: analysis.durationSeconds,
+  });
+
 const buildComparisonVariant = Effect.fn("QualityComparisonJobHandler.buildVariant")(function* (
-  byFilename: ReadonlyMap<string, ArtifactMetadata>,
+  byFilename: ReadonlyMap<string, ArtifactReceipt>,
   variant: QualityComparisonVariantResult,
 ) {
   const preview = byFilename.get(variant.preview.artifactFilename);
@@ -150,11 +170,15 @@ const buildComparisonVariant = Effect.fn("QualityComparisonJobHandler.buildVaria
     return yield* invalidJobResult();
   }
   return {
+    codec: variant.codec,
     crf: variant.crf,
-    estimateBasis: "sample-bitrate-extrapolation" as const,
+    estimateBasis: "video-only-sample-bitrate-extrapolation" as const,
     estimatedFullVideoBytes: variant.estimatedFullVideoBytes,
-    preview: { ...preview, kind: "preview-video" as const },
+    metrics: variant.metrics,
+    paretoOptimal: variant.paretoOptimal,
+    previewArtifactId: preview.id,
     sampleBytes: variant.sampleBytes,
-    still: { ...still, kind: "preview-image" as const },
+    stillArtifactId: still.id,
+    variantId: variant.variantId,
   };
 });

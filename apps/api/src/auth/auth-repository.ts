@@ -18,6 +18,8 @@ import {
   verifyTokenSecret,
 } from "./opaque-token.ts";
 import type { MagicLinkSealer } from "./magic-link-secret.ts";
+import { provisionOrganization } from "../organizations/organization-provisioning.ts";
+import { findDefaultOrganizationId } from "../database/organization-membership-repository.ts";
 
 export interface AuthConfig {
   readonly accessTokenTtlMs: number;
@@ -44,6 +46,7 @@ export interface AuthenticatedTokens {
 }
 
 export interface AccessIdentity {
+  readonly defaultOrganizationId: string;
   readonly accessExpiresAt: number;
   readonly email: string;
   readonly sessionId: string;
@@ -116,11 +119,15 @@ export const createLoginChallenge = (
       transaction
         .insert(emailOutbox)
         .values({
-          challengeId: confirmationToken.publicId,
-          encryptedConfirmationUrl: input.sealMagicLink(confirmationUrl.toString(), {
+          resourceKey: `magic-login:${confirmationToken.publicId}`,
+          payloadJson: JSON.stringify({
+            kind: "magic-login",
             challengeId: confirmationToken.publicId,
-            emailId,
-            recipient: input.email,
+            encryptedConfirmationUrl: input.sealMagicLink(confirmationUrl.toString(), {
+              challengeId: confirmationToken.publicId,
+              emailId,
+              recipient: input.email,
+            }),
           }),
           createdAt: input.now,
           id: emailId,
@@ -240,9 +247,13 @@ export const findAccessIdentity = (
 
   const user = db.select().from(users).where(eq(users.id, session.userId)).get();
   if (user === undefined) return { kind: "invalid" };
+  const defaultOrganizationId = findDefaultOrganizationId(db, user.id);
+  if (defaultOrganizationId === undefined)
+    throw new Error("An authenticated identity has no active default organization.");
   return {
     kind: "authenticated",
     identity: {
+      defaultOrganizationId,
       accessExpiresAt: session.accessExpiresAt,
       email: user.email,
       sessionId: session.id,
@@ -372,6 +383,14 @@ const issueSession = (
       .insert(users)
       .values({ createdAt: input.now, email, id: userId, updatedAt: input.now })
       .run();
+    provisionOrganization(transaction, {
+      userId,
+      email,
+      now: input.now,
+      name: "My organization",
+      isDefault: true,
+      correlationId: `registration-${userId}`,
+    });
   }
 
   const accessToken = createOpaqueToken();

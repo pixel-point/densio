@@ -9,6 +9,38 @@ const outputPath = argv.at(-1);
 
 if (outputPath === undefined) process.exit(2);
 
+const writeMetricOutput = async () => {
+  const filterIndex = argv.indexOf("-lavfi");
+  const filter = filterIndex < 0 ? undefined : argv[filterIndex + 1];
+  if (filter === undefined || (!filter.startsWith("ssim=") && !filter.startsWith("psnr="))) {
+    return false;
+  }
+  const statsPath = filter.slice(filter.indexOf("stats_file=") + "stats_file=".length);
+  await mkdir(dirname(statsPath), { recursive: true });
+  await writeFile(statsPath, "metric-stats");
+  if (executableMode.includes("malformed-metrics")) {
+    process.stderr.write("deterministic malformed metric output");
+    return true;
+  }
+
+  const inputIndex = argv.indexOf("-i");
+  const previewPath = inputIndex < 0 ? "" : argv[inputIndex + 1];
+  if (executableMode.includes("require-preview-barrier")) {
+    const previews = (await readdir(dirname(previewPath))).filter((name) =>
+      name.startsWith("preview-"),
+    );
+    if (previews.length < 2) process.exit(11);
+  }
+  const crf = Number(/crf-(\d+)/.exec(previewPath)?.[1] ?? 0);
+  if (filter.startsWith("ssim=")) {
+    process.stderr.write(`SSIM Y:1 U:1 V:1 All:${1 - crf / 1000} (20)`);
+    return true;
+  }
+  const average = executableMode.includes("perfect-metrics") ? "inf" : String(50 - crf / 2);
+  process.stderr.write(`PSNR y:${average} u:${average} v:${average} average:${average}`);
+  return true;
+};
+
 const writeExtractionFrames = async () => {
   const frameDirectory = dirname(outputPath);
   await mkdir(frameDirectory, { recursive: true });
@@ -39,6 +71,9 @@ const writeSingleOutput = async () => {
   }
   if (executableMode.includes("require-concurrent-previews") && outputPath.includes("preview-")) {
     await waitForOutputPeers("preview-", 2);
+  }
+  if (executableMode.includes("require-preview-barrier") && outputPath.includes("preview-h265-")) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
   }
   if (executableMode.includes("require-concurrent-previews") && outputPath.endsWith(".jpg")) {
     await access(inputPath);
@@ -80,7 +115,9 @@ const waitForOutputPeers = async (prefix, count) => {
   process.exit(10);
 };
 
-if (outputPath.includes("%06d")) {
+if (await writeMetricOutput()) {
+  process.exit(0);
+} else if (outputPath.includes("%06d")) {
   await writeExtractionFrames();
 } else {
   await writeSingleOutput();

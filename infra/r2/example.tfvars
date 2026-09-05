@@ -1,0 +1,5 @@
+account_id   = "00000000000000000000000000000000"
+zone_id      = "00000000000000000000000000000000"
+environment  = "staging"
+media_domain = "media-staging.densio.sh"
+location     = "weur"

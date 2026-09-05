@@ -7,7 +7,7 @@ import { Effect, Schema } from "effect";
 import type { JobStoragePaths } from "../../storage/workspace.ts";
 import { resolveStagedFile } from "../../storage/workspace.ts";
 import { buildImageExtractionPlan } from "../image-extraction-plan.ts";
-import type { VideoDimensions } from "../video-filter.ts";
+import { resolveVideoDimensions, type VideoDimensions } from "../video-filter.ts";
 import { runWorkflowCommand, WorkflowCommandDiagnosticSchema } from "./workflow-command.ts";
 import {
   resetWorkflowStaging,
@@ -85,8 +85,13 @@ const executeImageExtractionWorkflow = Effect.fn("MediaWorkflow.executeImageExtr
 
   const format = options.format ?? "jpeg";
   const intervalSeconds = options.intervalSeconds ?? 1;
+  const archive = {
+    ...archiveOutput,
+    ...resolveVideoDimensions(options.source, options.transform),
+    durationSeconds: options.sourceDurationSeconds,
+  };
   const frameDirectory = yield* resolveStagedFile(options.paths, "frames");
-  const archivePath = yield* resolveStagedFile(options.paths, archiveOutput.stagedFilename);
+  const archivePath = yield* resolveStagedFile(options.paths, archive.stagedFilename);
   yield* workflowFileOperation("prepare-extraction-frames", () =>
     mkdir(frameDirectory, { recursive: true }),
   );
@@ -100,7 +105,13 @@ const executeImageExtractionWorkflow = Effect.fn("MediaWorkflow.executeImageExtr
     source: options.source,
     ...(options.transform === undefined ? {} : { transform: options.transform }),
   });
-  const command = yield* runWorkflowCommand(plan);
+  const command = yield* runWorkflowCommand(plan, {
+    filename: archive.artifactFilename,
+    index: 1,
+    phase: "encoding",
+    total: 1,
+    totalDurationSeconds: options.sourceDurationSeconds,
+  });
   const frames = yield* readExtractedFrames(frameDirectory, extension, intervalSeconds);
   if (frames.length === 0) {
     return yield* new MediaWorkflowOutputError({ message: "Image extraction produced no frames." });
@@ -124,7 +135,7 @@ const executeImageExtractionWorkflow = Effect.fn("MediaWorkflow.executeImageExtr
   );
 
   return {
-    archive: archiveOutput,
+    archive,
     commands: [command],
     imageCount: frames.length,
     intervalSeconds,

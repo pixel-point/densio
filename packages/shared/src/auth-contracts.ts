@@ -1,11 +1,6 @@
 import { Schema } from "effect";
 
-import {
-  IdentifierSchema,
-  IsoTimestampSchema,
-  PlanSchema,
-  PositiveFiniteSchema,
-} from "./common-contracts.ts";
+import { IdentifierSchema, IsoTimestampSchema, PositiveFiniteSchema } from "./common-contracts.ts";
 
 export const EmailAddressSchema = Schema.String.check(
   Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/),
@@ -47,7 +42,6 @@ export type AuthPollResponse = typeof AuthPollResponseSchema.Type;
 export const AuthUserSchema = Schema.Struct({
   id: IdentifierSchema,
   email: EmailAddressSchema,
-  plan: PlanSchema,
 });
 export type AuthUser = typeof AuthUserSchema.Type;
 
@@ -58,6 +52,7 @@ const AnonymousAuthStatusSchema = Schema.Struct({
 const AuthenticatedAuthStatusSchema = Schema.Struct({
   authenticated: Schema.Literal(true),
   user: AuthUserSchema,
+  defaultOrganizationId: IdentifierSchema,
   sessionExpiresAt: IsoTimestampSchema,
 });
 

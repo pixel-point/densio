@@ -1,21 +1,18 @@
+import { makeJobProcessor } from "./job-processor-fixture.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { eq } from "drizzle-orm";
-import { Deferred, Effect, Fiber, Schema } from "effect";
+import { Clock, Deferred, Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { afterEach, expect, it } from "vitest";
+import { onTestFinished, afterEach, expect, it } from "vitest";
 
 import { migrateDatabase, openDatabase, type Database } from "../src/database/database.ts";
-import {
-  claimNextJob,
-  completeJob,
-  createJob,
-  requestJobCancellation,
-  reserveJobCreditsAndMarkProcessing,
-} from "../src/database/job-repository.ts";
-import { jobs, users } from "../src/database/schema.ts";
+import { claimNextJob } from "../src/database/job-repository.ts";
+import { transitionJob } from "../src/database/job-transition-repository.ts";
+import { queueCanonicalJob } from "./job-fixture.ts";
+import { artifacts, jobCreditEntries, jobs, users } from "../src/database/schema.ts";
 import {
   JobCleanup,
   JobProcessor,
@@ -43,37 +40,22 @@ afterEach(async () => {
   );
 });
 
-it("fails before processing when the analyzed cost exceeds available credits", async () => {
+it("fails a planned job before encoding when trusted analysis diverges from its quote", async () => {
   const database = await createTestDatabase();
-  createJob(database, jobValues("spent", 10), { creditPeriodStart: 0, monthlyCredits: 30 });
-  claimNextJob(database, { leaseDurationMs: 100, now: 20, workerId: "setup-worker" });
-  reserveJobCreditsAndMarkProcessing(database, {
-    creditUnits: 2_995,
-    jobId: "spent",
-    leaseDurationMs: 100,
-    monthlyCreditUnits: 3_000,
-    now: 30,
-    workerId: "setup-worker",
-  });
-  completeJob(database, {
-    jobId: "spent",
-    now: 40,
-    resultJson: '{"kind":"compress"}',
-    workerId: "setup-worker",
-  });
-  createJob(database, jobValues("target", 50), { creditPeriodStart: 0, monthlyCredits: 30 });
+  queueCanonicalJob(database, { ...jobValues("planned", 10), quoteCreditUnits: 10 });
   const state = { processed: false };
-  const processor = JobProcessor.of({
-    analyze: () => Effect.succeed({ creditUnits: 10, data: null, kind: "ready" }),
+  const processor = makeJobProcessor({
+    analyze: () => Effect.succeed({ creditUnits: 5, data: null, kind: "ready" }),
     process: () => Effect.sync(() => (state.processed = true)),
   });
   const cleanup = JobCleanup.of({ cleanup: () => Effect.void });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* startJobWorker(database, workerOptions);
-        yield* waitUntil(() => readState(database, "target") === "failed");
+        yield* waitUntil(() => readState(database, "planned") === "failed");
         yield* worker.stop();
       }),
     ),
@@ -82,10 +64,61 @@ it("fails before processing when the analyzed cost exceeds available credits", a
   );
 
   expect(state.processed).toBe(false);
-  expect(database.db.select().from(jobs).where(eq(jobs.id, "target")).get()).toMatchObject({
-    errorCode: "CREDITS_EXHAUSTED",
+  expect(database.db.select().from(jobs).where(eq(jobs.id, "planned")).get()).toMatchObject({
+    errorCode: "PLAN_DIVERGED",
     state: "failed",
   });
+  expect(
+    database.db
+      .select({ kind: jobCreditEntries.kind, units: jobCreditEntries.units })
+      .from(jobCreditEntries)
+      .all(),
+  ).toEqual([
+    { kind: "hold", units: 10 },
+    { kind: "release", units: 10 },
+  ]);
+  database.close();
+});
+
+it("charges the exact reservation when the completed encode exceeds its output guard", async () => {
+  const database = await createTestDatabase();
+  queueCanonicalJob(database, jobValues("guarded", 10));
+  const processor = makeJobProcessor({
+    analyze: () => Effect.succeed(metered(null)),
+    process: () =>
+      Effect.fail(
+        new JobProcessorError({
+          code: "OUTPUT_SIZE_LIMIT_EXCEEDED",
+          details: { actualBytes: 20, limitBytes: 10 },
+          message: "The encoded outputs exceed the configured byte guard.",
+        }),
+      ),
+  });
+  const cleanup = JobCleanup.of({ cleanup: () => Effect.void });
+
+  await runWorkerTest(
+    database,
+    Effect.scoped(
+      Effect.gen(function* () {
+        const worker = yield* startJobWorker(database, workerOptions);
+        yield* waitUntil(() => readState(database, "guarded") === "failed");
+        yield* worker.stop();
+      }),
+    ),
+    cleanup,
+    processor,
+  );
+
+  expect(
+    database.db
+      .select({ kind: jobCreditEntries.kind, units: jobCreditEntries.units })
+      .from(jobCreditEntries)
+      .all(),
+  ).toEqual([
+    { kind: "hold", units: 5 },
+    { kind: "release", units: 5 },
+    { kind: "usage", units: 5 },
+  ]);
   database.close();
 });
 
@@ -93,7 +126,7 @@ it("claims oldest-first and transitions analyze to processing to success", async
   const database = await createTestDatabase();
   insertJobs(database, [jobValues("job-newer", 20), jobValues("job-older", 10)]);
   const events: Array<string> = [];
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: (job) =>
       Effect.sync(() => {
         events.push(`${job.id}:analyze:${readState(database, job.id)}`);
@@ -111,6 +144,7 @@ it("claims oldest-first and transitions analyze to processing to success", async
   });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* startJobWorker(database, workerOptions);
@@ -131,57 +165,12 @@ it("claims oldest-first and transitions analyze to processing to success", async
     "job-newer:cleanup",
   ]);
   expect(database.db.select().from(jobs).where(eq(jobs.id, "job-older")).get()).toMatchObject({
-    resultJson: '{"jobId":"job-older"}',
+    resultJson: JSON.stringify({
+      kind: "compress",
+      artifactIds: ["artifact-job-older"],
+      html: "<video></video>",
+    }),
     state: "succeeded",
-  });
-  database.close();
-});
-
-it("pauses for a durable decision before reserving processing work", async () => {
-  const database = await createTestDatabase();
-  insertJobs(database, [jobValues("job-decision", 10)]);
-  const events: Array<string> = [];
-  const decision = {
-    kind: "frame-rate",
-    recommended: { maximum: 30, mode: "cap" },
-    source: { denominator: 1, framesPerSecond: 60, numerator: 60 },
-  } as const;
-  const processor = JobProcessor.of({
-    analyze: () => Effect.succeed({ decision, kind: "decision-required" }),
-    process: () => Effect.sync(() => events.push("processed")),
-  });
-  const cleanup = JobCleanup.of({
-    cleanup: () => Effect.sync(() => events.push("cleaned")),
-  });
-
-  await runWorkerTest(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const worker = yield* startJobWorker(database, workerOptions);
-        yield* waitUntil(() => readState(database, "job-decision") === "awaiting-decision");
-        yield* worker.stop();
-      }),
-    ),
-    cleanup,
-    processor,
-  );
-
-  expect(database.db.select().from(jobs).where(eq(jobs.id, "job-decision")).get()).toMatchObject({
-    decisionJson: JSON.stringify(decision),
-    leaseExpiresAt: null,
-    leaseOwner: null,
-    progress: 5,
-    state: "awaiting-decision",
-  });
-  expect(database.sqlite.prepare("select outcome from job_attempts").get()).toEqual({
-    outcome: "decision-required",
-  });
-  expect(
-    claimNextJob(database, { leaseDurationMs: 100, now: 50, workerId: "another-worker" }),
-  ).toBeUndefined();
-  expect(events).toEqual([]);
-  expect(requestJobCancellation(database, "job-decision", "user-1", 60)).toMatchObject({
-    state: "canceled",
   });
   database.close();
 });
@@ -194,7 +183,7 @@ it("never processes more jobs than its configured concurrency", async () => {
   );
   const release = Effect.runSync(Deferred.make<void>());
   const state = { active: 0, maximum: 0 };
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: () => Effect.succeed(metered(null)),
     process: (job) =>
       Effect.gen(function* () {
@@ -207,6 +196,7 @@ it("never processes more jobs than its configured concurrency", async () => {
   const cleanup = JobCleanup.of({ cleanup: () => Effect.void });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* startJobWorker(database, { ...workerOptions, concurrency: 2 });
@@ -226,11 +216,49 @@ it("never processes more jobs than its configured concurrency", async () => {
   database.close();
 });
 
+it("assigns distinct lease owners to worker instances with the same configured id", async () => {
+  const database = await createTestDatabase();
+  insertJobs(database, [jobValues("job-first", 10), jobValues("job-second", 20)]);
+  const release = Effect.runSync(Deferred.make<void>());
+  const leaseOwners: Array<string | null> = [];
+  const processor = makeJobProcessor({
+    analyze: (job) =>
+      Effect.sync(() => {
+        leaseOwners.push(job.leaseOwner);
+        return metered(null);
+      }),
+    process: () => Deferred.await(release).pipe(Effect.as(null)),
+  });
+  const cleanup = JobCleanup.of({ cleanup: () => Effect.void });
+
+  await runWorkerTest(
+    database,
+    Effect.scoped(
+      Effect.gen(function* () {
+        const firstWorker = yield* startJobWorker(database, workerOptions);
+        yield* waitUntil(() => leaseOwners.length === 1);
+        const secondWorker = yield* startJobWorker(database, workerOptions);
+        yield* waitUntil(() => leaseOwners.length === 2);
+        expect(leaseOwners.every((owner) => owner?.startsWith("worker-test-"))).toBe(true);
+        expect(new Set(leaseOwners).size).toBe(2);
+        yield* Deferred.succeed(release, undefined);
+        yield* waitUntil(() => countState(database, "succeeded") === 2);
+        yield* firstWorker.stop();
+        yield* secondWorker.stop();
+      }),
+    ),
+    cleanup,
+    processor,
+  );
+
+  database.close();
+});
+
 it("persists typed processor failures and cleans up terminal work", async () => {
   const database = await createTestDatabase();
   insertJobs(database, [jobValues("job-failed", 10)]);
   const cleaned: Array<string> = [];
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: () => Effect.succeed(metered(null)),
     process: () =>
       Effect.fail(
@@ -246,6 +274,7 @@ it("persists typed processor failures and cleans up terminal work", async () => 
   });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* startJobWorker(database, workerOptions);
@@ -270,7 +299,7 @@ it("contains processor defects as terminal internal failures", async () => {
   const database = await createTestDatabase();
   insertJobs(database, [jobValues("job-defect", 10)]);
   const cleaned: Array<string> = [];
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: () => Effect.succeed(metered(null)),
     process: () => Effect.die("sensitive defect"),
   });
@@ -279,6 +308,7 @@ it("contains processor defects as terminal internal failures", async () => {
   });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* startJobWorker(database, workerOptions);
@@ -301,7 +331,7 @@ it("interrupts processing when cooperative cancellation is requested", async () 
   const database = await createTestDatabase();
   insertJobs(database, [jobValues("job-canceled", 10)]);
   const events: Array<string> = [];
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: () => Effect.succeed(metered(null)),
     process: () =>
       Effect.never.pipe(Effect.onInterrupt(() => Effect.sync(() => events.push("interrupted")))),
@@ -311,11 +341,12 @@ it("interrupts processing when cooperative cancellation is requested", async () 
   });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* startJobWorker(database, workerOptions);
         yield* waitUntil(() => readState(database, "job-canceled") === "processing");
-        requestJobCancellation(database, "job-canceled", "user-1", 5);
+        transitionJob(database, { jobId: "job-canceled", now: 5, command: { type: "cancel" } });
         yield* TestClock.adjust(workerOptions.heartbeatIntervalMs);
         yield* waitUntil(() => readState(database, "job-canceled") === "canceled");
         yield* worker.stop();
@@ -336,7 +367,7 @@ it("gives a cancellation request precedence over a simultaneous processor failur
   const database = await createTestDatabase();
   insertJobs(database, [jobValues("job-race", 10)]);
   const release = Effect.runSync(Deferred.make<void>());
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: () => Effect.succeed(metered(null)),
     process: () =>
       Deferred.await(release).pipe(
@@ -354,11 +385,12 @@ it("gives a cancellation request precedence over a simultaneous processor failur
   const cleanup = JobCleanup.of({ cleanup: () => Effect.void });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* startJobWorker(database, workerOptions);
         yield* waitUntil(() => readState(database, "job-race") === "processing");
-        requestJobCancellation(database, "job-race", "user-1", 5);
+        transitionJob(database, { jobId: "job-race", now: 5, command: { type: "cancel" } });
         yield* Deferred.succeed(release, undefined);
         yield* waitUntil(() => readState(database, "job-race") === "canceled");
         yield* worker.stop();
@@ -376,13 +408,14 @@ it("periodically renews the lease while a processor is active", async () => {
   const database = await createTestDatabase();
   insertJobs(database, [jobValues("job-heartbeat", 10)]);
   const release = Effect.runSync(Deferred.make<void>());
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: () => Effect.succeed(metered(null)),
     process: () => Deferred.await(release).pipe(Effect.as({ finished: true })),
   });
   const cleanup = JobCleanup.of({ cleanup: () => Effect.void });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* startJobWorker(database, workerOptions);
@@ -409,7 +442,7 @@ it("stops gracefully after active work without claiming another job", async () =
   insertJobs(database, [jobValues("job-active", 10), jobValues("job-waiting", 20)]);
   const release = Effect.runSync(Deferred.make<void>());
   const processed: Array<string> = [];
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: () => Effect.succeed(metered(null)),
     process: (job) =>
       Deferred.await(release).pipe(
@@ -420,6 +453,7 @@ it("stops gracefully after active work without claiming another job", async () =
   const cleanup = JobCleanup.of({ cleanup: () => Effect.void });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         const worker = yield* startJobWorker(database, workerOptions);
@@ -446,7 +480,7 @@ it("recovers expired leases before accepting new work", async () => {
   insertJobs(database, [jobValues("job-recovered", 10)]);
   claimNextJob(database, { leaseDurationMs: 10, now: 0, workerId: "dead-worker" });
   const attempts: Array<number> = [];
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: (job) =>
       Effect.sync(() => {
         attempts.push(job.attemptCount);
@@ -457,6 +491,7 @@ it("recovers expired leases before accepting new work", async () => {
   const cleanup = JobCleanup.of({ cleanup: () => Effect.void });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         yield* TestClock.setTime(20);
@@ -481,9 +516,9 @@ it("cleans up leases that recovery terminally fails or cancels", async () => {
   insertJobs(database, [jobValues("job-exhausted", 10), jobValues("job-aborted", 20)]);
   claimNextJob(database, { leaseDurationMs: 10, now: 0, workerId: "dead-worker-a" });
   claimNextJob(database, { leaseDurationMs: 10, now: 1, workerId: "dead-worker-b" });
-  requestJobCancellation(database, "job-aborted", "user-1", 5);
+  transitionJob(database, { jobId: "job-aborted", now: 5, command: { type: "cancel" } });
   const cleaned: Array<string> = [];
-  const processor = JobProcessor.of({
+  const processor = makeJobProcessor({
     analyze: () => Effect.succeed(metered(null)),
     process: () => Effect.succeed(null),
   });
@@ -492,6 +527,7 @@ it("cleans up leases that recovery terminally fails or cancels", async () => {
   });
 
   await runWorkerTest(
+    database,
     Effect.scoped(
       Effect.gen(function* () {
         yield* TestClock.setTime(20);
@@ -510,6 +546,7 @@ it("cleans up leases that recovery terminally fails or cancels", async () => {
 });
 
 const runWorkerTest = <Value>(
+  database: Database,
   effect: Effect.Effect<Value, never, JobCleanup | JobProcessor>,
   cleanup: JobCleanup["Service"],
   processor: JobProcessor["Service"],
@@ -517,7 +554,7 @@ const runWorkerTest = <Value>(
   Effect.runPromise(
     effect.pipe(
       Effect.provideService(JobCleanup, cleanup),
-      Effect.provideService(JobProcessor, processor),
+      Effect.provideService(JobProcessor, withPublishedOutput(database, processor)),
       Effect.provide(TestClock.layer()),
     ),
   );
@@ -534,6 +571,9 @@ const createTestDatabase = async () => {
   const directory = await mkdtemp(join(tmpdir(), "densio-worker-"));
   temporaryDirectories.push(directory);
   const database = openDatabase(join(directory, "database.sqlite"));
+  onTestFinished(() => {
+    if (database.sqlite.isOpen) database.close();
+  });
   migrateDatabase(database);
   database.db
     .insert(users)
@@ -542,10 +582,8 @@ const createTestDatabase = async () => {
   return database;
 };
 
-const insertJobs = (database: Database, values: ReadonlyArray<typeof jobs.$inferInsert>) => {
-  values.forEach((value) =>
-    createJob(database, value, { creditPeriodStart: 0, monthlyCredits: 30 }),
-  );
+const insertJobs = (database: Database, values: ReadonlyArray<ReturnType<typeof jobValues>>) => {
+  values.forEach((value) => queueCanonicalJob(database, value));
 };
 
 const readState = (database: Database, id: string) =>
@@ -564,10 +602,56 @@ const jobValues = (id: string, createdAt: number) => ({
   declaredBytes: 100,
   id,
   kind: "compress" as const,
-  optionsJson: "{}",
-  plan: "free" as const,
+  subscriptionPlan: "free" as const,
   sourceFilename: "input.mp4",
-  state: "queued" as const,
+  quoteCreditUnits: 5,
   updatedAt: createdAt,
-  userId: "user-1",
+  organizationId: "org-1",
+  createdByUserId: "user-1",
 });
+
+const withPublishedOutput = (database: Database, processor: JobProcessor["Service"]) =>
+  JobProcessor.of({
+    analyze: (initialJob) =>
+      processor.analyze(initialJob).pipe(
+        Effect.map((analysis) => ({
+          ...analysis,
+          process: (job: Job) =>
+            analysis.process(job).pipe(
+              Effect.andThen(
+                Effect.gen(function* () {
+                  const now = yield* Clock.currentTimeMillis;
+                  if (job.leaseOwner === null) return yield* Effect.die("Expected an active lease");
+                  transitionJob(database, {
+                    jobId: job.id,
+                    now,
+                    command: {
+                      type: "publishing",
+                      workerId: job.leaseOwner,
+                      attempt: job.attemptCount,
+                    },
+                  });
+                  const artifactId = `artifact-${job.id}`;
+                  database.db
+                    .insert(artifacts)
+                    .values({
+                      id: artifactId,
+                      organizationId: job.organizationId,
+                      jobId: job.id,
+                      createdAt: now,
+                      filename: "video.webm",
+                      kind: "video",
+                      mediaType: "video/webm",
+                      path: `/unused/${artifactId}`,
+                      sizeBytes: 5,
+                      sha256: "a".repeat(64),
+                      retainedUntil: now + 60_000,
+                    })
+                    .run();
+                  return { kind: "compress", artifactIds: [artifactId], html: "<video></video>" };
+                }),
+              ),
+            ),
+        })),
+      ),
+  });

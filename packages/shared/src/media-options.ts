@@ -1,7 +1,7 @@
+import { TrimRangeSchema, ResolvedTrimRangeSchema } from "./trim-range.ts";
 import { Schema } from "effect";
 
 import {
-  NonNegativeFiniteSchema,
   NonNegativeIntegerSchema,
   PositiveFiniteSchema,
   PositiveIntegerSchema,
@@ -14,16 +14,17 @@ export type { MediaCodec } from "./media-policy.ts";
 export const AudioModeSchema = Schema.Literals(["auto", "keep", "remove"]);
 export type AudioMode = typeof AudioModeSchema.Type;
 
+export const MediaBitDepthSchema = Schema.Literals([8, 10]).annotate({
+  description:
+    "Output bit depth for compression or quality comparison. Defaults to 8; 10-bit video is verified before publication.",
+});
+export type MediaBitDepth = typeof MediaBitDepthSchema.Type;
+
 export const FrameRatePolicySchema = Schema.Union([
   Schema.Struct({ mode: Schema.Literal("preserve") }),
   Schema.Struct({ maximum: Schema.Literal(30), mode: Schema.Literal("cap") }),
 ]);
 export type FrameRatePolicy = typeof FrameRatePolicySchema.Type;
-
-export const FrameRateDecisionRequestSchema = Schema.Struct({
-  frameRate: FrameRatePolicySchema,
-});
-export type FrameRateDecisionRequest = typeof FrameRateDecisionRequestSchema.Type;
 
 export const ImageFormatSchema = Schema.Literals(["jpeg", "png", "webp"]);
 export type ImageFormat = typeof ImageFormatSchema.Type;
@@ -90,6 +91,8 @@ const CompressionCrfSchema = Schema.Struct({
 });
 
 export const CompressionOptionsSchema = Schema.Struct({
+  bitDepth: Schema.optionalKey(MediaBitDepthSchema),
+  trim: Schema.optionalKey(TrimRangeSchema),
   codecs: Schema.optionalKey(
     Schema.UniqueArray(MediaCodecSchema).check(Schema.isMinLength(1), Schema.isMaxLength(3)),
   ),
@@ -100,57 +103,22 @@ export const CompressionOptionsSchema = Schema.Struct({
 });
 export type CompressionOptions = typeof CompressionOptionsSchema.Type;
 
-const SecondsPositionSchema = Schema.Struct({
-  kind: Schema.Literal("seconds"),
-  seconds: NonNegativeFiniteSchema,
-});
-
-const TimecodePositionSchema = Schema.Struct({
-  kind: Schema.Literal("timecode"),
-  timecode: Schema.String.check(Schema.isPattern(/^(?:\d{2}:)?[0-5]\d:[0-5]\d(?:\.\d{1,3})?$/)),
-});
-
-const FramePositionSchema = Schema.Struct({
-  kind: Schema.Literal("frame"),
-  frame: NonNegativeIntegerSchema,
-});
-
-export const ComparisonPositionSchema = Schema.Union([
-  SecondsPositionSchema,
-  TimecodePositionSchema,
-  FramePositionSchema,
-]);
-export type ComparisonPosition = typeof ComparisonPositionSchema.Type;
-
-const ComparisonCrfs = <A extends Schema.Top>(crf: A) =>
-  Schema.UniqueArray(crf).check(Schema.isMinLength(2), Schema.isMaxLength(8));
-
-const ComparisonFields = {
-  durationSeconds: Schema.optionalKey(
-    Schema.Finite.check(Schema.isBetween({ minimum: 1, maximum: 3 })),
-  ),
-  position: Schema.optionalKey(ComparisonPositionSchema),
+export const ResolvedCompressionOptionsSchema = Schema.Struct({
+  // Older immutable plan snapshots omit bit depth and retain their 8-bit behavior.
+  bitDepth: Schema.optionalKey(MediaBitDepthSchema),
+  trim: Schema.optionalKey(ResolvedTrimRangeSchema),
+  codecs: Schema.UniqueArray(MediaCodecSchema).check(Schema.isMinLength(1), Schema.isMaxLength(3)),
+  crf: CompressionCrfSchema,
+  audio: AudioModeSchema,
+  frameRate: FrameRatePolicySchema,
   transform: Schema.optionalKey(TransformOptionsSchema),
-};
-
-export const CompareQualityOptionsSchema = Schema.Union([
-  Schema.Struct({
-    codec: Schema.Literal("vp9"),
-    crfs: ComparisonCrfs(Vp9CrfSchema),
-    ...ComparisonFields,
+}).check(
+  Schema.makeFilter(({ codecs, crf }) => {
+    if (codecs.some((codec) => crf[codec] === undefined))
+      return "Every selected codec must have a resolved CRF";
   }),
-  Schema.Struct({
-    codec: Schema.Literal("h265"),
-    crfs: ComparisonCrfs(H265CrfSchema),
-    ...ComparisonFields,
-  }),
-  Schema.Struct({
-    codec: Schema.Literal("av1"),
-    crfs: ComparisonCrfs(Av1CrfSchema),
-    ...ComparisonFields,
-  }),
-]);
-export type CompareQualityOptions = typeof CompareQualityOptionsSchema.Type;
+);
+export type ResolvedCompressionOptions = typeof ResolvedCompressionOptionsSchema.Type;
 
 export const ExtractImagesOptionsSchema = Schema.Struct({
   intervalSeconds: Schema.optionalKey(PositiveFiniteSchema),
@@ -158,3 +126,14 @@ export const ExtractImagesOptionsSchema = Schema.Struct({
   transform: Schema.optionalKey(TransformOptionsSchema),
 });
 export type ExtractImagesOptions = typeof ExtractImagesOptionsSchema.Type;
+
+export const ResolvedExtractImagesOptionsSchema = Schema.Struct({
+  intervalSeconds: PositiveFiniteSchema,
+  format: ImageFormatSchema,
+  transform: Schema.optionalKey(TransformOptionsSchema),
+  outputDimensions: Schema.Struct({
+    width: PositiveIntegerSchema,
+    height: PositiveIntegerSchema,
+  }),
+});
+export type ResolvedExtractImagesOptions = typeof ResolvedExtractImagesOptionsSchema.Type;

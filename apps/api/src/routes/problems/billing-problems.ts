@@ -1,6 +1,5 @@
 import {
   BillingCustomerNotFound,
-  BillingUserNotFound,
   BillingWebhookUnmatched,
   InvalidStripeWebhook,
   StripeGatewayError,
@@ -9,16 +8,9 @@ import { defineProblem, makeDescriptorProblem } from "../../errors/problem-detai
 
 export const billingCustomerProblemDescriptor = defineProblem({
   code: "BILLING_CUSTOMER_REQUIRED",
-  description: "The user has no Stripe customer to manage.",
+  description: "The organization has no Stripe customer to manage.",
   status: 409,
   title: "Billing account unavailable",
-});
-
-export const billingUserProblemDescriptor = defineProblem({
-  code: "BILLING_USER_NOT_FOUND",
-  description: "The authenticated billing account no longer exists.",
-  status: 404,
-  title: "Billing user not found",
 });
 
 export const invalidStripeWebhookProblemDescriptor = defineProblem({
@@ -30,7 +22,8 @@ export const invalidStripeWebhookProblemDescriptor = defineProblem({
 
 export const unmatchedWebhookProblemDescriptor = defineProblem({
   code: "STRIPE_WEBHOOK_UNMATCHED",
-  description: "The Stripe event cannot yet be linked to a local user.",
+  description:
+    "The Stripe event cannot be reconciled with the persisted organization billing account.",
   status: 503,
   title: "Stripe event not ready",
 });
@@ -44,7 +37,6 @@ export const stripeUnavailableProblemDescriptor = defineProblem({
 
 export const billingProblem = (error: unknown) => {
   if (error instanceof BillingCustomerNotFound) return billingCustomerProblem();
-  if (error instanceof BillingUserNotFound) return billingUserProblem();
   if (error instanceof InvalidStripeWebhook) return invalidStripeWebhookProblem();
   if (error instanceof BillingWebhookUnmatched) return unmatchedWebhookProblem();
   if (error instanceof StripeGatewayError) return stripeUnavailableProblem();
@@ -55,14 +47,7 @@ const billingCustomerProblem = () =>
   makeDescriptorProblem(billingCustomerProblemDescriptor, {
     detail: "No Stripe customer is linked to this account yet.",
     retryable: false,
-    suggestedAction: "Start a Pro Checkout session first.",
-  });
-
-const billingUserProblem = () =>
-  makeDescriptorProblem(billingUserProblemDescriptor, {
-    detail: "The authenticated billing account no longer exists.",
-    retryable: false,
-    suggestedAction: "Sign in again or contact the server operator.",
+    suggestedAction: "An organization owner can start a paid-plan checkout when authorized.",
   });
 
 const invalidStripeWebhookProblem = () =>
@@ -74,7 +59,7 @@ const invalidStripeWebhookProblem = () =>
 
 const unmatchedWebhookProblem = () =>
   makeDescriptorProblem(unmatchedWebhookProblemDescriptor, {
-    detail: "The Stripe event could not yet be linked to a local user.",
+    detail: "The Stripe event could not be reconciled with an organization billing account.",
     retryable: true,
     suggestedAction: "Allow Stripe to retry the webhook after customer mapping.",
   });

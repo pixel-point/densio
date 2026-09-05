@@ -11,6 +11,7 @@ import {
   AuthStorageError,
 } from "../src/auth/auth-errors.ts";
 import { makeAuthService } from "../src/auth/auth-service.ts";
+import { decodeEmailOutboxPayload } from "../src/email/email-outbox-payload.ts";
 import { makeMagicLinkOpener, makeMagicLinkSealer } from "../src/auth/magic-link-secret.ts";
 import { parseOpaqueToken, verifyTokenSecret } from "../src/auth/opaque-token.ts";
 import { type Database, migrateDatabase, openDatabase } from "../src/database/database.ts";
@@ -73,7 +74,7 @@ it("atomically creates a normalized auth challenge and pending email", async () 
     status: "pending",
   });
   expect(outbox).toMatchObject({
-    challengeId: challenge?.id,
+    resourceKey: `magic-login:${challenge?.id}`,
     nextAttemptAt: NOW,
     recipient: "agent@example.com",
     status: "pending",
@@ -86,8 +87,8 @@ it("atomically creates a normalized auth challenge and pending email", async () 
   );
   expect(JSON.stringify(challenge)).not.toContain(pollingToken.secret);
   expect(JSON.stringify(challenge)).not.toContain(confirmationToken.secret);
-  expect(outbox?.encryptedConfirmationUrl).not.toContain(confirmationToken.secret);
-  expect(outbox?.encryptedConfirmationUrl).not.toContain("https://");
+  expect(outbox?.payloadJson).not.toContain(confirmationToken.secret);
+  expect(outbox?.payloadJson).not.toContain("https://");
 });
 
 it("rolls back the auth challenge when its outbox insert fails", async () => {
@@ -185,7 +186,7 @@ it("confirms an auth challenge exactly once and expires stale challenges", async
     .select()
     .from(emailOutbox)
     .all()
-    .find(({ challengeId }) => challengeId === stalePollingToken?.id);
+    .find(({ resourceKey }) => resourceKey === `magic-login:${stalePollingToken?.id}`);
   const staleConfirmationToken = readConfirmationToken(createdRows);
   const expired = await Effect.runPromise(
     Effect.flip(
@@ -280,8 +281,10 @@ const requestLogin = (
 
 const readConfirmationToken = (email: typeof emailOutbox.$inferSelect | undefined) => {
   if (email === undefined) throw new Error("Missing confirmation URL");
-  const confirmationUrl = openMagicLink(email.encryptedConfirmationUrl ?? "", {
-    challengeId: email.challengeId,
+  const payload = decodeEmailOutboxPayload(email.payloadJson);
+  if (payload.kind !== "magic-login") throw new Error("Expected login email");
+  const confirmationUrl = openMagicLink(payload.encryptedConfirmationUrl, {
+    challengeId: payload.challengeId,
     emailId: email.id,
     recipient: email.recipient,
   });

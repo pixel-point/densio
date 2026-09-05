@@ -1,16 +1,11 @@
-import {
-  CompressionOptionsSchema,
-  DEFAULT_COMPRESSION_CODECS,
-  type CompressionOptions,
-  type JobDecision,
-} from "@densio/shared";
+import { decodeVideoJobOptions } from "./video-job-options.ts";
+import { verifyTrimmedOutputs } from "./trim-output-verification.ts";
+import { type ResolvedCompressionOptions } from "@densio/shared";
 import { Effect, Schema } from "effect";
 
 import { compressionCreditUnits } from "../billing/compression-credit-cost.ts";
 import { validateMediaEntitlements } from "../media/inspection/media-entitlement-check.ts";
-import type { MediaInspector } from "../media/inspection/media-inspector.ts";
 import { MediaProcessRunner } from "../media/process/media-process-runner.ts";
-import { requiresFrameRateDecision } from "../media/frame-rate.ts";
 import { resolveVideoDimensions } from "../media/video-filter.ts";
 import { runCompressionWorkflow } from "../media/workflows/compression-workflow.ts";
 import { publishAndRegisterArtifacts } from "./artifact-publication.ts";
@@ -18,15 +13,14 @@ import {
   analysisIdentityFields,
   assertCurrentAnalysis,
   decodeJobAnalysis,
-  decodeJobOptions,
   entitlementsFor,
   inspectJob,
   meteredAnalysis,
+  type JobMediaInspector,
   type MediaJobHandler,
   type MediaJobHandlerContext,
   positiveDurationSchema,
   prepareJobExecution,
-  sanitizeCommands,
   validateJobResult,
 } from "./media-job-handler-support.ts";
 import type { Job } from "./job-worker.ts";
@@ -40,11 +34,14 @@ const CompressionAnalysisSchema = Schema.Struct({
     denominator: Schema.Int.check(Schema.isGreaterThan(0)),
     numerator: Schema.Int.check(Schema.isGreaterThan(0)),
   }),
-  kind: Schema.Literal("compress"),
+  audioStreamIndex: Schema.optionalKey(Schema.Int),
+  kind: Schema.Literals(["compress", "trim"]),
 });
 type CompressionAnalysis = typeof CompressionAnalysisSchema.Type;
 
-export const makeCompressionJobHandler = (context: MediaJobHandlerContext): MediaJobHandler => ({
+export const makeCompressionJobHandler = (
+  context: MediaJobHandlerContext,
+): MediaJobHandler<typeof CompressionAnalysisSchema.Type> => ({
   analyze: Effect.fn("CompressionJobHandler.analyze")((job) => analyze(context, job)),
   process: Effect.fn("CompressionJobHandler.process")((job, analysis) =>
     process(context, job, analysis),
@@ -55,13 +52,12 @@ const analyze = Effect.fn("CompressionJobHandler.inspect")(function* (
   context: MediaJobHandlerContext,
   job: Job,
 ) {
-  const options = yield* decodeJobOptions(CompressionOptionsSchema, job.optionsJson, "compression");
+  const options = yield* decodeVideoJobOptions(job);
   const analysis = yield* inspectJob(context, job, (inspector, inputFile) =>
     inspectCompression(inspector, job, inputFile, options),
   );
-  if (analysis.kind === "decision-required") return analysis;
   const output = resolveVideoDimensions(analysis.source, options.transform);
-  const codecs = options.codecs ?? DEFAULT_COMPRESSION_CODECS;
+  const codecs = options.codecs;
   return meteredAnalysis(
     analysis,
     compressionCreditUnits({
@@ -74,18 +70,14 @@ const analyze = Effect.fn("CompressionJobHandler.inspect")(function* (
 });
 
 const inspectCompression = Effect.fn("CompressionJobHandler.inspectMedia")(function* (
-  inspector: MediaInspector["Service"],
+  inspector: JobMediaInspector,
   job: Job,
   inputFile: string,
-  options: CompressionOptions,
+  options: ResolvedCompressionOptions,
 ) {
   const media = yield* inspector.inspect(inputFile);
-  yield* validateMediaEntitlements(
-    media,
-    options.codecs ?? DEFAULT_COMPRESSION_CODECS,
-    entitlementsFor(job),
-  );
-  const audioMode = options.audio ?? "auto";
+  yield* validateMediaEntitlements(media, options.codecs, entitlementsFor(job));
+  const audioMode = options.audio;
   if (audioMode === "keep" && media.audioStreamIndexes.length === 0) {
     return yield* new JobProcessorError({
       code: "AUDIO_STREAM_REQUIRED",
@@ -93,32 +85,29 @@ const inspectCompression = Effect.fn("CompressionJobHandler.inspectMedia")(funct
       message: "The input does not contain an audio stream to keep.",
     });
   }
-  if (options.frameRate === undefined && requiresFrameRateDecision(media.frameRate)) {
-    return {
-      decision: {
-        kind: "frame-rate",
-        recommended: { maximum: 30, mode: "cap" },
-        source: media.frameRate,
-      } satisfies JobDecision,
-      kind: "decision-required",
-    } as const;
-  }
   const audioAnalysis =
     audioMode === "auto"
-      ? yield* inspector.classifyAudio(inputFile, media.audioStreamIndexes)
+      ? yield* inspector.classifyAudio(
+          inputFile,
+          options.trim ? media.audioStreamIndexes.slice(0, 1) : media.audioStreamIndexes,
+          options.trim,
+        )
       : media.audioStreamIndexes.length === 0
         ? "absent"
         : "audible";
   return {
     attempt: job.attemptCount,
     audioAnalysis,
-    durationSeconds: media.durationSeconds,
+    durationSeconds: options.trim?.durationSeconds ?? media.durationSeconds,
+    ...(media.audioStreamIndexes[0] === undefined
+      ? {}
+      : { audioStreamIndex: media.audioStreamIndexes[0] }),
     frameRate: {
       denominator: media.frameRate.denominator,
       numerator: media.frameRate.numerator,
     },
     jobId: job.id,
-    kind: "compress",
+    kind: job.kind === "trim" ? "trim" : "compress",
     source: media.displayDimensions,
   } satisfies CompressionAnalysis;
 });
@@ -126,17 +115,24 @@ const inspectCompression = Effect.fn("CompressionJobHandler.inspectMedia")(funct
 const process = Effect.fn("CompressionJobHandler.execute")(function* (
   context: MediaJobHandlerContext,
   job: Job,
-  input: Schema.Json,
+  input: typeof CompressionAnalysisSchema.Type,
 ) {
   const analysis = yield* decodeJobAnalysis(CompressionAnalysisSchema, input);
   assertCurrentAnalysis(job, analysis);
-  const options = yield* decodeJobOptions(CompressionOptionsSchema, job.optionsJson, "compression");
+  const options = yield* decodeVideoJobOptions(job);
   const { paths, recordingRunner } = yield* prepareJobExecution(context, job);
   const workflow = yield* runCompressionWorkflow({
+    bitDepth: options.bitDepth ?? 8,
+    probeExecutable: context.config.ffprobePath,
     audioAnalysis: analysis.audioAnalysis,
+    ...(options.trim ? { trim: options.trim } : {}),
+    ...(options.trim && analysis.audioStreamIndex !== undefined
+      ? { audioStreamIndex: analysis.audioStreamIndex }
+      : {}),
     executable: context.config.ffmpegPath,
     paths,
     source: analysis.source,
+    sourceDurationSeconds: analysis.durationSeconds,
     sourceFrameRate: analysis.frameRate,
     ...(options.audio === undefined ? {} : { audio: options.audio }),
     ...(options.codecs === undefined ? {} : { codecs: options.codecs }),
@@ -144,29 +140,44 @@ const process = Effect.fn("CompressionJobHandler.execute")(function* (
     ...(options.frameRate === undefined ? {} : { frameRate: options.frameRate }),
     ...(options.transform === undefined ? {} : { transform: options.transform }),
   }).pipe(Effect.provideService(MediaProcessRunner, recordingRunner));
+  const dimensions = resolveVideoDimensions(analysis.source, options.transform);
+  const outputs = yield* verifyTrimmedOutputs(
+    context.config.ffprobePath,
+    paths,
+    workflow.outputs,
+    options,
+  ).pipe(Effect.provideService(MediaProcessRunner, recordingRunner));
   const published = yield* publishAndRegisterArtifacts(
     context.database,
     context.config,
     job,
     paths,
-    workflow.outputs,
+    outputs.map((output) => ({
+      durationSeconds: analysis.durationSeconds,
+      height: dimensions.height,
+      width: dimensions.width,
+      ...output,
+    })),
   );
+  if (job.kind === "trim")
+    return yield* validateJobResult({ kind: "trim", artifactIds: published.map(({ id }) => id) });
   return yield* validateJobResult({
-    artifacts: published,
-    commands: sanitizeCommands(workflow.commands),
-    html: videoHtml(published),
+    artifactIds: published.map(({ id }) => id),
+    html: videoHtml(
+      published.map(({ filename, mediaType }) => ({ mediaType, source: `./${filename}` })),
+    ),
     kind: "compress",
   });
 });
 
 const videoHtml = (
-  published: ReadonlyArray<{ readonly downloadUrl: string; readonly mediaType: string }>,
+  sources: ReadonlyArray<{ readonly mediaType: string; readonly source: string }>,
 ) =>
   [
     '<video controls preload="metadata">',
-    ...published.map(
-      (artifact) =>
-        `  <source src="${escapeHtml(artifact.downloadUrl)}" type="${escapeHtml(artifact.mediaType)}">`,
+    ...sources.map(
+      ({ mediaType, source }) =>
+        `  <source src="${escapeHtml(source)}" type="${escapeHtml(mediaType)}">`,
     ),
     "</video>",
   ].join("\n");

@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 
 import type { Database } from "../database/database.ts";
-import { renderMagicLinkEmail } from "../auth/magic-link-email.ts";
 import type { MagicLinkOpener } from "../auth/magic-link-secret.ts";
 import { claimNextEmail, markEmailFailed, markEmailSent } from "./email-outbox-repository.ts";
+import { emailDeliveryContent } from "./email-delivery-content.ts";
 
 export class EmailSendError extends Schema.TaggedErrorClass<EmailSendError>()("EmailSendError", {
   providerCode: Schema.String,
@@ -46,20 +46,18 @@ export const deliverNextEmail = Effect.fn("EmailOutboxWorker.deliverNextEmail")(
   if (email === undefined) return { kind: "idle" as const };
 
   const delivery = yield* Effect.match(
-    decryptMagicLink(email.encryptedConfirmationUrl, input.openMagicLink, {
-      challengeId: email.challengeId,
-      emailId: email.id,
-      recipient: email.recipient,
+    Effect.try({
+      try: () => emailDeliveryContent(input.database, email, input.now, input.openMagicLink),
+      catch: () => new EmailSendError({ providerCode: "invalid-outbox-secret", retryable: false }),
     }).pipe(
-      Effect.flatMap((verificationUrl) => {
-        const content = renderMagicLinkEmail({
-          expiresInMinutes: Math.max(1, Math.ceil((email.challengeExpiresAt - input.now) / 60_000)),
-          verificationUrl,
-        });
+      Effect.flatMap((content) => {
+        if (content === undefined)
+          return Effect.fail(
+            new EmailSendError({ providerCode: "notification-no-longer-valid", retryable: false }),
+          );
         return input.sender.send({
           ...content,
           from: input.config.from,
-          idempotencyKey: `auth-email-${email.id}`,
           to: email.recipient,
         });
       }),
@@ -89,19 +87,6 @@ export const deliverNextEmail = Effect.fn("EmailOutboxWorker.deliverNextEmail")(
   if (retryAt !== undefined) return { kind: "retry-scheduled" as const, retryAt };
   return { kind: "failed" as const };
 });
-
-const decryptMagicLink = (
-  sealed: string | null,
-  openMagicLink: MagicLinkOpener,
-  context: Parameters<MagicLinkOpener>[1],
-) =>
-  Effect.try({
-    catch: () => new EmailSendError({ providerCode: "invalid-outbox-secret", retryable: false }),
-    try: () => {
-      if (sealed === null) throw new Error("Missing encrypted payload");
-      return openMagicLink(sealed, context);
-    },
-  });
 
 const tryStorage = Effect.fn("EmailOutboxWorker.tryStorage")(
   <Value>(operation: string, evaluate: () => Value) =>

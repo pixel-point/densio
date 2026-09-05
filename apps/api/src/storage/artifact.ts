@@ -81,7 +81,7 @@ const publicationOperation = <Value>(operation: string, run: () => Promise<Value
   Effect.tryPromise({
     catch: () => new StorageOperationError({ message: "Artifact publication failed.", operation }),
     try: run,
-  });
+  }).pipe(Effect.uninterruptible);
 
 export const publishStagedArtifact = Effect.fn("Storage.publishStagedArtifact")(function* (
   paths: JobStoragePaths,

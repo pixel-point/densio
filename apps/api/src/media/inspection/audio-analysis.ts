@@ -1,3 +1,5 @@
+import type { ResolvedTrimRange } from "@densio/shared";
+import { trimAudioFilters } from "../trim-filters.ts";
 import { Effect } from "effect";
 
 import type { MediaProcessCommand } from "../process/media-process-runner.ts";
@@ -12,6 +14,7 @@ export const buildAudioAnalysisCommand = (
   inputPath: string,
   streamIndex: number,
   executable = "ffmpeg",
+  trim?: ResolvedTrimRange,
 ): MediaProcessCommand => ({
   executable,
   arguments: [
@@ -19,6 +22,7 @@ export const buildAudioAnalysisCommand = (
     "-nostdin",
     "-v",
     "error",
+    ...(trim ? ["-copyts"] : []),
     "-i",
     inputPath,
     "-map",
@@ -27,7 +31,7 @@ export const buildAudioAnalysisCommand = (
     "-sn",
     "-dn",
     "-af",
-    peakFilter,
+    [...(trim ? trimAudioFilters(trim) : []), peakFilter].join(","),
     "-f",
     "null",
     "-",

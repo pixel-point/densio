@@ -47,16 +47,25 @@ const writeChunk = async (file: Awaited<ReturnType<typeof open>>, chunk: Uint8Ar
   }
 };
 
-const streamUpload = async ({ body, declaredBytes, destination, maxBytes }: StoreUploadOptions) => {
+const streamUpload = async (
+  { body, declaredBytes, destination, maxBytes }: StoreUploadOptions,
+  signal: AbortSignal,
+) => {
   const file = await open(destination, "wx");
   const reader = body.getReader();
   const digest = createHash("sha256");
   let bytes = 0;
   let completed = false;
+  const cancel = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  signal.addEventListener("abort", cancel, { once: true });
 
   try {
+    if (signal.aborted) cancel();
     while (true) {
       const chunk = await reader.read();
+      signal.throwIfAborted();
       if (chunk.done) break;
 
       bytes += chunk.value.byteLength;
@@ -77,6 +86,7 @@ const streamUpload = async ({ body, declaredBytes, destination, maxBytes }: Stor
     completed = true;
     return { bytes, sha256: digest.digest("hex") } as const;
   } finally {
+    signal.removeEventListener("abort", cancel);
     await Promise.allSettled([
       file.close(),
       completed ? Promise.resolve() : rm(destination, { force: true }),
@@ -102,9 +112,22 @@ export const storeUpload = Effect.fn("Storage.storeUpload")(function* (
     return yield* limitExceeded(options.maxBytes, options.declaredBytes);
   }
 
-  return yield* Effect.tryPromise({
-    catch: mapUploadError,
-    try: () => streamUpload(options),
+  return yield* Effect.callback<
+    Awaited<ReturnType<typeof streamUpload>>,
+    ReturnType<typeof mapUploadError>
+  >((resume) => {
+    const controller = new AbortController();
+    const running = streamUpload(options, controller.signal);
+    void running.then(
+      (result) => resume(Effect.succeed(result)),
+      (error: unknown) => resume(Effect.fail(mapUploadError(error))),
+    );
+    // A canceled Effect must not release its durable writer claim while a native
+    // promise can still write. Cancel the reader and await actual file closure.
+    return Effect.promise(async () => {
+      controller.abort();
+      await running.catch(() => undefined);
+    });
   });
 });
 
@@ -152,7 +175,7 @@ export const publishStoredUpload = (stagingPath: string, destination: string) =>
       await link(stagingPath, destination);
       await rm(stagingPath);
     },
-  });
+  }).pipe(Effect.uninterruptible);
 
 export const removeStoredUpload = (path: string) =>
   Effect.tryPromise({

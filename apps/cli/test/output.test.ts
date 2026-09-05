@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { exitCodeForProblem, formatJsonSuccess, formatProgress } from "../src/output.ts";
+import { exitCodeForProblem, formatJsonSuccess } from "../src/output.ts";
 
 describe("agent-first output", () => {
   it("emits one stable JSON document without progress on stdout", () => {
@@ -22,7 +22,10 @@ describe("agent-first output", () => {
     expect(exitCodeForProblem({ code: "INTERNAL_ERROR", status: 500 })).toBe(5);
   });
 
-  it("keeps human progress concise and newline terminated", () => {
-    expect(formatProgress("job-1", "processing", 42)).toBe("job-1 processing 42%\n");
+  it("maps execution-plan and output guard problems to the plan exit code", () => {
+    expect(exitCodeForProblem({ code: "EXECUTION_PLAN_EXPIRED", status: 410 })).toBe(4);
+    expect(exitCodeForProblem({ code: "MAX_CREDITS_EXCEEDED", status: 412 })).toBe(4);
+    expect(exitCodeForProblem({ code: "OUTPUT_LIMIT_EXCEEDED", status: 400 })).toBe(4);
+    expect(exitCodeForProblem({ code: "OUTPUT_SIZE_LIMIT_EXCEEDED", status: 413 })).toBe(4);
   });
 });
