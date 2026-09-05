@@ -9,8 +9,9 @@ The final application commit is `480b1a8`; subsequent report-only commits do not
 change the application.
 
 **One release blocker remains:** npm still serves `densio@0.1.4`. The prepared
-`0.2.0` package passed its publishing dry run, but npm authentication and explicit
-publication approval are pending. A real `npx densio@latest --json skill` request
+`0.2.0` package passed its publishing dry run. Publication is now authorized and
+npm authentication works, but the configured granular token has `bypass_2fa: false`;
+the actual publish attempt was rejected with `EOTP`. A real `npx densio@latest --json skill` request
 retrieves the new skill content through the old CLI, which drops `cliVersion` and
 `references` from the response. Therefore the public npm bootstrap is not yet a
 passing journey. Production verification used the built `0.2.0` CLI.
@@ -32,7 +33,7 @@ passing journey. Production verification used the built `0.2.0` CLI.
 | ID       | Finding                                                                                                                                                           | Resolution                                                                                                                                                                                                                                                                                    |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | PROD-001 | The organization migration intentionally rejects a populated legacy schema. Production contained three users, 53 terminal jobs, and one active test subscription. | Used the explicitly authorized Densio-only database reset with a recoverable backup. The previously registered base email signed in again and compressed a video. The exact legacy test subscription was verified and canceled without invoice or proration.                                  |
-| PROD-002 | Local CLI was 0.1.3, npm latest was 0.1.4, and npm publishing authentication was absent.                                                                          | Released source version 0.2.0 using the required script and pushed it. Full publication dry run passed. Actual npm publication remains blocked on login and approval; the old npm bootstrap omits required metadata.                                                                          |
+| PROD-002 | Local CLI was 0.1.3, npm latest was 0.1.4, and npm publishing authentication was absent.                                                                          | Released source 0.2.0 with the required script and pushed it. Publication dry run passed. After authorization and token setup, all checks passed again, but npm rejected publication with `EOTP`: token metadata confirms `bypass_2fa: false`. npm latest remains 0.1.4.                      |
 | PROD-003 | Production had no managed-storage configuration.                                                                                                                  | Provisioned three dedicated R2 buckets, public domain, CORS, lifecycle policies, restricted runtime credentials, a zone-specific purge token, and the encryption key configuration.                                                                                                           |
 | PROD-004 | Default local Node was 25.8.1; the Homebrew pnpm launcher delegated versioning to npm and failed on `workspace:*`.                                                | Used isolated Node 22.18.0 and Corepack-managed pnpm 11.7.0. The required release script then worked. No application workaround was added.                                                                                                                                                    |
 | PROD-005 | Local disk exhaustion interrupted temporary Node extraction.                                                                                                      | Removed only this run's incomplete download. Initial complete validation ran in a disposable server container with separate files, no production credentials, and constrained resources. Later local checks also passed.                                                                      |
@@ -123,8 +124,9 @@ checking test mode, customer identity, email and legacy user metadata.
 
 ## To complete the public CLI release
 
-Authenticate with npm and explicitly approve publishing the reviewed `densio@0.2.0`
-package. Then run `scripts/publish-cli.sh` under Node 22.18/Corepack pnpm 11.7 with a
+Enable publishing's 2FA bypass on the granular npm token, or replace the configured
+token with one that has it enabled. The user has explicitly authorized publishing
+the reviewed `densio@0.2.0` package. Then run `scripts/publish-cli.sh` under Node 22.18/Corepack pnpm 11.7 with a
 clean working tree, verify npm's new latest version, and repeat the fresh `npx`
 bootstrap and an account journey. This is the only known outstanding release
 blocker; it is not counted as a pass above.
