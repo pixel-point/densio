@@ -3,7 +3,6 @@
 import {
   AuthStartResponseSchema,
   AuthStatusSchema,
-  AuthConfirmResponseSchema,
   BrowserAuthPollResponseSchema,
   LogoutResponseSchema,
 } from "@densio/shared";
@@ -69,25 +68,6 @@ async function completedBrowserLogin(returnTo: string): Promise<PollState | null
   if (!token) return null;
   const session = await densioApi()("/v1/auth/status", AuthStatusSchema, { token });
   return session.ok && session.data.authenticated ? { status: "confirmed", returnTo } : null;
-}
-
-export async function confirmLogin(
-  _previous: AuthFormState,
-  form: FormData,
-): Promise<AuthFormState> {
-  const token = String(form.get("token") ?? "");
-  const result = await densioApi()("/v1/auth/confirm", AuthConfirmResponseSchema, {
-    method: "POST",
-    body: { token },
-  });
-  if (!result.ok) return { error: result.error.detail };
-  // Only the browser that initiated this exact challenge may redeem its poll secret.
-  if (token.split(".")[0] !== (await readCookie(cookieNames.challenge))) return { confirmed: true };
-  const returnTo = safeReturnTo((await readCookie(cookieNames.returnTo)) ?? "/app");
-  const completion = await pollLogin();
-  if (completion.status === "confirmed") redirect(completion.returnTo);
-  if (completion.status === "error") return { error: completion.error };
-  return { confirmed: true, returnTo };
 }
 
 export async function logout(_previous: FormState, _form: FormData): Promise<FormState> {

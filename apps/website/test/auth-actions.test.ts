@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { afterEach, expect, it, vi } from "vitest";
-import { beginLogin, pollLogin, confirmLogin } from "@/app/(account)/auth/actions";
+import { beginLogin, pollLogin } from "@/app/(account)/auth/actions";
 
 const jar = vi.hoisted(
   () => new Map<string, { value: string; options: Record<string, unknown> }>(),
@@ -90,49 +90,6 @@ it("exchanges the challenge for an opaque cookie without returning the session t
     options: { httpOnly: true, expires: new Date(expiresAt) },
   });
   expect(jar.has("densio_login_poll")).toBe(false);
-});
-
-it("does not redeem an unrelated browser challenge when confirming a CLI email", async () => {
-  await serve({ "/v1/auth/confirm": { status: "confirmed" } });
-  jar.set("densio_login_challenge", { value: "website-challenge", options: {} });
-  jar.set("densio_login_poll", { value: "website-poll", options: {} });
-  const form = new FormData();
-  form.set("token", "cli-challenge.secret");
-  expect(await confirmLogin({}, form)).toMatchObject({ confirmed: true });
-  expect(jar.has("densio_session")).toBe(false);
-  expect(jar.get("densio_login_poll")?.value).toBe("website-poll");
-});
-
-it("opens the dashboard directly after confirming the browser's own magic link", async () => {
-  await serve({
-    "/v1/auth/confirm": { status: "confirmed" },
-    "/v1/auth/browser/poll": {
-      status: "confirmed",
-      sessionToken: "private-session-token",
-      expiresAt,
-    },
-  });
-  jar.set("densio_login_challenge", { value: "website-challenge", options: {} });
-  jar.set("densio_login_poll", { value: "website-poll", options: {} });
-  jar.set("densio_login_return", { value: "/app/org/settings/members", options: {} });
-  const form = new FormData();
-  form.set("token", "website-challenge.secret");
-  await expect(confirmLogin({}, form)).rejects.toMatchObject({
-    digest: "NEXT_REDIRECT;replace;/app/org/settings/members;307;",
-  });
-  expect(jar.get("densio_session")?.value).toBe("private-session-token");
-});
-
-it("keeps completing browser login when the session is not available immediately", async () => {
-  await serve({
-    "/v1/auth/confirm": { status: "confirmed" },
-    "/v1/auth/browser/poll": { status: "pending", expiresAt, pollAfterSeconds: 1 },
-  });
-  jar.set("densio_login_challenge", { value: "website-challenge", options: {} });
-  jar.set("densio_login_poll", { value: "website-poll", options: {} });
-  const form = new FormData();
-  form.set("token", "website-challenge.secret");
-  expect(await confirmLogin({}, form)).toEqual({ confirmed: true, returnTo: "/app" });
 });
 
 it("finishes the original waiting tab after the confirmation tab has issued the session", async () => {
