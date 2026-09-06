@@ -1,9 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { OrganizationMembership } from "@densio/shared";
-import { AccountAvatar } from "@/components/ui/account/avatar";
-import { accountPath } from "@/lib/densio/navigation";
 import { AccountBrand } from "./brand";
+import { AccountMenu } from "./account-menu";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { SettingsNavigation } from "./navigation";
 
@@ -35,9 +34,7 @@ export function AccountShell({
           >
             Documentation
           </Link>
-          <Link href={accountPath(organizationId, "profile")} aria-label="Your profile">
-            <AccountAvatar name={email} className="rounded-full" />
-          </Link>
+          <AccountMenu email={email} organizationId={organizationId} />
         </div>
       </header>
       <main id="main-content" className="mx-auto w-full max-w-[816px] px-4 pt-20 pb-32 md:px-6">

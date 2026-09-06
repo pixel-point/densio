@@ -16,7 +16,7 @@ export async function GeneralSettings({ organizationId }: { organizationId: stri
         description="The name of your organization, visible to everyone on your team."
         disabled={account.membership.role === "member"}
       >
-        <AccountField label="Name" className="max-w-[320px]">
+        <AccountField key={account.organization.name} label="Name" className="max-w-[320px]">
           <AccountInput
             name="name"
             defaultValue={account.organization.name}

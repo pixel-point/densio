@@ -130,10 +130,6 @@ function MobileMenu({ items }: MobileMenuProps) {
     setOpen(false);
   }, [pathname]);
 
-  if (!items || items.length === 0) {
-    return null;
-  }
-
   return (
     <Drawer
       open={open}

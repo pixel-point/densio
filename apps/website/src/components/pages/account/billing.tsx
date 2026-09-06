@@ -34,7 +34,11 @@ export async function BillingSettings({ organizationId }: { organizationId: stri
         description="Where invoices and billing updates for this organization are sent."
         disabled={!owner}
       >
-        <AccountField label="Billing email" className="max-w-[320px]">
+        <AccountField
+          key={status.data.billingEmail}
+          label="Billing email"
+          className="max-w-[320px]"
+        >
           <AccountInput
             name="billingEmail"
             type="email"
