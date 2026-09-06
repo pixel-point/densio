@@ -67,14 +67,14 @@ it("builds subscription Checkout params for new and known Stripe customers", asy
     url: "https://checkout.stripe.test/session",
   });
   expect(fixture.checkoutRequests[0]).toEqual({
-    cancel_url: BILLING_CONFIG.checkoutCancelUrl,
+    cancel_url: `${BILLING_CONFIG.checkoutCancelUrl}?organizationId=org-1`,
     client_reference_id: "org-1",
     customer: "cus_org-1",
     line_items: [{ price: "price_basic", quantity: 1 }],
     metadata: { organizationId: "org-1", attemptId: expect.any(String) },
     mode: "subscription",
     subscription_data: { metadata: { organizationId: "org-1" } },
-    success_url: BILLING_CONFIG.checkoutSuccessUrl,
+    success_url: `${BILLING_CONFIG.checkoutSuccessUrl}?organizationId=org-1`,
   });
 
   ensureOrganizationActor(database, "org-2", "user-2");
@@ -93,14 +93,14 @@ it("builds subscription Checkout params for new and known Stripe customers", asy
   );
 
   expect(fixture.checkoutRequests[1]).toEqual({
-    cancel_url: BILLING_CONFIG.checkoutCancelUrl,
+    cancel_url: `${BILLING_CONFIG.checkoutCancelUrl}?organizationId=org-2`,
     client_reference_id: "org-2",
     customer: "cus_existing",
     line_items: [{ price: "price_scale", quantity: 1 }],
     metadata: { organizationId: "org-2", attemptId: expect.any(String) },
     mode: "subscription",
     subscription_data: { metadata: { organizationId: "org-2" } },
-    success_url: BILLING_CONFIG.checkoutSuccessUrl,
+    success_url: `${BILLING_CONFIG.checkoutSuccessUrl}?organizationId=org-2`,
   });
 });
 
@@ -131,7 +131,7 @@ it("creates Customer Portal params and rejects users without a Stripe customer",
   expect(fixture.portalRequests).toEqual([
     {
       customer: "cus_existing",
-      return_url: BILLING_CONFIG.portalReturnUrl,
+      return_url: `${BILLING_CONFIG.portalReturnUrl}?organizationId=org-1`,
     },
   ]);
 

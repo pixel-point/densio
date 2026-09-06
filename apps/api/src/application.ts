@@ -113,7 +113,7 @@ const startRuntime = Effect.fn("Application.start")(function* (
     providers.emailSender,
     makeMagicLinkOpener(config.authOutboxEncryptionKey),
     config.email,
-    makeOrganizationInvitationLinks(config.authOutboxEncryptionKey, config.publicBaseUrl),
+    makeOrganizationInvitationLinks(config.authOutboxEncryptionKey, config.websiteBaseUrl),
   );
   const artifacts = yield* startArtifactCleanupSupervisor(database, {
     intervalMs: config.artifactCleanupIntervalMs,
@@ -408,8 +408,9 @@ const organizationRouteDependencies = (
   invitationService: makeOrganizationInvitationService(database),
   invitationLinkService: makeOrganizationInvitationLinkService(
     database,
-    makeOrganizationInvitationLinks(config.authOutboxEncryptionKey, config.publicBaseUrl),
+    makeOrganizationInvitationLinks(config.authOutboxEncryptionKey, config.websiteBaseUrl),
   ),
+  websiteBaseUrl: config.websiteBaseUrl,
   maxInvitationsPerHour: config.organizationMaxInvitationsPerHour,
   maxCreatesPerDay: config.organizationMaxCreatesPerDay,
   publicBaseUrl: config.publicBaseUrl,

@@ -214,7 +214,8 @@ const BASE_COMMAND_CATALOG = {
   },
   "auth login": {
     usage: "EMAIL",
-    description: "Authenticate with a magic email link.",
+    description:
+      "Authenticate by opening the emailed link and confirming sign in on the Densio website.",
     options: [],
   },
   "auth status": { usage: "", description: "Inspect authentication status.", options: [] },

@@ -36,12 +36,14 @@ export const assertCheckoutUrl = (input: string) => {
   return input;
 };
 
-export const assertMagicLinkUrl = (input: string, apiUrl: string) => {
+export const assertMagicLinkUrl = (input: string, apiUrl: string, websiteUrl = apiUrl) => {
   const link = new URL(input);
   const api = new URL(apiUrl);
   if (
-    link.origin !== api.origin ||
-    link.pathname !== "/v1/auth/confirm" ||
+    !(
+      (link.origin === api.origin && link.pathname === "/v1/auth/confirm") ||
+      (link.origin === new URL(websiteUrl).origin && link.pathname === "/auth/confirm")
+    ) ||
     link.searchParams.get("token") === null
   ) {
     throw new Error("The email magic link did not target the deployment under test.");
@@ -63,6 +65,7 @@ export const assertPaidPlan = (plan: string) => {
 
 export const authenticate = async (input: {
   readonly apiUrl: string;
+  readonly websiteUrl?: string;
   readonly credentialsPath: string;
   readonly email: string;
   readonly gmail: GmailCredentials;
@@ -74,13 +77,18 @@ export const authenticate = async (input: {
   try {
     const verificationUrl = await Promise.race([
       waitForMagicLink(input.gmail, input.email, startedAt, inbox.signal).then((link) =>
-        assertMagicLinkUrl(link, input.apiUrl),
+        assertMagicLinkUrl(link, input.apiUrl, input.websiteUrl),
       ),
       login.result.then((result) =>
         Promise.reject(new Error(`CLI login exited before email delivery: ${result.stderr}`)),
       ),
     ]);
-    const confirmation = await fetch(verificationUrl, { redirect: "follow" });
+    const confirmation = await fetch(new URL("/v1/auth/confirm", input.apiUrl), {
+      method: "POST",
+      redirect: "error",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: new URL(verificationUrl).searchParams.get("token") }),
+    });
     if (!confirmation.ok) {
       throw new Error(`Magic-link confirmation failed with HTTP ${confirmation.status}.`);
     }

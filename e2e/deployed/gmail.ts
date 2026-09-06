@@ -12,7 +12,7 @@ interface GmailPart {
   readonly parts?: ReadonlyArray<GmailPart>;
 }
 
-const confirmationUrlPattern = /https?:\/\/[^\s"'<>]+\/v1\/auth\/confirm\?[^\s"'<>]+/u;
+const confirmationUrlPattern = /https?:\/\/[^\s"'<>]+\/(?:v1\/)?auth\/confirm\?[^\s"'<>]+/u;
 
 export interface GmailCredentials {
   readonly clientId: string;

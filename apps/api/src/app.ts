@@ -19,7 +19,7 @@ import {
   createExecutionPlanRoutes,
   type ExecutionPlanRouteDependencies,
 } from "./routes/execution-plans.ts";
-import { pageRoutes } from "./routes/pages.ts";
+import { createPageRoutes } from "./routes/pages.ts";
 import { createSkillRoutes, type SkillRouteDependencies } from "./routes/skill.ts";
 import { createSourceRoutes, type SourceRouteDependencies } from "./routes/sources.ts";
 import { createOrganizationRoutes } from "./routes/organizations.ts";
@@ -64,7 +64,7 @@ export const createApp = (dependencies?: AppDependencies) => {
   });
   app.route("/", createHealthRoutes(dependencies?.readiness));
   app.use("/billing*", noStore);
-  app.route("/", pageRoutes);
+  app.route("/", createPageRoutes(dependencies?.auth.authConfig.websiteBaseUrl));
 
   if (dependencies !== undefined) {
     app.use("/v1/auth/*", noStore);

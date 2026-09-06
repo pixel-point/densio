@@ -44,6 +44,7 @@ const ConfigInput = Schema.Struct({
   port: positiveInteger(1, 65_535),
   planTtlSeconds: positiveInteger(60, 86_400),
   publicBaseUrl: Schema.NonEmptyString,
+  websiteBaseUrl: Schema.NonEmptyString,
   resendApiKey: Schema.String,
   stripeBasicPriceId: Schema.String,
   stripeScalePriceId: Schema.String,
@@ -97,6 +98,7 @@ export const loadConfig = (environment: NodeJS.ProcessEnv) => {
     port: environment.PORT ?? "3000",
     planTtlSeconds: environment.PLAN_TTL_SECONDS ?? "3600",
     publicBaseUrl,
+    websiteBaseUrl: environment.WEBSITE_BASE_URL ?? "http://localhost:3001",
     resendApiKey: environment.RESEND_API_KEY ?? "",
     stripeBasicPriceId: environment.STRIPE_BASIC_PRICE_ID ?? "",
     stripeScalePriceId: environment.STRIPE_SCALE_PRICE_ID ?? "",
@@ -111,12 +113,11 @@ export const loadConfig = (environment: NodeJS.ProcessEnv) => {
     throw new Error("JOB_HEARTBEAT_SECONDS must be less than JOB_LEASE_SECONDS");
   }
 
-  return materializeConfig(environment, publicBaseUrl, config);
+  return materializeConfig(environment, config);
 };
 
 const materializeConfig = (
   environment: NodeJS.ProcessEnv,
-  publicBaseUrl: string,
   config: ReturnType<typeof decodeConfig>,
 ) => ({
   ...config,
@@ -130,15 +131,16 @@ const materializeConfig = (
     maxChallengesPerEmail: config.authMaxChallengesPerEmail,
     maxChallengesPerIp: config.authMaxChallengesPerIp,
     publicBaseUrl: config.publicBaseUrl,
+    websiteBaseUrl: config.websiteBaseUrl,
     rateLimitWindowMs: config.authRateLimitWindowSeconds * 1_000,
     refreshTokenTtlMs: config.authRefreshTtlSeconds * 1_000,
   },
   billing: {
     checkoutCancelUrl:
-      environment.STRIPE_CHECKOUT_CANCEL_URL ?? `${publicBaseUrl}/billing/canceled`,
+      environment.STRIPE_CHECKOUT_CANCEL_URL ?? `${config.websiteBaseUrl}/checkout/canceled`,
     checkoutSuccessUrl:
-      environment.STRIPE_CHECKOUT_SUCCESS_URL ?? `${publicBaseUrl}/billing/success`,
-    portalReturnUrl: environment.STRIPE_PORTAL_RETURN_URL ?? `${publicBaseUrl}/billing`,
+      environment.STRIPE_CHECKOUT_SUCCESS_URL ?? `${config.websiteBaseUrl}/checkout/success`,
+    portalReturnUrl: environment.STRIPE_PORTAL_RETURN_URL ?? `${config.websiteBaseUrl}/billing`,
     priceIds: {
       basic: config.stripeBasicPriceId,
       pro: config.stripeProPriceId,

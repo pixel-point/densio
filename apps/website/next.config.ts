@@ -8,6 +8,19 @@ const resolveLocalPlugin = (relativePath: string) =>
 const resolveMdxPlugin = (file: string) => resolveLocalPlugin(`./src/lib/mdx-plugins/${file}`);
 
 const nextConfig: NextConfig = {
+  distDir: process.env.DENSIO_SITE_BUILD_DIR ?? ".next",
+  headers() {
+    return ["/auth/:path*", "/invites/:path*", "/app/:path*", "/checkout/:path*", "/billing"].map(
+      (source) => ({
+        source,
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Cache-Control", value: "private, no-store" },
+        ],
+      }),
+    );
+  },
   experimental: {
     optimizePackageImports: ["lucide-react", "date-fns"],
   },

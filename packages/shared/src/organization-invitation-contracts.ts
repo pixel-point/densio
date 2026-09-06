@@ -22,6 +22,16 @@ export const OrganizationInvitationStateSchema = Schema.Literals([
   "revoked",
   "expired",
 ]);
+export const OrganizationInvitationLinkResponseSchema = Schema.Struct({
+  invitationId: IdentifierSchema,
+  organizationId: IdentifierSchema,
+  name: OrganizationNameSchema,
+  email: EmailAddressSchema,
+  role: Schema.Literals(["member", "admin"]),
+  accepted: Schema.Boolean,
+});
+export type OrganizationInvitationLinkResponse =
+  typeof OrganizationInvitationLinkResponseSchema.Type;
 export type OrganizationInvitationState = typeof OrganizationInvitationStateSchema.Type;
 export const OrganizationInvitationSchema = Schema.Struct({
   invitationId: IdentifierSchema,

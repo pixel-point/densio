@@ -1,3 +1,4 @@
+import { billingReturnUrl } from "./billing-return-url.ts";
 import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import type { Database } from "../database/database.ts";
@@ -40,17 +41,18 @@ const makePortal = (database: Database, gateway: StripeGateway["Service"], now: 
     if (account.customerId === null)
       return yield* new BillingCustomerNotFound({ organizationId: input.actor.organizationId });
     const customerId = account.customerId;
+    const returnUrl = billingReturnUrl(input.config.portalReturnUrl, input.actor.organizationId);
     const operation = yield* organizationStorage("acquire-portal", () =>
       acquireBillingOperation(database, {
         actor: input.actor,
         operation: "portal",
-        requestKey: digest(input.config.portalReturnUrl),
+        requestKey: digest(returnUrl),
         now: now(),
       }),
     );
     return yield* Effect.gen(function* () {
       const session = yield* gateway.createPortalSession(
-        { customer: customerId, return_url: input.config.portalReturnUrl },
+        { customer: customerId, return_url: returnUrl },
         `densio:portal:${operation.id}`,
       );
       yield* organizationStorage("record-portal", () =>

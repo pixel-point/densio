@@ -23,6 +23,8 @@ export const makeOrganizationInvitationLinkService = (
     );
     return {
       name: record.organization.name,
+      invitationId: record.invitation.id,
+      organizationId: record.organization.id,
       email: record.invitation.email,
       role: record.invitation.role,
       accepted: record.invitation.state === "accepted",

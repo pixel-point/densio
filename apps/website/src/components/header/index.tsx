@@ -74,11 +74,11 @@ function Header({ className, menuItems, logoUrl, logoAlt }: IHeaderProps) {
           </NextLink>
           <Nav className="hidden lg:flex" items={menuItems} />
           <div className="hidden grow items-center justify-end gap-x-2.5 lg:flex">
-            <Button size="sm" variant="outline">
-              Login
+            <Button size="sm" variant="outline" asChild>
+              <NextLink href="/auth/login">Login</NextLink>
             </Button>
             <Button size="sm" asChild>
-              <NextLink href="/">Get Started</NextLink>
+              <NextLink href="/auth/login">Get Started</NextLink>
             </Button>
           </div>
           <MobileMenu items={menuItems} />

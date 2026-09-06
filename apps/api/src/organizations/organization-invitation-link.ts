@@ -30,7 +30,7 @@ export const makeOrganizationInvitationLinks = (keyHex: string, publicBaseUrl: s
       .digest("base64url");
   return {
     url: (invitation: Invitation) => {
-      const url = new URL("/v1/organization-invitations/confirm", publicBaseUrl);
+      const url = new URL(`/invites/${encodeURIComponent(invitation.id)}`, publicBaseUrl);
       url.searchParams.set(
         "token",
         formatOpaqueToken(new ParsedOpaqueToken(invitation.id, secret(invitation))),

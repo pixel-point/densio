@@ -27,6 +27,7 @@ export interface AuthConfig {
   readonly maxChallengesPerEmail: number;
   readonly maxChallengesPerIp: number;
   readonly publicBaseUrl: string;
+  readonly websiteBaseUrl?: string;
   readonly rateLimitWindowMs: number;
   readonly refreshTokenTtlMs: number;
 }
@@ -95,7 +96,10 @@ export const createLoginChallenge = (
     confirmationToken.publicId,
     createOpaqueToken().secret,
   );
-  const confirmationUrl = new URL("/v1/auth/confirm", input.config.publicBaseUrl);
+  const confirmationUrl = new URL(
+    "/auth/confirm",
+    input.config.websiteBaseUrl ?? input.config.publicBaseUrl,
+  );
   confirmationUrl.searchParams.set("token", formatOpaqueToken(confirmationToken));
 
   return database.db.transaction(

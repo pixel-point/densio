@@ -71,23 +71,24 @@ const acceptInvitationFromEmail = async (
   const link = email.text.split("\n").find((line) => line.startsWith("http"));
   if (link === undefined) throw new Error("Invitation email contained no acceptance URL.");
   const url = new URL(link);
-  expect(url.origin).toBe(apiUrl);
-  expect(url.pathname).toBe("/v1/organization-invitations/confirm");
+  expect(url.pathname).toMatch(/^\/invites\/[^/]+$/);
   expect(email.html).toContain(`href="${link}"`);
   expect(email.html).toContain("Accept invitation");
   expect(email.text).not.toMatch(/npx|densio invitations accept/);
-  const page = await fetch(url);
-  expect(page.status).toBe(200);
-  const html = await page.text();
-  expect(html).toContain('action="/v1/organization-invitations/confirm"');
-  const token = html.match(/name="token" value="([^"]+)"/)?.[1];
-  if (token === undefined) throw new Error("Invitation page contained no confirmation form.");
-  const result = await fetch(new URL(url.pathname, apiUrl), {
+  const token = url.searchParams.get("token");
+  if (token === null) throw new Error("Invitation email contained no token.");
+  const inspection = await fetch(
+    new URL(`/v1/organization-invitations/link?token=${encodeURIComponent(token)}`, apiUrl),
+  );
+  expect(inspection.status).toBe(200);
+  expect(await inspection.json()).toMatchObject({ data: { accepted: false } });
+  const result = await fetch(new URL("/v1/organization-invitations/link", apiUrl), {
     method: "POST",
-    body: new URLSearchParams({ token }),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
   });
   expect(result.status).toBe(200);
-  expect(await result.text()).toContain("Invitation accepted");
+  expect(await result.json()).toMatchObject({ data: { accepted: true } });
 };
 
 type Team = Awaited<ReturnType<typeof joinOrganization>> & { outsiderCredentials: string };

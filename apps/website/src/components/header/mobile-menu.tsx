@@ -172,6 +172,9 @@ function MobileMenu({ items }: MobileMenuProps) {
         <DrawerTitle className="sr-only">Menu</DrawerTitle>
         <div className="flex flex-1 flex-col overflow-y-auto px-5 pt-6 pb-12 md:px-8">
           <RecursiveMenu items={items} />
+          <Link href="/auth/login" className="mt-5 text-base font-medium">
+            Sign in to Densio
+          </Link>
         </div>
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 h-20 w-full bg-linear-to-b from-transparent to-background"

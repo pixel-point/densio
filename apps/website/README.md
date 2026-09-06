@@ -6,7 +6,7 @@ This document explains how to run, build, and maintain the project locally.
 
 - [Next.js](https://nextjs.org/) - application framework and routing
 - [Tailwind CSS](https://tailwindcss.com/) - utility-first styling
-- [shadcn/ui](https://ui.shadcn.com/) - reusable UI component patterns built on Radix primitives
+- [shadcn/ui](https://ui.shadcn.com/) - source-owned components; account controls use Base UI
 
 ## Requirements
 
@@ -24,7 +24,7 @@ corepack pnpm --filter @densio/website dev
 
 The remaining commands in this guide run from `apps/website`. The monorepo root `pnpm dev` command starts the API.
 
-The app will be available at `http://localhost:3000`.
+The app will be available at `http://localhost:3001`.
 
 If environment variables are required for a specific setup:
 
@@ -146,3 +146,44 @@ For the `/docs` section, this project follows the same page conventions as FumaD
 - Run `pnpm start` to serve the compiled build.
 - `postbuild` can generate sitemap files and `robots.txt` via `next-sitemap`.
 - Generated/runtime directories such as `.next/`, `.turbo/`, and `node_modules/` are not source files.
+
+## Account website and API
+
+The website has no database, ORM, or direct persistence layer. Server Components and Server Actions call the API with the server-only `DENSIO_API_URL`. The API owns authentication, memberships, permissions, invitations, billing, credits, and all database writes. API response envelopes are decoded with `@densio/shared` schemas.
+
+Set `WEBSITE_BASE_URL` on the API to the public website origin and `DENSIO_API_URL` on the website to the API origin. For local development these default to ports 3001 and 3000 respectively. Set both explicitly for deployment. Existing Stripe return URL overrides must also point to the website. Configure trusted reverse proxies on the API as usual; do not use browser-provided authentication headers.
+
+Browser login uses opaque API-issued credentials in host-only, HTTP-only, SameSite=Lax cookies, secure in production. API session lifetime and revocation remain authoritative. Next.js Server Actions enforce same-origin mutations. Login confirmation requires an explicit button click; scanning an email link never consumes a challenge. CLI challenges are confirmed without being redeemed as browser sessions.
+
+| Route                                                 | Purpose                                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------ |
+| `/auth/login`                                         | Email sign-in and waiting state                                    |
+| `/auth/confirm?token=…`                               | Explicit login confirmation                                        |
+| `/invites/[invitationId]?token=…`                     | Inspect and accept an email invitation                             |
+| `/app`                                                | Resolve the last available browser organization or account default |
+| `/app/[organizationId]/settings`                      | Organization name and details                                      |
+| `/app/[organizationId]/settings/profile`              | Email, account default organization, sign out                      |
+| `/app/[organizationId]/settings/members`              | Members, pending invitations, invite and revoke                    |
+| `/app/[organizationId]/settings/billing`              | Plan, credits, billing contact, checkout and portal                |
+| `/checkout/success`, `/checkout/canceled`, `/billing` | Public returns from hosted billing flows                           |
+
+The organization in the URL controls every read and mutation. The top switcher preserves the settings section; it does not change the CLI default. Only the explicit Profile form changes the account default. The API enforces all permissions even if a form is forged or membership changes while a page is open.
+
+Account pages use Geist Sans and scoped `.account-theme` tokens: 48px navbar, 816px maximum container with 24px desktop padding, 768px cards, 36/45px page headings with -0.03em tracking, 14/20px tabs with -0.025em tracking, 14px card corners, and 44px inputs with 8px corners. Marketing typography stays in its existing scope. `components.json` targets the Base UI account primitives under `src/components/ui/account`.
+
+### Disposable browser verification
+
+From the repository root, bundle and run the local API fixture. Its SQLite database and media live in a temporary directory, email goes to a separate loopback test inbox, and all Stripe calls use a controlled substitute. Stop the fixture with Ctrl+C to remove temporary data.
+
+```bash
+corepack pnpm exec esbuild e2e/support/website-preview.ts --bundle --platform=node --format=esm --loader:.md=text --outfile=apps/api/dist/website-preview.js --banner:js='import { createRequire } from "node:module"; const require = createRequire(import.meta.url);'
+node apps/api/dist/website-preview.js
+```
+
+In another terminal, from `apps/website`:
+
+```bash
+DENSIO_API_URL=http://127.0.0.1:3800 DENSIO_SITE_BUILD_DIR=.next/website-preview corepack pnpm exec next dev --port 3801 --hostname 127.0.0.1
+```
+
+Open `http://127.0.0.1:3801/auth/login` and the test inbox at `http://127.0.0.1:3802`. Use disposable `@densio.test` emails. The fixture checkout goes directly to the return screen without contacting Stripe or charging anything. The optional build-directory setting keeps this verification server separate from a running development server.

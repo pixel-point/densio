@@ -8,6 +8,7 @@ const validEnvironment = {
   AUTH_OUTBOX_ENCRYPTION_KEY: "0123456789abcdef".repeat(4),
   EMAIL_FROM: "Densio <login@media.acme.test>",
   PUBLIC_BASE_URL: "https://media.acme.test",
+  WEBSITE_BASE_URL: "https://www.acme.test",
   RESEND_API_KEY: "re_live_realistic",
   STRIPE_BASIC_PRICE_ID: "price_basic_realistic",
   STRIPE_SCALE_PRICE_ID: "price_scale_realistic",
@@ -70,4 +71,17 @@ it("requires a distinct Stripe price ID for each paid plan", () => {
       }),
     ),
   ).toThrow(/Stripe price IDs must be unique/);
+});
+
+it("requires a secure website origin for external deployments", () => {
+  for (const WEBSITE_BASE_URL of [
+    "http://www.acme.test",
+    "http://localhost:3001",
+    "invalid",
+    "https://www.acme.test/path",
+  ]) {
+    expect(() =>
+      validateProductionConfig(loadConfig({ ...validEnvironment, WEBSITE_BASE_URL })),
+    ).toThrow(/WEBSITE_BASE_URL/);
+  }
 });

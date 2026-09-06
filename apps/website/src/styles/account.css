@@ -1,0 +1,15 @@
+/* Prime Studio measurements, scoped to the white Densio account interface. */
+.account-theme {
+  --font-heading-family: var(--font-geist-sans);
+  --font-heading: var(--font-geist-sans);
+  --font-body-family: var(--font-geist-sans);
+  --card: 0 0% 100%;
+  --muted: 0 0% 96%;
+  --accent: 0 0% 96%;
+  --border: 0 0% 90%;
+  --input: 0 0% 87%;
+  --radius: 0.625rem;
+  font-family: var(--font-geist-sans), sans-serif;
+  color: hsl(var(--foreground));
+  color-scheme: only light;
+}

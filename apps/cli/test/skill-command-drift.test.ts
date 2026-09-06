@@ -24,6 +24,13 @@ const organizationsReference = fileURLToPath(
   new URL("../../../skill-bundle/references/organizations.md", import.meta.url),
 );
 
+it("describes website login confirmation while the CLI keeps polling", async () => {
+  expect(CLI_HELP).toContain("confirming sign in on the Densio website");
+  const workflows = await readFile(workflowsReference, "utf8");
+  expect(workflows).toContain("Confirm sign in");
+  expect(workflows).toContain("Keep the CLI process running");
+});
+
 it("describes browser invitation acceptance and preserves authenticated automation", async () => {
   const reference = await readFile(organizationsReference, "utf8");
   expect(CLI_HELP).toContain("invitation link to accept in the browser");

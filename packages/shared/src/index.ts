@@ -298,6 +298,11 @@ export {
   AuthStartResponseSchema,
   AuthTokensSchema,
   AuthPollResponseSchema,
+  AuthLoginRequestSchema,
+  AuthPollRequestSchema,
+  AuthConfirmRequestSchema,
+  AuthConfirmResponseSchema,
+  BrowserAuthPollResponseSchema,
   AuthUserSchema,
   AuthStatusSchema,
   LogoutResponseSchema,
@@ -307,6 +312,7 @@ export type {
   AuthStartResponse,
   AuthTokens,
   AuthPollResponse,
+  BrowserAuthPollResponse,
   AuthUser,
   AuthStatus,
   LogoutResponse,
@@ -402,6 +408,7 @@ export type {
 export {
   OrganizationInvitationCreateRequestSchema,
   OrganizationInvitationLinkRequestSchema,
+  OrganizationInvitationLinkResponseSchema,
   OrganizationInvitationStateSchema,
   OrganizationInvitationSchema,
   OrganizationInvitationListQuerySchema,
@@ -411,6 +418,7 @@ export {
 } from "./organization-invitation-contracts.ts";
 export type {
   OrganizationInvitationCreateRequest,
+  OrganizationInvitationLinkResponse,
   OrganizationInvitationState,
   OrganizationInvitation,
   OrganizationInvitationListQuery,

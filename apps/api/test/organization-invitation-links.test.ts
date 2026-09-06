@@ -50,15 +50,18 @@ const setup = (email = "outsider@example.test", inviter = "owner") => {
   });
   const app = createOrganizationInvitationLinkRoutes({
     invitationLinkService: makeOrganizationInvitationLinkService(fixture.database, invitationLinks),
+    websiteBaseUrl: "https://api.example.test",
     now: () => clock.now,
     createCorrelationId: () => "link-test",
   });
-  const url = invitationLinks.url(invitation);
-  const token = new URL(url).searchParams.get("token") ?? "";
+  const emailUrl = invitationLinks.url(invitation);
+  const url = `/v1/organization-invitations/link?token=${new URL(emailUrl).searchParams.get("token")}`;
+  const token = new URL(emailUrl).searchParams.get("token") ?? "";
   const accept = (value = token, extra = {}) =>
-    app.request("/v1/organization-invitations/confirm", {
+    app.request("/v1/organization-invitations/link", {
       method: "POST",
-      body: new URLSearchParams({ token: value, ...extra }),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: value, ...extra }),
     });
   const memberships = () =>
     fixture.database.db
@@ -74,6 +77,7 @@ const setup = (email = "outsider@example.test", inviter = "owner") => {
     invitationLinks,
     actor,
     url,
+    emailUrl,
     token,
     accept,
     memberships,
@@ -104,23 +108,30 @@ it("delivers a browser link whose GET is read-only and whose POST joins the addr
       },
     }),
   );
-  expect(deliveries[0]).toContain(f.url);
+  expect(deliveries[0]).toContain(f.emailUrl);
+  expect(new URL(f.emailUrl).pathname).toBe(`/invites/${f.invitation.id}`);
   expect(deliveries[0]).not.toContain("npx");
   const page = await f.app.request(f.url);
   expect(page.status).toBe(200);
   expect(page.headers.get("cache-control")).toBe("no-store");
   expect(page.headers.get("referrer-policy")).toBe("no-referrer");
-  expect(page.headers.get("content-security-policy")).toContain("form-action 'self'");
-  const html = await page.text();
-  expect(html).toContain('method="post"');
-  expect(html).toContain("Accept invitation");
-  expect(html).toContain("outsider@example.test");
+  expect(page.headers.get("content-type")).toContain("application/json");
+  expect(await page.json()).toMatchObject({
+    data: {
+      invitationId: f.invitation.id,
+      organizationId: f.organizationId,
+      email: "outsider@example.test",
+      accepted: false,
+    },
+  });
   expect(f.memberships()).toHaveLength(3);
   expect((await f.app.request(f.url, { method: "HEAD" })).status).toBe(200);
   expect(f.memberships()).toHaveLength(3);
   const result = await f.accept();
   expect(result.status).toBe(200);
-  expect(await result.text()).toContain("Invitation accepted");
+  expect(await result.json()).toMatchObject({
+    data: { accepted: true, organizationId: f.organizationId },
+  });
   expect(f.memberships()).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ userId: "outsider", role: "member", isDefault: false }),
@@ -287,7 +298,7 @@ it("binds the signed link to the recipient and granted role", async () => {
   expect(f.memberships()).toHaveLength(3);
 });
 
-it("escapes organization names and rejects extra identity fields and oversized forms", async () => {
+it("returns names as JSON and rejects extra identity fields and oversized bodies", async () => {
   const f = setup();
   f.database.db
     .update(organizations)
@@ -295,10 +306,25 @@ it("escapes organization names and rejects extra identity fields and oversized f
     .where(eq(organizations.id, f.organizationId))
     .run();
   const page = await f.app.request(f.url);
-  const html = await page.text();
-  expect(html).toContain("&lt;script&gt;");
-  expect(html).not.toContain("<script>");
+  expect(page.headers.get("content-type")).toContain("application/json");
+  expect(await page.json()).toMatchObject({ data: { name: '<script>alert("x")</script>' } });
   expect((await f.accept(f.token, { email: "owner@example.test" })).status).toBe(400);
   expect((await f.accept("a".repeat(10_000))).status).toBe(413);
   expect(f.memberships()).toHaveLength(3);
+});
+
+it("redirects old email links safely and accepts the previous HTML form", async () => {
+  const f = setup();
+  const legacy = `/v1/organization-invitations/confirm?token=${f.token}`;
+  const response = await f.app.request(legacy);
+  expect(response.status).toBe(303);
+  expect(response.headers.get("location")).toBe(f.emailUrl);
+  expect(f.memberships()).toHaveLength(3);
+  const accepted = await f.app.request("/v1/organization-invitations/confirm", {
+    method: "POST",
+    body: new URLSearchParams({ token: f.token }),
+  });
+  expect(accepted.status).toBe(303);
+  expect(accepted.headers.get("location")).toBe(f.emailUrl);
+  expect(f.memberships()).toHaveLength(4);
 });

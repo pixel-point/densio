@@ -1,9 +1,11 @@
+import { registerWebsiteAuthRoutes } from "./website-auth.ts";
 import {
   AuthPollResponseSchema,
   AuthStartResponseSchema,
   AuthStatusSchema,
   AuthTokensSchema,
-  EmailAddressSchema,
+  AuthLoginRequestSchema,
+  AuthPollRequestSchema,
   LogoutResponseSchema,
   successEnvelope,
 } from "@densio/shared";
@@ -30,7 +32,6 @@ import {
   jsonRequest,
   optionalBearerSecurity,
   problemResponses,
-  queryParameter,
   successResponse,
 } from "./openapi-support.ts";
 import {
@@ -43,8 +44,8 @@ import {
   refreshReplayProblemDescriptor,
 } from "./problems/auth-problems.ts";
 
-const LoginRequestSchema = Schema.Struct({ email: EmailAddressSchema });
-const PollRequestSchema = Schema.Struct({ pollToken: Schema.NonEmptyString });
+const LoginRequestSchema = AuthLoginRequestSchema;
+const PollRequestSchema = AuthPollRequestSchema;
 const RefreshRequestSchema = Schema.Struct({ refreshToken: Schema.NonEmptyString });
 const decodeAuthStartEnvelope = Schema.decodeUnknownSync(successEnvelope(AuthStartResponseSchema));
 const decodeAuthPollEnvelope = Schema.decodeUnknownSync(successEnvelope(AuthPollResponseSchema));
@@ -65,25 +66,6 @@ const loginDocumentation = describeRoute({
     ),
   },
   summary: "Request a magic login link",
-  tags: ["Authentication"],
-});
-const confirmationDocumentation = describeRoute({
-  operationId: "confirmLogin",
-  parameters: [queryParameter("token", "Magic-link confirmation token.", true)],
-  responses: {
-    "200": {
-      content: { "text/html": { schema: { type: "string" } } },
-      description: "The login was confirmed in a browser page.",
-    },
-    ...problemResponses(
-      invalidRequestProblemDescriptor,
-      authChallengeInvalidProblemDescriptor,
-      authChallengeUsedProblemDescriptor,
-      authChallengeExpiredProblemDescriptor,
-      internalErrorProblemDescriptor,
-    ),
-  },
-  summary: "Confirm a magic login link",
   tags: ["Authentication"],
 });
 const pollDocumentation = describeRoute({
@@ -152,7 +134,7 @@ export interface AuthRouteDependencies {
 export const createAuthRoutes = (dependencies: AuthRouteDependencies) => {
   const routes = new Hono();
   registerLoginRoute(routes, dependencies);
-  registerConfirmationRoute(routes, dependencies);
+  registerWebsiteAuthRoutes(routes, dependencies);
   registerPollRoute(routes, dependencies);
   registerRefreshRoute(routes, dependencies);
   registerLogoutRoute(routes, dependencies);
@@ -188,23 +170,6 @@ const registerLoginRoute = (routes: Hono, dependencies: AuthRouteDependencies) =
         ),
         202,
       ),
-    );
-  });
-};
-
-const registerConfirmationRoute = (routes: Hono, dependencies: AuthRouteDependencies) => {
-  routes.get("/v1/auth/confirm", confirmationDocumentation, async (context) => {
-    const correlationId = beginRequest(context, dependencies.createCorrelationId);
-    const program = dependencies.authService.confirm({
-      confirmationToken: context.req.query("token"),
-      now: dependencies.now(),
-    });
-    return runRouteEffect(context, correlationId, program, () =>
-      context.html(`<!doctype html>
-<html lang="en">
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Login confirmed</title></head>
-  <body><main><h1>Login confirmed</h1><p>You can close this page and continue in Densio.</p></main></body>
-</html>`),
     );
   });
 };

@@ -1,21 +1,20 @@
 import { Hono } from "hono";
 
-export const pageRoutes = new Hono();
-
-pageRoutes.get("/billing/success", (context) =>
-  context.html(page("Checkout completed", "Return to the Densio CLI and check capabilities.")),
-);
-
-pageRoutes.get("/billing/canceled", (context) =>
-  context.html(page("Checkout canceled", "No billing change was made. You can return to the CLI.")),
-);
-
-pageRoutes.get("/billing", (context) =>
-  context.html(page("Billing session complete", "You can return to the Densio CLI.")),
-);
-
-const page = (heading: string, message: string) => `<!doctype html>
-<html lang="en">
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${heading}</title></head>
-  <body><main><h1>${heading}</h1><p>${message}</p></main></body>
-</html>`;
+export const createPageRoutes = (websiteBaseUrl = "http://localhost:3001") => {
+  const routes = new Hono();
+  const destinations = [
+    ["/billing/success", "/checkout/success"],
+    ["/billing/canceled", "/checkout/canceled"],
+    ["/billing", "/billing"],
+  ] as const;
+  destinations.forEach(([path, destination]) =>
+    routes.get(path, (context) => {
+      context.header("cache-control", "no-store");
+      const url = new URL(destination, websiteBaseUrl);
+      const organizationId = context.req.query("organizationId");
+      if (organizationId) url.searchParams.set("organizationId", organizationId);
+      return context.redirect(url.toString(), 303);
+    }),
+  );
+  return routes;
+};

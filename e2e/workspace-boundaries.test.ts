@@ -4,12 +4,14 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const workspaces = ["apps/api", "apps/cli", "packages/shared"];
+const workspaces = ["apps/api", "apps/cli", "apps/website", "packages/shared"];
 const ownerOf = (path: string) => workspaces.find((workspace) => path.startsWith(`${workspace}/`));
 const forbiddenImport = (file: string, specifier: string) => {
   if (specifier.startsWith("@densio/shared/")) return true;
   if (
-    ["@densio/api", "densio"].some((name) => specifier === name || specifier.startsWith(`${name}/`))
+    ["@densio/api", "@densio/website", "densio"].some(
+      (name) => specifier === name || specifier.startsWith(`${name}/`),
+    )
   )
     return true;
   if (!specifier.startsWith(".") && !specifier.startsWith("/")) return false;
@@ -38,6 +40,9 @@ test("production workspace imports respect application ownership and the shared 
 });
 
 test.each([
+  ["apps/website/src/lib/client.ts", "@densio/api", true],
+  ["apps/website/src/lib/client.ts", "../../../api/src/database/database.ts", true],
+  ["apps/website/src/lib/client.ts", "@densio/shared", false],
   ["apps/api/src/server.ts", "../../cli/src/cli.ts", true],
   ["apps/cli/src/cli.ts", "@densio/api", true],
   ["apps/cli/src/cli.ts", "../../../packages/shared/src/index.ts", true],

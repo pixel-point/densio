@@ -111,12 +111,14 @@ it("completes the magic-link flow and reports authenticated ownership", async ()
   expect(decodeAuthPoll(await pendingResponse.json()).data.status).toBe("pending");
 
   const confirmation = readConfirmationUrl(harness.database);
-  const confirmedResponse = await harness.app.request(
-    `${confirmation.pathname}${confirmation.search}`,
-  );
+  const confirmedResponse = await harness.app.request("/v1/auth/confirm", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: confirmation.searchParams.get("token") }),
+  });
   expect(confirmedResponse.status).toBe(200);
-  expect(confirmedResponse.headers.get("content-type")).toContain("text/html");
-  await expect(confirmedResponse.text()).resolves.toContain("Login confirmed");
+  expect(confirmedResponse.headers.get("content-type")).toContain("application/json");
+  await expect(confirmedResponse.json()).resolves.toMatchObject({ data: { status: "confirmed" } });
 
   const pollResponse = await harness.app.request("/v1/auth/poll", {
     body: JSON.stringify({ pollToken: login.body.data.pollToken }),
@@ -237,7 +239,7 @@ it("uses the authenticated organization for Checkout, Portal, and billing status
   expect(portalRequests).toEqual([
     {
       customer: "cus_agent",
-      return_url: BILLING_CONFIG.portalReturnUrl,
+      return_url: `${BILLING_CONFIG.portalReturnUrl}?organizationId=${organizationId}`,
     },
   ]);
 
@@ -397,7 +399,11 @@ const createRouteHarness = async (
 const completeLogin = async (harness: RouteHarness) => {
   const login = await requestLogin(harness.app);
   const confirmation = readConfirmationUrl(harness.database);
-  await harness.app.request(`${confirmation.pathname}${confirmation.search}`);
+  await harness.app.request("/v1/auth/confirm", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: confirmation.searchParams.get("token") }),
+  });
   const response = await harness.app.request("/v1/auth/poll", {
     body: JSON.stringify({ pollToken: login.body.data.pollToken }),
     headers: { "content-type": "application/json" },

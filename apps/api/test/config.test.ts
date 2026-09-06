@@ -3,6 +3,17 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.ts";
 
 describe("configuration", () => {
+  it("uses the website origin for all browser destinations", () => {
+    expect(loadConfig({ WEBSITE_BASE_URL: "https://densio.test" })).toMatchObject({
+      websiteBaseUrl: "https://densio.test",
+      auth: { websiteBaseUrl: "https://densio.test" },
+      billing: {
+        checkoutSuccessUrl: "https://densio.test/checkout/success",
+        checkoutCancelUrl: "https://densio.test/checkout/canceled",
+        portalReturnUrl: "https://densio.test/billing",
+      },
+    });
+  });
   it("uses safe media and retention defaults", () => {
     expect(loadConfig({})).toMatchObject({
       artifactTtlMs: 86_400_000,

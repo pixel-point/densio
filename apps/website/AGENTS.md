@@ -18,7 +18,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Project Baseline
 
-- Stack: Next.js App Router, React, strict TypeScript, Tailwind CSS v4, and source-owned shadcn/Radix-style components.
+- Stack: Next.js App Router, React, strict TypeScript, Tailwind CSS v4, and source-owned shadcn components. New account components use Base UI; existing marketing primitives retain their current APIs.
 - `src/app` owns routes, layouts, metadata, and framework adapters.
 - `src/components/ui` owns reusable primitives; `src/components/pages/<slug>` owns page sections; `src/components/content` owns rich-content renderers.
 - `src/content` owns Markdown content. `src/configs`, `src/constants`, `src/contexts`, `src/hooks`, `src/lib`, `src/styles`, and `src/types` own their corresponding shared concerns.
@@ -42,7 +42,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Appearance
 
 - The website supports only the light theme. Keep one color palette and do not add theme-switching UI or system-theme detection.
-- Use Geist Pixel Square for headings, mixed with Geist Sans and Handjet (weight 500, with the opening “A” at 700) in the home hero, and Geist Sans for body and interface text. Configure fonts centrally in `src/lib/theme-fonts.ts` and `src/styles/globals.css`.
+- Use Geist Pixel Square for headings, mixed with Geist Sans and Handjet (weight 500, with the opening “A” at 700) in the home hero, and Geist Sans for body and interface text. Account, authentication, invitation, and billing return pages use Geist Sans for headings as well. Their Prime Studio measurements and white palette are scoped to `.account-theme`. Configure fonts centrally in `src/lib/theme-fonts.ts` and `src/styles/globals.css`.
 
 ## TypeScript, UI, And Assets
 

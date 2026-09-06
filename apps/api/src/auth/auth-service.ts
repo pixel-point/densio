@@ -61,6 +61,13 @@ export interface LogoutInput {
 }
 
 export interface AuthServiceDefinition {
+  readonly pollBrowser: (
+    input: PollInput,
+  ) => Effect.Effect<
+    | { readonly expiresAt: number; readonly status: "pending" }
+    | { readonly expiresAt: number; readonly status: "confirmed"; readonly sessionToken: string },
+    AuthChallengeUnavailable | AuthStorageError
+  >;
   readonly confirm: (
     input: ConfirmInput,
   ) => Effect.Effect<{ readonly status: "confirmed" }, AuthChallengeUnavailable | AuthStorageError>;
@@ -127,6 +134,20 @@ export const makeAuthService = (database: Database, sealMagicLink: MagicLinkSeal
     return yield* new AuthChallengeUnavailable({ reason: outcome.kind });
   });
 
+  const pollBrowser = Effect.fn("AuthService.pollBrowser")(function* (input: PollInput) {
+    // Browser sessions have an absolute API-owned lifetime and need no client refresh rotation.
+    const result = yield* poll({
+      ...input,
+      config: { ...input.config, accessTokenTtlMs: input.config.refreshTokenTtlMs },
+    });
+    if (result.status === "pending") return result;
+    return {
+      status: "confirmed" as const,
+      sessionToken: result.accessToken,
+      expiresAt: result.accessExpiresAt,
+    };
+  });
+
   const lookupAccess = Effect.fn("AuthService.lookupAccess")(function* (input: AccessInput) {
     const token = yield* parseSessionToken(input.accessToken);
     const outcome = yield* tryStorage("lookup-access", () =>
@@ -158,6 +179,7 @@ export const makeAuthService = (database: Database, sealMagicLink: MagicLinkSeal
     logout,
     lookupAccess,
     poll,
+    pollBrowser,
     refresh,
     requestLogin,
   });

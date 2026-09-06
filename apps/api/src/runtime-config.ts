@@ -6,7 +6,23 @@ export const validateProductionConfig = (config: AppConfig) => {
     publicUrl?.hostname === "localhost" ||
     publicUrl?.hostname === "127.0.0.1" ||
     publicUrl?.hostname === "[::1]";
+  const websiteUrl = URL.canParse(config.websiteBaseUrl)
+    ? new URL(config.websiteBaseUrl)
+    : undefined;
+  const localWebsite =
+    websiteUrl !== undefined && ["localhost", "127.0.0.1", "[::1]"].includes(websiteUrl.hostname);
   const required = [
+    [
+      "WEBSITE_BASE_URL",
+      websiteUrl !== undefined &&
+        (websiteUrl.protocol === "https:" ||
+          (localPublicUrl && localWebsite && websiteUrl.protocol === "http:")) &&
+        websiteUrl.pathname === "/" &&
+        !websiteUrl.search &&
+        !websiteUrl.hash &&
+        !websiteUrl.username &&
+        !websiteUrl.password,
+    ],
     [
       "AUTH_IP_HASH_SECRET",
       config.authIpHashSecret.length >= 32 && !isPlaceholder(config.authIpHashSecret),

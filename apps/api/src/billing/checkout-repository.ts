@@ -1,3 +1,4 @@
+import { billingReturnUrl } from "./billing-return-url.ts";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import type { PaidPlan } from "@densio/shared";
@@ -103,8 +104,8 @@ export const prepareCheckout = (
           idempotencyKey: input.idempotencyKey,
           plan: input.plan,
           priceId: input.config.priceIds[input.plan],
-          cancelUrl: input.config.checkoutCancelUrl,
-          successUrl: input.config.checkoutSuccessUrl,
+          cancelUrl: billingReturnUrl(input.config.checkoutCancelUrl, input.actor.organizationId),
+          successUrl: billingReturnUrl(input.config.checkoutSuccessUrl, input.actor.organizationId),
           state: "creating",
           createdAt: input.now,
         })

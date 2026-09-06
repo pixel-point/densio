@@ -23,6 +23,7 @@ const run = async () => {
 
   try {
     const user = await authenticate({
+      websiteUrl: requiredEnvironment(environment, "DENSIO_SYNTHETIC_WEBSITE_URL"),
       apiUrl,
       credentialsPath,
       email,

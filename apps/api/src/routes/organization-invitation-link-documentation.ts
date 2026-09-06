@@ -1,50 +1,82 @@
-import { OrganizationInvitationLinkRequestSchema } from "@densio/shared";
+import {
+  OrganizationInvitationLinkRequestSchema,
+  OrganizationInvitationLinkResponseSchema,
+} from "@densio/shared";
 import { describeRoute } from "hono-openapi";
-import { jsonRequest, queryParameters } from "./openapi-support.ts";
+import {
+  internalErrorProblemDescriptor,
+  invalidRequestProblemDescriptor,
+  requestTooLargeProblemDescriptor,
+} from "../errors/problem-details.ts";
+import {
+  jsonRequest,
+  problemResponses,
+  queryParameters,
+  successResponse,
+} from "./openapi-support.ts";
+import { organizationProblemDescriptor } from "./problems/organization-problems.ts";
 
-const htmlResponse = (description: string) => ({
-  description,
-  content: { "text/html": { schema: { type: "string" as const } } },
-});
-const responses = {
-  "200": htmlResponse("The invitation confirmation or completed acceptance page."),
-  "400": htmlResponse("The invitation token or submitted form is invalid."),
-  "404": htmlResponse("The invitation link is invalid or unknown."),
-  "409": htmlResponse("The invitation or organization is unavailable, or membership conflicts."),
-  "410": htmlResponse("The invitation has expired."),
-  "500": htmlResponse("An internal error prevented loading or accepting the invitation."),
-};
-
-export const invitationLinkDocumentation = (accept: boolean) =>
+const errors = problemResponses(
+  invalidRequestProblemDescriptor,
+  internalErrorProblemDescriptor,
+  ...(
+    [
+      "ORGANIZATION_INVITATION_NOT_FOUND",
+      "ORGANIZATION_INVITATION_EXPIRED",
+      "ORGANIZATION_INVITATION_UNAVAILABLE",
+      "ORGANIZATION_NOT_ACTIVE",
+      "ORGANIZATION_INVITATION_CONFLICT",
+    ] as const
+  ).map(organizationProblemDescriptor),
+);
+export const invitationLinkDocumentation = (accept: boolean, legacy = false) =>
   describeRoute({
-    operationId: accept ? "acceptOrganizationInvitationLink" : "viewOrganizationInvitationLink",
-    summary: accept
-      ? "Accept an emailed organization invitation in the browser"
-      : "View an emailed organization invitation",
+    operationId: legacy
+      ? accept
+        ? "acceptLegacyOrganizationInvitationLink"
+        : "redirectOrganizationInvitationLink"
+      : accept
+        ? "acceptOrganizationInvitationLink"
+        : "viewOrganizationInvitationLink",
+    summary: legacy
+      ? "Continue an invitation on the website"
+      : accept
+        ? "Accept an emailed invitation"
+        : "Inspect an emailed invitation",
     description:
-      "The signed email link authorizes only the addressed membership. GET is read-only; POST explicitly accepts. No general session is issued. Expiry, revocation, current grant authority and removed memberships are enforced. Acceptance preserves organization defaults.",
+      "The signed token authorizes the addressed membership only. Inspection is read-only; acceptance preserves organization defaults and does not issue a session.",
     tags: ["Organizations"],
     security: [],
     ...(accept
       ? {
-          requestBody: {
-            required: true,
-            content: {
-              "application/x-www-form-urlencoded": {
-                schema: jsonRequest(OrganizationInvitationLinkRequestSchema).content[
-                  "application/json"
-                ].schema,
-              },
-            },
-          },
+          requestBody: legacy
+            ? {
+                required: true,
+                content: {
+                  "application/x-www-form-urlencoded": {
+                    schema: jsonRequest(OrganizationInvitationLinkRequestSchema).content[
+                      "application/json"
+                    ].schema,
+                  },
+                },
+              }
+            : jsonRequest(OrganizationInvitationLinkRequestSchema),
         }
       : {
           parameters: queryParameters(OrganizationInvitationLinkRequestSchema, {
-            token: "Signed, recipient-bound invitation credential from the email.",
+            token: "Recipient-bound email invitation token.",
           }),
         }),
     responses: {
-      ...responses,
-      ...(accept ? { "413": htmlResponse("The submitted form exceeds 4096 bytes.") } : {}),
+      ...(legacy
+        ? { "303": { description: "Continue on the website invitation screen." } }
+        : {
+            "200": successResponse(
+              "Verified invitation details and acceptance state.",
+              OrganizationInvitationLinkResponseSchema,
+            ),
+          }),
+      ...(!legacy || accept ? errors : {}),
+      ...(accept ? problemResponses(requestTooLargeProblemDescriptor) : {}),
     },
   });

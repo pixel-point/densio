@@ -177,7 +177,12 @@ const authenticate = async (
   expect(message.html).toContain("Continue");
   const verificationUrl = message.text.split("\n").find((line) => line.startsWith("http"));
   if (verificationUrl === undefined) throw new Error("Email contained no verification URL.");
-  const confirmation = await fetch(verificationUrl);
+  expect(new URL(verificationUrl).pathname).toBe("/auth/confirm");
+  const confirmation = await fetch(new URL("/v1/auth/confirm", apiUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: new URL(verificationUrl).searchParams.get("token") }),
+  });
   expect(confirmation.status).toBe(200);
   const result = await withTimeout(login.result, 10_000, "CLI login confirmation timed out.");
   expect(result.code, result.stderr).toBe(0);
@@ -684,6 +689,7 @@ const e2eConfig = (directory: string, apiUrl: string, port: number) =>
     MEDIA_ROOT: join(directory, "media"),
     PORT: String(port),
     PUBLIC_BASE_URL: apiUrl,
+    WEBSITE_BASE_URL: "http://localhost:3001",
     RESEND_API_KEY: "re_e2e",
     STRIPE_BASIC_PRICE_ID: "price_basic_e2e",
     STRIPE_PRO_PRICE_ID: "price_pro_e2e",

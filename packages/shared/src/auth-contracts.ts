@@ -7,6 +7,13 @@ export const EmailAddressSchema = Schema.String.check(
 );
 export type EmailAddress = typeof EmailAddressSchema.Type;
 
+export const AuthLoginRequestSchema = Schema.Struct({ email: EmailAddressSchema });
+export const AuthPollRequestSchema = Schema.Struct({ pollToken: Schema.NonEmptyString });
+export const AuthConfirmRequestSchema = Schema.Struct({
+  token: Schema.NonEmptyString.check(Schema.isMaxLength(256)),
+});
+export const AuthConfirmResponseSchema = Schema.Struct({ status: Schema.Literal("confirmed") });
+
 export const AuthStartResponseSchema = Schema.Struct({
   challengeId: IdentifierSchema,
   pollToken: Schema.NonEmptyString,
@@ -38,6 +45,16 @@ export const AuthPollResponseSchema = Schema.Union([
   AuthConfirmedResponseSchema,
 ]);
 export type AuthPollResponse = typeof AuthPollResponseSchema.Type;
+
+export const BrowserAuthPollResponseSchema = Schema.Union([
+  AuthPendingResponseSchema,
+  Schema.Struct({
+    status: Schema.Literal("confirmed"),
+    sessionToken: Schema.NonEmptyString,
+    expiresAt: IsoTimestampSchema,
+  }),
+]);
+export type BrowserAuthPollResponse = typeof BrowserAuthPollResponseSchema.Type;
 
 export const AuthUserSchema = Schema.Struct({
   id: IdentifierSchema,

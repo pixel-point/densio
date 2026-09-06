@@ -129,3 +129,5 @@ change billing, supply payment details, or create a live charge.
 Run staging after a staging deployment and production hourly. Configure the scheduler to prevent
 overlapping runs and alert on a non-zero exit code. Each runner writes one JSON result to stdout or
 one safe error message to stderr; credentials and login tokens are never emitted.
+
+Website confirmation links require `DENSIO_SYNTHETIC_WEBSITE_URL` alongside `DENSIO_SYNTHETIC_API_URL` for opt-in deployed synthetics. The harness validates the email origin and submits confirmation JSON to the configured API; it never follows an arbitrary email destination.

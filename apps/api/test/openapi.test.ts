@@ -64,7 +64,7 @@ it("documents every registered API operation", async () => {
   const document = (await response.json()) as OpenAPIV3_1.Document;
 
   expect(documentedOperations(document)).toEqual(runtimeApiOperations(app));
-  expect(documentedOperations(document)).toHaveLength(54);
+  expect(documentedOperations(document)).toHaveLength(58);
 });
 
 it("documents the exact response status set for every operation", async () => {
@@ -141,7 +141,7 @@ it("describes structured, authenticated, binary, and signed requests", async () 
       required: true,
       content: { "application/x-www-form-urlencoded": { schema: { required: ["token"] } } },
     },
-    responses: { "200": { content: { "text/html": { schema: { type: "string" } } } } },
+    responses: { "303": { description: expect.any(String) } },
     security: [],
   });
   expect(paths["/v1/billing/webhook"]?.post?.parameters).toEqual([
@@ -528,11 +528,14 @@ const expectedOperationStatuses = {
   "GET /health": ["200"],
   "GET /ready": ["200", "503"],
   "GET /v1/artifacts/{artifactId}/{token}/{filename}": ["200", "206", "304", "404", "416", "500"],
-  "GET /v1/auth/confirm": ["200", "400", "409", "410", "500"],
+  "GET /v1/auth/confirm": ["303"],
+  "POST /v1/auth/confirm": ["200", "400", "409", "410", "413", "500"],
+  "POST /v1/auth/browser/poll": ["200", "400", "409", "410", "413", "500"],
   "GET /v1/auth/status": ["200", "401", "500"],
   "GET /v1/capabilities": ["200", "500"],
   "GET /v1/organization-invitations": ["200", "400", "401", "500"],
-  "GET /v1/organization-invitations/confirm": ["200", "400", "404", "409", "410", "500"],
+  "GET /v1/organization-invitations/confirm": ["303"],
+  "GET /v1/organization-invitations/link": ["200", "400", "404", "409", "410", "500"],
   "GET /v1/organizations": ["200", "400", "401", "500"],
   "GET /v1/organizations/{organizationId}": ["200", "401", "404", "500"],
   "GET /v1/organizations/{organizationId}/artifacts/{artifactId}": [
@@ -654,7 +657,8 @@ const expectedOperationStatuses = {
   "POST /v1/auth/poll": ["200", "400", "409", "410", "413", "500"],
   "POST /v1/auth/refresh": ["200", "400", "401", "413", "500"],
   "POST /v1/billing/webhook": ["200", "400", "500", "502", "503"],
-  "POST /v1/organization-invitations/confirm": ["200", "400", "404", "409", "410", "413", "500"],
+  "POST /v1/organization-invitations/confirm": ["303", "400", "404", "409", "410", "413", "500"],
+  "POST /v1/organization-invitations/link": ["200", "400", "404", "409", "410", "413", "500"],
   "POST /v1/organization-invitations/{invitationId}/accept": [
     "200",
     "401",
