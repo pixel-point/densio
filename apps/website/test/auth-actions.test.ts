@@ -103,6 +103,38 @@ it("does not redeem an unrelated browser challenge when confirming a CLI email",
   expect(jar.get("densio_login_poll")?.value).toBe("website-poll");
 });
 
+it("opens the dashboard directly after confirming the browser's own magic link", async () => {
+  await serve({
+    "/v1/auth/confirm": { status: "confirmed" },
+    "/v1/auth/browser/poll": {
+      status: "confirmed",
+      sessionToken: "private-session-token",
+      expiresAt,
+    },
+  });
+  jar.set("densio_login_challenge", { value: "website-challenge", options: {} });
+  jar.set("densio_login_poll", { value: "website-poll", options: {} });
+  jar.set("densio_login_return", { value: "/app/org/settings/members", options: {} });
+  const form = new FormData();
+  form.set("token", "website-challenge.secret");
+  await expect(confirmLogin({}, form)).rejects.toMatchObject({
+    digest: "NEXT_REDIRECT;replace;/app/org/settings/members;307;",
+  });
+  expect(jar.get("densio_session")?.value).toBe("private-session-token");
+});
+
+it("keeps completing browser login when the session is not available immediately", async () => {
+  await serve({
+    "/v1/auth/confirm": { status: "confirmed" },
+    "/v1/auth/browser/poll": { status: "pending", expiresAt, pollAfterSeconds: 1 },
+  });
+  jar.set("densio_login_challenge", { value: "website-challenge", options: {} });
+  jar.set("densio_login_poll", { value: "website-poll", options: {} });
+  const form = new FormData();
+  form.set("token", "website-challenge.secret");
+  expect(await confirmLogin({}, form)).toEqual({ confirmed: true, returnTo: "/app" });
+});
+
 it("finishes the original waiting tab after the confirmation tab has issued the session", async () => {
   await serve({
     "/v1/auth/status": {

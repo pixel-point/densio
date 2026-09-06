@@ -1,12 +1,12 @@
 "use client";
-import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState } from "react";
 import { Mail } from "lucide-react";
-import { beginLogin, pollLogin } from "@/app/(account)/auth/actions";
+import { beginLogin } from "@/app/(account)/auth/actions";
 import { AccountInput, AccountField } from "@/components/ui/account/input";
 import { AccountButton } from "@/components/ui/account/button";
 import { FormFeedback } from "@/components/pages/account/form-feedback";
 import type { AuthFormState } from "@/lib/densio/form-state";
+import { useLoginPolling } from "./use-login-polling";
 
 export function LoginForm({ returnTo }: { returnTo: string }) {
   const [state, submit, pending] = useActionState(beginLogin, {});
@@ -41,36 +41,7 @@ function LoginWaiting({
   waiting: NonNullable<AuthFormState["waiting"]>;
   returnTo: string;
 }) {
-  const router = useRouter();
-  const [error, setError] = useState<string>();
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      if (Date.now() >= new Date(waiting.expiresAt).getTime()) {
-        setError("This link has expired. Request a new sign-in link.");
-        return;
-      }
-      const result = await pollLogin(returnTo);
-      if (!active) return;
-      if (result.status === "confirmed") {
-        router.replace(result.returnTo);
-        router.refresh();
-        return;
-      }
-      if (result.status === "error") {
-        setError(result.error);
-        return;
-      }
-      timer = setTimeout(poll, Math.max(1000, result.pollAfterSeconds * 1000));
-    };
-    timer = setTimeout(poll, Math.max(1000, waiting.pollAfterSeconds * 1000));
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [waiting, router, attempt, returnTo]);
+  const { error, retry } = useLoginPolling({ ...waiting, returnTo });
   return (
     <div className="flex flex-col items-center gap-7 text-center">
       <div className="flex size-12 items-center justify-center rounded-xl border border-border">
@@ -80,8 +51,8 @@ function LoginWaiting({
         <p className="font-medium">Check your inbox</p>
         <p className="mt-2 text-muted-foreground">
           We sent a sign-in link to{" "}
-          <span className="break-all font-medium text-foreground">{waiting.email}</span>. Confirm it
-          to continue here.
+          <span className="break-all font-medium text-foreground">{waiting.email}</span>. Open it to
+          go straight to your dashboard.
         </p>
       </div>
       {error ? (
@@ -89,13 +60,7 @@ function LoginWaiting({
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
-          <AccountButton
-            variant="outline"
-            onClick={() => {
-              setError(undefined);
-              setAttempt((value) => value + 1);
-            }}
-          >
+          <AccountButton variant="outline" onClick={retry}>
             Check again
           </AccountButton>
         </div>

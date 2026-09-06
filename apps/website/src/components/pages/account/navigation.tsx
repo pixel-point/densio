@@ -24,6 +24,7 @@ export function SettingsNavigation({ organizationId }: { organizationId: string 
           <Link
             key={section.name}
             href={href}
+            prefetch={true}
             aria-current={active ? "page" : undefined}
             className={cn(
               "shrink-0 border-b-2 py-3.5 text-sm leading-5 font-semibold tracking-tight transition-colors",

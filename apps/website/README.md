@@ -153,12 +153,12 @@ The website has no database, ORM, or direct persistence layer. Server Components
 
 Set `WEBSITE_BASE_URL` on the API to the public website origin and `DENSIO_API_URL` on the website to the API origin. For local development these default to ports 3001 and 3000 respectively. Set both explicitly for deployment. Existing Stripe return URL overrides must also point to the website. Configure trusted reverse proxies on the API as usual; do not use browser-provided authentication headers.
 
-Browser login uses opaque API-issued credentials in host-only, HTTP-only, SameSite=Lax cookies, secure in production. API session lifetime and revocation remain authoritative. Next.js Server Actions enforce same-origin mutations. Login confirmation requires an explicit button click; scanning an email link never consumes a challenge. CLI challenges are confirmed without being redeemed as browser sessions.
+Browser login uses opaque API-issued credentials in host-only, HTTP-only, SameSite=Lax cookies, secure in production. API session lifetime and revocation remain authoritative. Next.js Server Actions enforce same-origin mutations. Opening the emailed link automatically confirms the request through a browser-initiated Server Action. The initiating browser receives its session and redirects to the dashboard without another click; its original waiting tab follows automatically. GET-only link previews do not consume the challenge. CLI challenges are confirmed without being redeemed as browser sessions.
 
 | Route                                                 | Purpose                                                            |
 | ----------------------------------------------------- | ------------------------------------------------------------------ |
 | `/auth/login`                                         | Email sign-in and waiting state                                    |
-| `/auth/confirm?token=…`                               | Explicit login confirmation                                        |
+| `/auth/confirm?token=…`                               | Automatic login completion and dashboard redirect                  |
 | `/invites/[invitationId]?token=…`                     | Inspect and accept an email invitation                             |
 | `/app`                                                | Resolve the last available browser organization or account default |
 | `/app/[organizationId]/settings`                      | Organization name and details                                      |
@@ -168,6 +168,8 @@ Browser login uses opaque API-issued credentials in host-only, HTTP-only, SameSi
 | `/checkout/success`, `/checkout/canceled`, `/billing` | Public returns from hosted billing flows                           |
 
 The organization in the URL controls every read and mutation. The top switcher preserves the settings section; it does not change the CLI default. Only the explicit Profile form changes the account default. The API enforces all permissions even if a form is forged or membership changes while a page is open.
+
+Settings navigation follows Prime's preload-and-render approach: links prefetch the full destination, the current page stays visible during navigation, and member and invitation data load together before rendering. There is no generic settings loading screen.
 
 Account pages use Geist Sans and scoped `.account-theme` tokens: 48px navbar, 816px maximum container with 24px desktop padding, 768px cards, 36/45px page headings with -0.03em tracking, 14/20px tabs with -0.025em tracking, 14px card corners, and 44px inputs with 8px corners. Marketing typography stays in its existing scope. `components.json` targets the Base UI account primitives under `src/components/ui/account`.
 

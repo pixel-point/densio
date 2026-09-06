@@ -83,10 +83,11 @@ export async function confirmLogin(
   if (!result.ok) return { error: result.error.detail };
   // Only the browser that initiated this exact challenge may redeem its poll secret.
   if (token.split(".")[0] !== (await readCookie(cookieNames.challenge))) return { confirmed: true };
+  const returnTo = safeReturnTo((await readCookie(cookieNames.returnTo)) ?? "/app");
   const completion = await pollLogin();
-  return completion.status === "confirmed"
-    ? { confirmed: true, returnTo: completion.returnTo }
-    : { confirmed: true };
+  if (completion.status === "confirmed") redirect(completion.returnTo);
+  if (completion.status === "error") return { error: completion.error };
+  return { confirmed: true, returnTo };
 }
 
 export async function logout(_previous: FormState, _form: FormData): Promise<FormState> {

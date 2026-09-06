@@ -3,10 +3,12 @@ import {
   OrganizationMembersResponseSchema,
   OrganizationInvitationsResponseSchema,
   type OrganizationInvitation,
+  type OrganizationInvitationsResponse,
   type OrganizationRole,
 } from "@densio/shared";
 import { getAccount } from "@/lib/densio/account";
 import { densioApi } from "@/lib/densio/api";
+import type { ApiResult } from "@/lib/densio/client";
 import { organizationApiPath } from "@/lib/densio/mutations";
 import { accountPath } from "@/lib/densio/navigation";
 import { revokeInvitation } from "@/app/(account)/app/member-actions";
@@ -26,12 +28,25 @@ export async function MembersSettings({
 }) {
   const account = await getAccount(organizationId, "members");
   if (!account.ok) return <ApiError error={account.error} />;
-  const members = await densioApi()(
-    organizationApiPath(organizationId, `/members?limit=25${cursorQuery(query.membersCursor)}`),
-    OrganizationMembersResponseSchema,
-    { token: account.session.token },
-  );
   const canInvite = account.membership.role !== "member";
+  const request = densioApi();
+  const [members, invitations] = await Promise.all([
+    request(
+      organizationApiPath(organizationId, `/members?limit=25${cursorQuery(query.membersCursor)}`),
+      OrganizationMembersResponseSchema,
+      { token: account.session.token },
+    ),
+    canInvite
+      ? request(
+          organizationApiPath(
+            organizationId,
+            `/invitations?state=pending&limit=25${cursorQuery(query.invitationsCursor)}`,
+          ),
+          OrganizationInvitationsResponseSchema,
+          { token: account.session.token },
+        )
+      : null,
+  ]);
   return (
     <>
       {canInvite && (
@@ -73,10 +88,10 @@ export async function MembersSettings({
       ) : (
         <ApiError error={members.error} />
       )}
-      {canInvite && (
+      {invitations && (
         <InvitationList
           organizationId={organizationId}
-          token={account.session.token}
+          invitations={invitations}
           role={account.membership.role}
           query={query}
         />
@@ -84,25 +99,17 @@ export async function MembersSettings({
     </>
   );
 }
-async function InvitationList({
+function InvitationList({
   organizationId,
-  token,
+  invitations,
   role,
   query,
 }: {
   organizationId: string;
-  token: string;
+  invitations: ApiResult<OrganizationInvitationsResponse>;
   role: OrganizationRole;
   query: MemberQuery;
 }) {
-  const invitations = await densioApi()(
-    organizationApiPath(
-      organizationId,
-      `/invitations?state=pending&limit=25${cursorQuery(query.invitationsCursor)}`,
-    ),
-    OrganizationInvitationsResponseSchema,
-    { token },
-  );
   if (!invitations.ok) return <ApiError error={invitations.error} />;
   return (
     <AccountCard>
