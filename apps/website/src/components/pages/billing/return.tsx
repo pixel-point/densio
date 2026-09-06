@@ -31,11 +31,11 @@ export function BillingReturn({
       : "/app";
   return (
     <AuthFrame {...copy[kind]}>
-      <div className="flex flex-col items-center gap-7">
+      <div className="flex flex-col items-start gap-7">
         <Link href={returnTo} className={accountButtonVariants({ size: "lg" })}>
           Go to billing
         </Link>
-        <p className="text-center text-sm leading-[21px] text-muted-foreground">
+        <p className="text-sm leading-[21px] text-muted-foreground">
           Started from the terminal? You can return there and check billing status. You may need to
           sign in to view it in this browser.
         </p>

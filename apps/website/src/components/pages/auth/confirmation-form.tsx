@@ -35,7 +35,7 @@ export function ConfirmationForm({ token }: { token: string }) {
       description={error || confirmedElsewhere ? "" : "You'll be redirected automatically."}
     >
       {error ? (
-        <div className="flex flex-col items-center gap-7 text-center">
+        <div className="flex flex-col items-start gap-7">
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
@@ -45,14 +45,14 @@ export function ConfirmationForm({ token }: { token: string }) {
           </Link>
         </div>
       ) : confirmedElsewhere ? (
-        <div className="flex flex-col items-center gap-7 text-center" role="status">
+        <div className="flex flex-col items-start gap-7" role="status">
           <Check className="size-8" />
           <p className="text-sm leading-[21px] text-muted-foreground">
             You can return to the browser or terminal where you started signing in.
           </p>
         </div>
       ) : (
-        <p role="status" className="text-center text-sm text-muted-foreground">
+        <p role="status" className="text-sm text-muted-foreground">
           Completing your sign-in…
         </p>
       )}
