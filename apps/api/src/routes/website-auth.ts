@@ -2,6 +2,8 @@ import {
   AuthConfirmRequestSchema,
   AuthConfirmResponseSchema,
   AuthPollRequestSchema,
+  BrowserAuthConfirmRequestSchema,
+  BrowserAuthConfirmResponseSchema,
   BrowserAuthPollResponseSchema,
   successEnvelope,
 } from "@densio/shared";
@@ -42,8 +44,12 @@ const errors = problemResponses(
 );
 const decodeConfirmation = Schema.decodeUnknownSync(successEnvelope(AuthConfirmResponseSchema));
 const decodeBrowser = Schema.decodeUnknownSync(successEnvelope(BrowserAuthPollResponseSchema));
+const decodeBrowserConfirmation = Schema.decodeUnknownSync(
+  successEnvelope(BrowserAuthConfirmResponseSchema),
+);
 
 export const registerWebsiteAuthRoutes = (routes: Hono, dependencies: AuthRouteDependencies) => {
+  registerBrowserConfirmation(routes, dependencies);
   routes.get(
     "/v1/auth/confirm",
     describeRoute({
@@ -128,6 +134,43 @@ export const registerWebsiteAuthRoutes = (routes: Hono, dependencies: AuthRouteD
       });
       return runRouteEffect(context, correlationId, program, (result) =>
         context.json(decodeBrowser(successEnvelopeInput(result, correlationId))),
+      );
+    },
+  );
+};
+
+const registerBrowserConfirmation = (routes: Hono, dependencies: AuthRouteDependencies) => {
+  routes.post(
+    "/v1/auth/browser/confirm",
+    describeRoute({
+      operationId: "confirmBrowserLogin",
+      summary: "Confirm a browser login and issue its session atomically",
+      description:
+        "Requires the email token and the initiating browser's polling secret for the same challenge. Returns only an opaque browser session with the API-configured absolute lifetime.",
+      tags: ["Authentication"],
+      requestBody: jsonRequest(BrowserAuthConfirmRequestSchema),
+      responses: {
+        "200": successResponse(
+          "The login was confirmed and a browser session was issued.",
+          BrowserAuthConfirmResponseSchema,
+        ),
+        ...errors,
+      },
+    }),
+    (context) => {
+      const correlationId = beginRequest(context, dependencies.createCorrelationId);
+      const program = Effect.gen(function* () {
+        const input = yield* decodeRequestJson(context.req.raw, BrowserAuthConfirmRequestSchema);
+        const result = yield* dependencies.authService.confirmBrowser({
+          config: dependencies.authConfig,
+          confirmationToken: input.token,
+          pollingToken: input.pollToken,
+          now: dependencies.now(),
+        });
+        return { ...result, expiresAt: new Date(result.expiresAt).toISOString() };
+      });
+      return runRouteEffect(context, correlationId, program, (result) =>
+        context.json(decodeBrowserConfirmation(successEnvelopeInput(result, correlationId))),
       );
     },
   );

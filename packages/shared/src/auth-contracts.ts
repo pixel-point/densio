@@ -13,6 +13,10 @@ export const AuthConfirmRequestSchema = Schema.Struct({
   token: Schema.NonEmptyString.check(Schema.isMaxLength(256)),
 });
 export const AuthConfirmResponseSchema = Schema.Struct({ status: Schema.Literal("confirmed") });
+export const BrowserAuthConfirmRequestSchema = Schema.Struct({
+  ...AuthConfirmRequestSchema.fields,
+  ...AuthPollRequestSchema.fields,
+});
 
 export const AuthStartResponseSchema = Schema.Struct({
   challengeId: IdentifierSchema,
@@ -46,13 +50,14 @@ export const AuthPollResponseSchema = Schema.Union([
 ]);
 export type AuthPollResponse = typeof AuthPollResponseSchema.Type;
 
+export const BrowserAuthConfirmResponseSchema = Schema.Struct({
+  status: Schema.Literal("confirmed"),
+  sessionToken: Schema.NonEmptyString,
+  expiresAt: IsoTimestampSchema,
+});
 export const BrowserAuthPollResponseSchema = Schema.Union([
   AuthPendingResponseSchema,
-  Schema.Struct({
-    status: Schema.Literal("confirmed"),
-    sessionToken: Schema.NonEmptyString,
-    expiresAt: IsoTimestampSchema,
-  }),
+  BrowserAuthConfirmResponseSchema,
 ]);
 export type BrowserAuthPollResponse = typeof BrowserAuthPollResponseSchema.Type;
 

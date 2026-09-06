@@ -64,7 +64,7 @@ it("documents every registered API operation", async () => {
   const document = (await response.json()) as OpenAPIV3_1.Document;
 
   expect(documentedOperations(document)).toEqual(runtimeApiOperations(app));
-  expect(documentedOperations(document)).toHaveLength(58);
+  expect(documentedOperations(document)).toHaveLength(59);
 });
 
 it("documents the exact response status set for every operation", async () => {
@@ -530,6 +530,7 @@ const expectedOperationStatuses = {
   "GET /v1/artifacts/{artifactId}/{token}/{filename}": ["200", "206", "304", "404", "416", "500"],
   "GET /v1/auth/confirm": ["303"],
   "POST /v1/auth/confirm": ["200", "400", "409", "410", "413", "500"],
+  "POST /v1/auth/browser/confirm": ["200", "400", "409", "410", "413", "500"],
   "POST /v1/auth/browser/poll": ["200", "400", "409", "410", "413", "500"],
   "GET /v1/auth/status": ["200", "401", "500"],
   "GET /v1/capabilities": ["200", "500"],

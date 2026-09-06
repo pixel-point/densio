@@ -10,7 +10,7 @@ import { makeAuthService } from "../src/auth/auth-service.ts";
 import { makeMagicLinkOpener, makeMagicLinkSealer } from "../src/auth/magic-link-secret.ts";
 import { loadConfig } from "../src/config.ts";
 import { migrateDatabase, openDatabase } from "../src/database/database.ts";
-import { authChallenges, emailOutbox } from "../src/database/schema.ts";
+import { authChallenges, emailOutbox, sessions } from "../src/database/schema.ts";
 import { decodeEmailOutboxPayload } from "../src/email/email-outbox-payload.ts";
 import { createAuthRoutes } from "../src/routes/auth.ts";
 
@@ -139,4 +139,76 @@ it("rejects malformed, expired, and previously used confirmations", async () => 
   const other = await setup();
   expect((await other.post("/v1/auth/confirm", { token: other.token })).status).toBe(200);
   expect((await other.post("/v1/auth/confirm", { token: other.token })).status).toBe(409);
+});
+
+it("atomically confirms a browser link and issues its session before returning", async () => {
+  const f = await setup();
+  const response = await f.post("/v1/auth/browser/confirm", {
+    token: f.token,
+    pollToken: f.login.pollToken,
+  });
+  expect(response.status).toBe(200);
+  const body = decodeBrowser(await response.json());
+  if (body.data.status !== "confirmed") throw new Error("Expected browser session");
+  expect(body.data.expiresAt).toBe(
+    new Date(f.clock.now + f.config.auth.refreshTokenTtlMs).toISOString(),
+  );
+  expect(body.data).not.toHaveProperty("refreshToken");
+  expect(f.database.db.select().from(authChallenges).get()).toMatchObject({
+    status: "consumed",
+    confirmedAt: f.clock.now,
+    consumedAt: f.clock.now,
+  });
+  const status = await f.app.request("/v1/auth/status", {
+    headers: { authorization: `Bearer ${body.data.sessionToken}` },
+  });
+  expect(decodeStatus(await status.json()).data).toMatchObject({
+    authenticated: true,
+    user: { email: "user@example.test" },
+  });
+  expect(
+    (await f.post("/v1/auth/browser/confirm", { token: f.token, pollToken: f.login.pollToken }))
+      .status,
+  ).toBe(409);
+  expect((await f.post("/v1/auth/browser/poll", { pollToken: f.login.pollToken })).status).toBe(
+    409,
+  );
+  expect(f.database.db.select().from(sessions).all()).toHaveLength(1);
+});
+
+it("requires both secrets for the same challenge without consuming invalid requests", async () => {
+  const f = await setup();
+  const other = await setup();
+  for (const body of [
+    { token: f.token },
+    { token: f.token, pollToken: other.login.pollToken },
+    { token: f.token, pollToken: `${f.login.challengeId}.wrong-secret` },
+    { token: `${f.login.challengeId}.wrong-secret`, pollToken: f.login.pollToken },
+  ]) {
+    expect((await f.post("/v1/auth/browser/confirm", body)).status).toBe(400);
+    expect(f.database.db.select().from(authChallenges).get()?.status).toBe("pending");
+    expect(f.database.db.select().from(sessions).all()).toHaveLength(0);
+  }
+});
+
+it("rejects expired browser links before issuing a session", async () => {
+  const f = await setup();
+  f.clock.now += f.config.auth.challengeTtlMs;
+  expect(
+    (await f.post("/v1/auth/browser/confirm", { token: f.token, pollToken: f.login.pollToken }))
+      .status,
+  ).toBe(410);
+  expect(f.database.db.select().from(sessions).all()).toHaveLength(0);
+});
+
+it("keeps the browser callback as the session owner when the waiting tab polls concurrently", async () => {
+  const f = await setup();
+  const [confirmation, poll] = await Promise.all([
+    f.post("/v1/auth/browser/confirm", { token: f.token, pollToken: f.login.pollToken }),
+    f.post("/v1/auth/browser/poll", { pollToken: f.login.pollToken }),
+  ]);
+  expect(confirmation.status).toBe(200);
+  expect([200, 409]).toContain(poll.status);
+  if (poll.status === 200) expect(await poll.json()).toMatchObject({ data: { status: "pending" } });
+  expect(f.database.db.select().from(sessions).all()).toHaveLength(1);
 });

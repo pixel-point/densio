@@ -302,6 +302,8 @@ export {
   AuthPollRequestSchema,
   AuthConfirmRequestSchema,
   AuthConfirmResponseSchema,
+  BrowserAuthConfirmRequestSchema,
+  BrowserAuthConfirmResponseSchema,
   BrowserAuthPollResponseSchema,
   AuthUserSchema,
   AuthStatusSchema,

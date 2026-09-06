@@ -13,6 +13,7 @@ import {
   type AuthenticatedTokens,
   type AuthConfig,
   confirmLoginChallenge,
+  confirmBrowserLoginChallenge,
   createLoginChallenge,
   findAccessIdentity,
   pollLoginChallenge,
@@ -44,6 +45,11 @@ export interface PollInput {
   readonly pollingToken: unknown;
 }
 
+export interface BrowserConfirmInput extends ConfirmInput {
+  readonly config: AuthConfig;
+  readonly pollingToken: unknown;
+}
+
 export interface AccessInput {
   readonly accessToken: unknown;
   readonly now: number;
@@ -61,6 +67,12 @@ export interface LogoutInput {
 }
 
 export interface AuthServiceDefinition {
+  readonly confirmBrowser: (
+    input: BrowserConfirmInput,
+  ) => Effect.Effect<
+    { readonly expiresAt: number; readonly status: "confirmed"; readonly sessionToken: string },
+    AuthChallengeUnavailable | AuthStorageError
+  >;
   readonly pollBrowser: (
     input: PollInput,
   ) => Effect.Effect<
@@ -176,6 +188,7 @@ export const makeAuthService = (database: Database, sealMagicLink: MagicLinkSeal
 
   return AuthService.of({
     confirm,
+    confirmBrowser: (input) => confirmBrowserLogin(database, input),
     logout,
     lookupAccess,
     poll,
@@ -184,6 +197,27 @@ export const makeAuthService = (database: Database, sealMagicLink: MagicLinkSeal
     requestLogin,
   });
 };
+
+const confirmBrowserLogin = Effect.fn("AuthService.confirmBrowser")(function* (
+  database: Database,
+  input: BrowserConfirmInput,
+) {
+  const confirmationToken = yield* parseChallengeToken(input.confirmationToken);
+  const pollingToken = yield* parseChallengeToken(input.pollingToken);
+  const outcome = yield* tryStorage("confirm-browser", () =>
+    confirmBrowserLoginChallenge(database, confirmationToken, pollingToken, {
+      ...input,
+      config: { ...input.config, accessTokenTtlMs: input.config.refreshTokenTtlMs },
+    }),
+  );
+  if (outcome.kind !== "authenticated")
+    return yield* new AuthChallengeUnavailable({ reason: outcome.kind });
+  return {
+    status: "confirmed" as const,
+    sessionToken: outcome.tokens.accessToken,
+    expiresAt: outcome.tokens.accessExpiresAt,
+  };
+});
 
 const tryStorage = Effect.fn("AuthService.tryStorage")(
   <Value>(operation: string, evaluate: () => Value) =>

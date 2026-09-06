@@ -237,6 +237,46 @@ export const pollLoginChallenge = (
     { behavior: "immediate" },
   );
 
+export const confirmBrowserLoginChallenge = (
+  { db }: Database,
+  confirmationToken: ParsedOpaqueToken,
+  pollingToken: ParsedOpaqueToken,
+  input: { readonly config: AuthConfig; readonly now: number },
+): Exclude<PollOutcome, { readonly kind: "pending" }> =>
+  db.transaction(
+    (transaction) => {
+      const challenge = transaction
+        .select()
+        .from(authChallenges)
+        .where(eq(authChallenges.id, confirmationToken.publicId))
+        .get();
+      if (
+        !challenge ||
+        confirmationToken.publicId !== pollingToken.publicId ||
+        !verifyTokenSecret(confirmationToken.secret, challenge.confirmationTokenHash) ||
+        !verifyTokenSecret(pollingToken.secret, challenge.pollingTokenHash)
+      )
+        return { kind: "invalid" };
+      if (challenge.status === "consumed") return { kind: "already-used" };
+      if (challenge.status === "expired" || challenge.expiresAt <= input.now)
+        return { kind: "expired" };
+
+      // Confirmation and redemption share a transaction, so a waiting poll cannot claim the session.
+      const tokens = issueSession(transaction, challenge.email, input);
+      transaction
+        .update(authChallenges)
+        .set({
+          confirmedAt: challenge.confirmedAt ?? input.now,
+          consumedAt: input.now,
+          status: "consumed",
+        })
+        .where(eq(authChallenges.id, challenge.id))
+        .run();
+      return { kind: "authenticated", tokens };
+    },
+    { behavior: "immediate" },
+  );
+
 export const findAccessIdentity = (
   { db }: Database,
   token: ParsedOpaqueToken,
