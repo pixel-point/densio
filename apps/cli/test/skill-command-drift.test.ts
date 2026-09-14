@@ -24,6 +24,44 @@ const organizationsReference = fileURLToPath(
   new URL("../../../skill-bundle/references/organizations.md", import.meta.url),
 );
 
+it("keeps Densio processing and upgrade recovery explicit in the first-use skill and help", async () => {
+  const skill = await readFile(entrypoint, "utf8");
+
+  [skill, CLI_HELP].forEach((guidance) => {
+    expect(guidance).toContain("Do not fall back to local FFmpeg");
+    expect(guidance).toContain("offer an upgrade");
+    expect(guidance).toContain("billing authorization");
+  });
+  expect(skill).toContain("references/errors.md#plan-and-limit-recovery");
+});
+
+it("routes upgradeable failures to recovery using live plan limits and existing billing commands", async () => {
+  const errors = await readFile(errorsReference, "utf8");
+  const recovery = errors.split("## Plan and limit recovery\n")[1]?.split("\n## ")[0];
+
+  expect(recovery).toBeDefined();
+  [
+    "SOURCE_UPLOAD_TOO_LARGE",
+    "PLAN_ENTITLEMENT_REQUIRED",
+    "CODEC_NOT_ENTITLED",
+    "DURATION_LIMIT_EXCEEDED",
+    "CREDITS_EXHAUSTED",
+    "STORAGE_UPGRADE_REQUIRED",
+    "STORAGE_QUOTA_EXCEEDED",
+  ].forEach((code) => expect(recovery).toContain(code));
+  expect(recovery).toContain("capabilities --public");
+  expect(recovery).toContain("billing status");
+  expect(recovery).toContain("server-wide");
+  expect(recovery).toContain("--max-credits");
+  expect(recovery).toContain("--max-output-bytes");
+  expect(recovery).toContain("organizations.md#upgrade-a-blocked-workflow");
+
+  const organizations = await readFile(organizationsReference, "utf8");
+  expect(organizations).toContain("## Upgrade a blocked workflow");
+  expect(organizations).toContain("billing subscribe PLAN --idempotency-key CHECKOUT_KEY");
+  expect(organizations).toContain("billing portal");
+});
+
 it("describes automatic website login confirmation while the CLI keeps polling", async () => {
   expect(CLI_HELP).toContain("sign-in completes automatically on the Densio website");
   const workflows = await readFile(workflowsReference, "utf8");

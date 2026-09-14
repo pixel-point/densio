@@ -12,6 +12,8 @@ Load this for advanced processing choices, quote previews, recovery, or cleanup.
 
 The source, plan, job, and artifact are different identities. A source owns uploaded bytes. A plan freezes processing intent. Execution creates a job, atomically reserves the exact quote, and attaches the verified source before queueing. An artifact is an output produced by a job.
 
+If capabilities or a returned error reveal a plan limit or credit shortage, pause affected work and follow [Plan and limit recovery](errors.md#plan-and-limit-recovery). Offer a sufficient upgrade when it resolves the blocker. Keep batch progress and existing job IDs; do not fall back to local FFmpeg or another processor.
+
 ## Choose a workflow
 
 - `compress`: default VP9/WebM plus H.265/MP4 outputs, source resolution, and automatic audible-audio detection. Set codec-specific CRFs or transforms when requested. AV1 is explicit and requires Basic or higher.

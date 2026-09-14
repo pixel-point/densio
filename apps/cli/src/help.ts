@@ -27,6 +27,9 @@ Agent behavior:
   orgs use changes local selection only; orgs default changes the server default only. Creating or joining changes neither.
   Positional organization IDs override environment/local selection; a conflicting --org is an error.
   capabilities --public is anonymous. Other media and billing commands require authentication and an organization.
+  Do not fall back to local FFmpeg or another processor when Densio is blocked.
+  For plan limits or insufficient credits, compare scoped capabilities and billing status with capabilities --public; offer an upgrade when it resolves the blocker.
+  Obtain billing authorization before changing plans; confirm the new limits/credits and resume affected work with existing IDs and retry keys.
   jobs create and plans execute wait by default and reports the resumable job ID on stderr immediately.
   --no-wait returns that ID without waiting. Interrupted or timed-out waits do not cancel jobs.
   jobs wait and jobs watch consume ordered events and confirm completion with authoritative status.

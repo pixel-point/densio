@@ -42,6 +42,22 @@ Present hosted checkout/portal URLs only as intended command results. They are b
 
 Membership, invitation, billing-contact, subscription, ownership-transfer, and organization-deletion mutations require authorization for those actions; ordinary media processing does not authorize them.
 
+## Upgrade a blocked workflow
+
+When a higher plan resolves a media or storage limit, explain the current blocker and recommend the lowest sufficient plan from the live capabilities catalog. Follow [Plan and limit recovery](errors.md#plan-and-limit-recovery) before recommending it. Do not invent prices; use current hosted billing information for payment terms. Offering an upgrade is required when it helps, but a compression request alone does not authorize billing changes.
+
+Obtain the user's approval for the specific plan and organization before opening checkout or the billing portal; honor existing explicit billing authorization. Only the organization owner can change billing. For a member or admin, explain that the owner must perform the upgrade and keep the affected work paused; do not contact the owner automatically.
+
+For a new subscription, choose one stable `CHECKOUT_KEY` for the approved intent:
+
+```sh
+npx --yes densio@CLI_VERSION --org ORG_ID --json billing subscribe PLAN --idempotency-key CHECKOUT_KEY
+```
+
+Replace `PLAN` with the approved `basic`, `pro`, or `scale` value. For an existing subscription, use `billing portal` to manage it instead of starting another checkout. Present the returned hosted URL for the owner to review payment terms and complete the change. Reuse the checkout key on ambiguous retries as described above.
+
+After the owner completes the change, refresh scoped `billing status` and `capabilities` and verify that the limit or available credits now cover the blocked work. Opening a URL or returning from checkout is not confirmation. Resume the original Densio workflow within its existing authorization, keeping valid sources, pending work, and retry keys; recover stored outputs without re-encoding. If the upgrade is declined or remains insufficient, report the blocker and stop affected work without a local fallback.
+
 ## Close an organization
 
 Only an owner may run `orgs delete ORG_ID --confirm ORG_ID`. Confirm the exact organization and consequences within the user's authorization. Blocking work includes nonterminal jobs, pending/active uploads (including deleted sources with still-running writers), subscriptions that are not terminal, open/unresolved checkouts, and unresolved billing operations. Cancel-at-period-end is not terminal. The command does not cancel subscriptions, abandon uncertain payments, or refund work.
