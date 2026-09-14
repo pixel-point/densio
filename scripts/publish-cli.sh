@@ -38,7 +38,7 @@ node -e '
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) process.exit(1);
 ' "$version" || fail "apps/cli must have a stable semantic version"
 
-pnpm lint
+pnpm lint:cli-release
 pnpm format:check
 pnpm test
 pnpm typecheck

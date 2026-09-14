@@ -15,6 +15,7 @@
     "format": "oxfmt --disable-nested-config --write .",
     "format:check": "oxfmt --check --disable-nested-config .",
     "lint": "oxlint --disable-nested-config .",
+    "lint:cli-release": "oxlint --disable-nested-config apps/api apps/cli packages e2e scripts",
     "lint:fix": "oxlint --disable-nested-config . --fix",
     "synthetic:production": "pnpm build && pnpm --filter @densio/e2e synthetic:production",
     "synthetic:staging": "pnpm build && pnpm --filter @densio/e2e synthetic:staging",

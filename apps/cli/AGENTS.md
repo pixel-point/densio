@@ -17,3 +17,4 @@
 - Do not commit generated `dist` output.
 - Use `scripts/bump-cli-version.sh` and `scripts/publish-cli.sh`; do not manually reproduce their release steps.
 - Run publishing with `--dry-run` first. Commit, publish, tag, or push only when explicitly requested.
+- Publishing lints the API, CLI, shared packages, end-to-end harness, and release tooling with the root rules. All workspace tests, typechecks, formatting checks, and builds still run; `pnpm check` retains repository-wide lint coverage.
