@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Database } from "../database/database.ts";
@@ -108,7 +108,7 @@ const reconcileOrganizationSubscriptions = Effect.fn("Organization.reconcileBill
   yield* Effect.forEach(subscriptions, (subscription) =>
     reconcileSubscription(database, gateway, {
       subscriptionId: subscription.subscriptionId,
-      eventId: `closure:${randomUUID()}`,
+      eventId: `closure:${createId()}`,
       now,
     }),
   );

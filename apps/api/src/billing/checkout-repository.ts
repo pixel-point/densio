@@ -1,5 +1,5 @@
 import { billingReturnUrl } from "./billing-return-url.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import type { PaidPlan } from "@densio/shared";
 import type { Database, DatabaseTransaction } from "../database/database.ts";
@@ -99,7 +99,7 @@ export const prepareCheckout = (
       return transaction
         .insert(billingCheckoutAttempts)
         .values({
-          id: randomUUID(),
+          id: createId(),
           organizationId: input.actor.organizationId,
           idempotencyKey: input.idempotencyKey,
           plan: input.plan,

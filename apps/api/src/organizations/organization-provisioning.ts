@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId, createOrganizationId } from "../identifiers.ts";
 import type { OrganizationAuditActor } from "@densio/shared";
 import type { DatabaseTransaction } from "../database/database.ts";
 import {
@@ -20,23 +20,18 @@ export const provisionOrganization = (
     actor?: OrganizationAuditActor;
   },
 ) => {
-  const organization = transaction
-    .insert(organizations)
-    .values({
-      id: randomUUID(),
-      name: input.name,
-      billingEmail: input.email,
-      state: "active",
-      createdByUserId: input.userId,
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .returning()
-    .get();
+  const organization = allocateOrganization(transaction, {
+    name: input.name,
+    billingEmail: input.email,
+    state: "active",
+    createdByUserId: input.userId,
+    createdAt: input.now,
+    updatedAt: input.now,
+  });
   const membership = transaction
     .insert(organizationMemberships)
     .values({
-      id: randomUUID(),
+      id: createId(),
       organizationId: organization.id,
       userId: input.userId,
       role: "owner",
@@ -57,4 +52,21 @@ export const provisionOrganization = (
     })
     .run();
   return { organization, membership };
+};
+
+const allocateOrganization = (
+  transaction: DatabaseTransaction,
+  values: Omit<typeof organizations.$inferInsert, "id">,
+) => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const organization = transaction
+      .insert(organizations)
+      .values({ ...values, id: createOrganizationId() })
+      // Only an ID collision can be retried; other constraint failures must roll back.
+      .onConflictDoNothing({ target: organizations.id })
+      .returning()
+      .get();
+    if (organization !== undefined) return organization;
+  }
+  throw new Error("Unable to allocate an organization ID after 3 attempts.");
 };

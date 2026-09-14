@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { rename, stat } from "node:fs/promises";
 
 import type { ArtifactReceipt, HlsPackage } from "@densio/shared";
@@ -87,7 +87,7 @@ export const publishAndRegisterArtifacts = Effect.fn("MediaJob.publishArtifacts"
         operation: "pair-published-output",
       });
     }
-    const id = randomUUID();
+    const id = createId();
     return { file, id, output };
   });
 

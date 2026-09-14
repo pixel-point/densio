@@ -1,5 +1,5 @@
 import { transitionVideo } from "../videos/video-lifecycle.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, count, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import type { DatabaseTransaction } from "../database/database.ts";
 import {
@@ -86,7 +86,7 @@ export const closeOrganizationStorage = (
     transaction
       .insert(storageConnectionOperations)
       .values({
-        id: randomUUID(),
+        id: createId(),
         organizationId,
         connectionId: connection.id,
         kind: "disconnect",

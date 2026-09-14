@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Database } from "../../database/database.ts";
@@ -146,7 +146,7 @@ const claimOperation = (database: Database, config: ConnectionProviderConfig, id
           state: "running",
           workerPid: process.pid,
           workerIdentity: config.writerIdentity ?? writerProcessIdentity(process.pid),
-          leaseOwner: randomUUID(),
+          leaseOwner: createId(),
         })
         .where(eq(storageConnectionOperations.id, id))
         .returning()

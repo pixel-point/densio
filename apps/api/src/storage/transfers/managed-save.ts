@@ -6,7 +6,7 @@ import {
   type StorageFile,
 } from "./storage-files.ts";
 import { transitionVideo } from "../../videos/video-lifecycle.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import { and, eq } from "drizzle-orm";
 import { storageObjects, storageTransfers, videos } from "../../database/video-storage-schema.ts";
 import { storageUsage } from "../../videos/storage-policy.ts";
@@ -189,7 +189,7 @@ const stageManagedVariants = async (
         .get();
       const key =
         existing?.objectKey ??
-        `orgs/${video.organizationId}/transfers/${context.transfer.id}/attempts/${randomUUID()}/${variant.id}/${variant.filename}`;
+        `orgs/${video.organizationId}/transfers/${context.transfer.id}/attempts/${createId()}/${variant.id}/${variant.filename}`;
       const object = prepareObject(context, staging, variant, key);
       const verified = await transferObject(context, staging, object, variant, localInput(variant));
       staged.set(variant.id, { target: staging, object: verified });

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { eq } from "drizzle-orm";
 import type { DatabaseTransaction } from "../database/database.ts";
 import { users } from "../database/schema.ts";
@@ -13,7 +13,7 @@ export const registerVerifiedUser = (
   if (existing !== undefined) return existing;
   const user = transaction
     .insert(users)
-    .values({ createdAt: now, email, id: randomUUID(), updatedAt: now })
+    .values({ createdAt: now, email, id: createId(), updatedAt: now })
     .returning()
     .get();
   provisionOrganization(transaction, {

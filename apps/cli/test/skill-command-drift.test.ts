@@ -24,6 +24,15 @@ const organizationsReference = fileURLToPath(
   new URL("../../../skill-bundle/references/organizations.md", import.meta.url),
 );
 
+it("documents case-sensitive organization Nano IDs consistently in help and the runtime skill", async () => {
+  const reference = await readFile(organizationsReference, "utf8");
+  [reference, CLI_HELP].forEach((guidance) => {
+    expect(guidance).toContain("12-character alphanumeric Nano IDs");
+    expect(guidance).toContain("case-sensitive");
+    expect(guidance).toContain("Copy IDs exactly");
+  });
+});
+
 it("keeps Densio processing and upgrade recovery explicit in the first-use skill and help", async () => {
   const skill = await readFile(entrypoint, "utf8");
 

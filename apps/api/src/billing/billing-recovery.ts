@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Database } from "../database/database.ts";
@@ -68,7 +68,7 @@ export const reconcileBillingRecovery = Effect.fn("Billing.operatorRecovery")(fu
           );
         return transaction
           .update(billingOperations)
-          .set({ leaseToken: randomUUID(), leaseExpiresAt: input.now + 60_000 })
+          .set({ leaseToken: createId(), leaseExpiresAt: input.now + 60_000 })
           .where(eq(billingOperations.organizationId, input.organizationId))
           .returning()
           .get();

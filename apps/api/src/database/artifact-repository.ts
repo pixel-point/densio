@@ -1,5 +1,5 @@
 import { artifactHasStorageReader } from "../storage/transfers/input-readers.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 
 import { and, asc, eq, gt, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { runMaintenancePages } from "../services/maintenance-pages.ts";
@@ -99,7 +99,7 @@ export const authorizeOwnedArtifact = Effect.fn("ArtifactControlRepository.autho
             artifactId: artifact.id,
             createdAt: input.now,
             expiresAt,
-            id: randomUUID(),
+            id: createId(),
             tokenHash: access.accessTokenHash,
           })
           .run();

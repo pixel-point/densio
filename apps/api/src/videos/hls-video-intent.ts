@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { join } from "node:path";
 import { HlsPackageSchema, type StoredVideoPlan } from "@densio/shared";
 import { eq } from "drizzle-orm";
@@ -36,7 +36,7 @@ export const recordHlsMembers = (
     .insert(videoPackageMembers)
     .values(
       contents.members.map((member) => ({
-        id: randomUUID(),
+        id: createId(),
         organizationId: row.organizationId,
         videoId: input.videoId,
         artifactId: row.artifactId,

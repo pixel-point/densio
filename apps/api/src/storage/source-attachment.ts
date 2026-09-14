@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { createReadStream } from "node:fs";
 import { link, rm } from "node:fs/promises";
 import { Readable } from "node:stream";
@@ -69,7 +69,7 @@ const linkPreparedSource = Effect.fn("SourceAttachment.linkOrCopy")(function* (
   if (!isCopyFallbackError(linked.failure))
     return yield* attachmentError("link-source", !isExistingFile(linked.failure));
 
-  const stagingPath = `${destination}.attachment-${randomUUID()}`;
+  const stagingPath = `${destination}.attachment-${createId()}`;
   const body = Readable.toWeb(createReadStream(source)) as ReadableStream<Uint8Array>;
   yield* Effect.gen(function* () {
     const copied = yield* storeUpload({

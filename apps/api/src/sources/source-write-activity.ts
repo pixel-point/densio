@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Database } from "../database/database.ts";
@@ -44,7 +44,7 @@ export const withSourceWriteActivity = <A, E, R>(
           return transaction
             .insert(sourceWriteActivities)
             .values({
-              id: randomUUID(),
+              id: createId(),
               sourceId: source.id,
               organizationId: source.organizationId,
               processId: process.pid,

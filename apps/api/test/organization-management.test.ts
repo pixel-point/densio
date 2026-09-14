@@ -51,6 +51,8 @@ describe("organization management", () => {
       maxCreatesPerDay: 1,
     };
     const created = createOrganization(database, input);
+    expect(created.organization.id).toMatch(/^[A-Za-z0-9]{12}$/);
+    expect(created.membership.id).toMatch(/^[A-Za-z0-9]{21}$/);
     expect(created.replayed).toBe(false);
     expect(createOrganization(database, input)).toMatchObject({
       replayed: true,
@@ -139,6 +141,7 @@ describe("organization authority and offboarding", () => {
     expect(defaults).toHaveLength(1);
     expect(defaults[0]).toMatchObject({ role: "owner", isDefault: true });
     expect(defaults[0]?.organizationId).not.toBe(organizationId);
+    expect(defaults[0]?.organizationId).toMatch(/^[A-Za-z0-9]{12}$/);
     expect(database.db.select().from(organizations).all()).toHaveLength(3);
     expect(() =>
       setDefaultOrganization(database, { ...mutation, userId: "member", organizationId }),

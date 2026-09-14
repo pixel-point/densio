@@ -1,4 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import { and, eq } from "drizzle-orm";
 import type { Database } from "../../database/database.ts";
 import {
@@ -35,7 +36,7 @@ export const runConnectionProbe = async (
     database.db
       .insert(storageObjects)
       .values({
-        id: randomUUID(),
+        id: createId(),
         organizationId: operation.organizationId,
         connectionId: operation.connectionId,
         targetId: `connection:${operation.connectionId}`,
@@ -147,7 +148,7 @@ export const probeMultipartAbort = async (
     database.db
       .insert(storageObjects)
       .values({
-        id: randomUUID(),
+        id: createId(),
         organizationId: source.organizationId,
         connectionId: source.connectionId,
         targetId: source.targetId,

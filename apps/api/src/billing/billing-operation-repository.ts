@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import type { Database, DatabaseTransaction } from "../database/database.ts";
 import { billingOperations } from "../database/schema.ts";
@@ -43,12 +43,12 @@ export const acquireBillingOperation = (
           "A billing operation is in progress or unresolved. Retry that same operation before starting another.",
         );
       }
-      const lease = { leaseToken: randomUUID(), leaseExpiresAt: input.now + 60_000 };
+      const lease = { leaseToken: createId(), leaseExpiresAt: input.now + 60_000 };
       return transaction
         .insert(billingOperations)
         .values({
           organizationId: input.actor.organizationId,
-          id: current?.id ?? randomUUID(),
+          id: current?.id ?? createId(),
           operation: input.operation,
           requestKey: input.requestKey,
           createdAt: current?.createdAt ?? input.now,

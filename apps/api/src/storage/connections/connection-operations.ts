@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import type { StorageCredentials } from "@densio/shared";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { Schema } from "effect";
@@ -88,7 +88,7 @@ export const startConnectionOperation = (
       const operation = transaction
         .insert(storageConnectionOperations)
         .values({
-          id: randomUUID(),
+          id: createId(),
           organizationId: row.organizationId,
           connectionId: row.id,
           kind: input.kind,

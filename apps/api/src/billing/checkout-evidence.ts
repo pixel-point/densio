@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { Effect } from "effect";
 import type { Database } from "../database/database.ts";
 import { billingBusy } from "./billing-operation-repository.ts";
@@ -20,7 +20,7 @@ export const loadCheckoutEvidence = Effect.fn("Billing.loadCheckoutEvidence")(fu
     );
   const subscription = yield* loadSubscriptionEvidence(database, gateway, {
     subscriptionId: session.subscriptionId,
-    eventId: `checkout-reconcile:${randomUUID()}`,
+    eventId: `checkout-reconcile:${createId()}`,
     now,
   });
   return { session, subscription };

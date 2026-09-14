@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import { and, eq, lte } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Database } from "../../database/database.ts";
@@ -123,7 +123,7 @@ const recordInventoryObject = (
   database.db
     .insert(managedStorageOrphans)
     .values({
-      id: candidate?.id ?? randomUUID(),
+      id: candidate?.id ?? createId(),
       targetId: target.id,
       bucketRole: target.role,
       bucket: target.store.bucket,

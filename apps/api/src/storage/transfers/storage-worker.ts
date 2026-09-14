@@ -1,5 +1,5 @@
 import { retireExpiredTransfers } from "./expired-transfers.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import { and, asc, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Database } from "../../database/database.ts";
@@ -136,7 +136,7 @@ const claimTransfer = (database: Database, config: StorageWorkerConfig, transfer
         .update(storageTransfers)
         .set({
           state: "uploading",
-          leaseOwner: randomUUID(),
+          leaseOwner: createId(),
           workerPid: process.pid,
           workerIdentity: config.writerIdentity ?? writerProcessIdentity(process.pid),
           attempts: row.attempts + 1,

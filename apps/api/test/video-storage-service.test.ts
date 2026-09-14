@@ -74,6 +74,8 @@ test("paid saves create a public pending video with readable frozen filenames an
     visibility: "public",
   });
   expect(result.video.variants).toMatchObject([{ filename: "homepage-hero-vp9.webm" }]);
+  expect(result.video.videoId).toMatch(/^[A-Za-z0-9]{21}$/);
+  expect(result.video.transferId).toMatch(/^[A-Za-z0-9]{21}$/);
   expect(result.video.variants[0]).not.toHaveProperty("publicUrl");
   const replay = await Effect.runPromise(
     service.save({

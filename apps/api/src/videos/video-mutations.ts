@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { transitionVideo } from "./video-lifecycle.ts";
 import type { StorageVisibility } from "@densio/shared";
 import { and, eq, ne } from "drizzle-orm";
@@ -84,7 +84,7 @@ export const mutateVideo = (
       if (!video) throw storageFailure("VIDEO_NOT_FOUND");
       validateVideoMutation(video, kind, input.deleteObjects);
       const now = config.now();
-      const id = randomUUID();
+      const id = createId();
       const revision = video.visibilityRevision + 1;
       recordVideoMutation(transaction, video, { id, revision, now, kind, digest, input });
       return {

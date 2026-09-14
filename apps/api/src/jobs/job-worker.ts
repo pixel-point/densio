@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 
 import { Clock, Context, Deferred, Effect, Fiber, Ref, Schema, type Scope } from "effect";
 
@@ -74,7 +74,7 @@ export const startJobWorker = Effect.fn("JobWorker.start")(function* (
   yield* Effect.forEach(recoveredTerminalJobs, cleanup.cleanup);
   const stopping = yield* Ref.make(false);
   const stopSignal = yield* Deferred.make<void>();
-  const workerRunId = `${options.workerId}-${randomUUID()}`;
+  const workerRunId = `${options.workerId}-${createId()}`;
   const fibers = yield* Effect.forEach(
     Array.from({ length: options.concurrency }, (_, index) => index),
     (index) =>

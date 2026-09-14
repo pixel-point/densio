@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 
 import { eq } from "drizzle-orm";
 import { Clock, Effect } from "effect";
@@ -50,7 +50,7 @@ const recordCommand = Effect.fn("JobCommandRecorder.run")(function* (
     }
   >,
 ) {
-  const id = randomUUID();
+  const id = createId();
   const startedAt = yield* Clock.currentTimeMillis;
   const displayCommand = createCommandPlan(command.executable, command.arguments).displayCommand;
   yield* persist(() =>

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 
@@ -91,7 +91,7 @@ export const createLoginChallenge = (
   },
 ): RequestLoginOutcome => {
   const confirmationToken = createOpaqueToken();
-  const emailId = randomUUID();
+  const emailId = createId();
   const pollingToken = new ParsedOpaqueToken(
     confirmationToken.publicId,
     createOpaqueToken().secret,
@@ -432,7 +432,7 @@ const issueSession = (
       accessExpiresAt,
       accessTokenHash: hashTokenSecret(accessToken.secret),
       createdAt: input.now,
-      familyId: randomUUID(),
+      familyId: createId(),
       id: accessToken.publicId,
       refreshExpiresAt,
       updatedAt: input.now,

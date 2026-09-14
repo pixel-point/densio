@@ -1,6 +1,6 @@
 import { replayVideoReceipt } from "./video-receipts.ts";
 import { transitionVideo } from "./video-lifecycle.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, eq } from "drizzle-orm";
 import type { Database, DatabaseTransaction } from "../database/database.ts";
 import {
@@ -88,7 +88,7 @@ export const recoverVideo = (
       transaction
         .insert(storageRequests)
         .values({
-          id: randomUUID(),
+          id: createId(),
           organizationId: input.organizationId,
           videoId: video.id,
           idempotencyKey: input.idempotencyKey,
@@ -146,7 +146,7 @@ const cancelStoredVideo = (
 ) => {
   if (!["storing", "storage-blocked", "storage-failed"].includes(video.state))
     throw storageFailure("STORAGE_INVALID_STATE");
-  const deletionId = randomUUID();
+  const deletionId = createId();
   transaction
     .update(storageTransfers)
     .set({ state: "canceled", revision: transfer.revision + 1, updatedAt: config.now() })

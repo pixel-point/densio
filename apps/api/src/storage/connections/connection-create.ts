@@ -1,4 +1,5 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import type { StorageConnectionCreateRequest } from "@densio/shared";
 import { and, eq } from "drizzle-orm";
 import type { Database } from "../../database/database.ts";
@@ -58,7 +59,7 @@ export const createConnection = (
           connection: projectConnection(existing),
         };
       }
-      const id = randomUUID();
+      const id = createId();
       const now = config.now();
       const row = transaction
         .insert(storageConnections)
@@ -90,7 +91,7 @@ export const createConnection = (
       transaction
         .insert(storageConnectionOperations)
         .values({
-          id: randomUUID(),
+          id: createId(),
           organizationId: input.organizationId,
           connectionId: id,
           kind: "validate",

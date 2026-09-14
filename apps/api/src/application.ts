@@ -1,5 +1,5 @@
 import { makeStorageRuntime } from "./storage/storage-runtime.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "./identifiers.ts";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -183,8 +183,8 @@ const makeRuntimeServices = (
     now: Date.now,
     priceIds: config.billing.priceIds,
     maxComparisonSeconds: config.maxComparisonSeconds,
-    createId: randomUUID,
-    createJobId: randomUUID,
+    createId,
+    createJobId: createId,
     maxExtractedImages: config.maxExtractedImages,
     mediaRoot: config.mediaRoot,
     planTtlMs: config.planTtlMs,
@@ -254,7 +254,7 @@ const applicationDependencies = (
   storage: ReturnType<typeof makeStorageRuntime>,
   supervisors: readonly LifecycleSupervisor[],
 ): AppDependencies => {
-  const common = { createCorrelationId: randomUUID, now: Date.now };
+  const common = { createCorrelationId: createId, now: Date.now };
   const hashRequestIp = makeRequestIpHasher(config.authIpHashSecret, config.trustProxy);
   return {
     storage: storageRouteDependencies(database, common, authService, storage),

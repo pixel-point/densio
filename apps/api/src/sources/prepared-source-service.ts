@@ -1,6 +1,6 @@
 import { toPreparedSourceStatus } from "./source-status.ts";
 import { assertSourceIngestion, expireSourceIngestion } from "./source-ingestion-state.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 
 import { type PreparedSourceCreateResponse } from "@densio/shared";
 import { Effect, Result } from "effect";
@@ -227,7 +227,7 @@ const createPreparedSourceResource = Effect.fn("PreparedSourceService.create")(f
               declaredBytes: input.bytes,
               requestDigest: sourceRequestDigest(input),
               expiresAt: input.now + config.sourceTtlMs,
-              id: randomUUID(),
+              id: createId(),
               ...(input.idempotencyKey === undefined
                 ? {}
                 : { idempotencyKey: input.idempotencyKey }),
@@ -293,7 +293,7 @@ const storePendingUpload = Effect.fn("PreparedSourceService.storeUpload")(functi
 ) {
   const paths = yield* makeSourceStoragePaths(config.mediaRoot, source.id);
   yield* prepareSourceWorkspace(paths);
-  const stagingFile = `upload-${randomUUID()}`;
+  const stagingFile = `upload-${createId()}`;
   const stagingPath = yield* resolveSourceStagedFile(paths, stagingFile);
   const stored = yield* storeUpload({
     body: input.body,

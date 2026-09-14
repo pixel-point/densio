@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { asc, eq, gt } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Database } from "../database/database.ts";
@@ -32,7 +32,7 @@ export const withJobWriteActivity = <A, E, R>(
           return transaction
             .insert(jobWriteActivities)
             .values({
-              id: randomUUID(),
+              id: createId(),
               jobId: job.id,
               processId: process.pid,
               processIdentity: writerProcessIdentity(process.pid),
@@ -53,7 +53,7 @@ export const withJobWriteActivity = <A, E, R>(
                 const child = database.db
                   .insert(jobWriteActivities)
                   .values({
-                    id: randomUUID(),
+                    id: createId(),
                     jobId: job.id,
                     processId,
                     processIdentity: writerProcessIdentity(processId),

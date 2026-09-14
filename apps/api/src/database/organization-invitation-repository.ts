@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, eq, gt, lte } from "drizzle-orm";
 import type { Database, DatabaseTransaction } from "./database.ts";
 import {
@@ -62,7 +62,7 @@ export const createOrganizationInvitation = (
       const invitation = transaction
         .insert(organizationInvitations)
         .values({
-          id: randomUUID(),
+          id: createId(),
           organizationId: context.organizationId,
           email,
           role: input.role,
@@ -77,7 +77,7 @@ export const createOrganizationInvitation = (
       transaction
         .insert(emailOutbox)
         .values({
-          id: randomUUID(),
+          id: createId(),
           resourceKey: `organization-invitation:${invitation.id}`,
           recipient: email,
           payloadJson: JSON.stringify({
@@ -171,7 +171,7 @@ export const acceptOrganizationInvitationInTransaction = (
   const membership = transaction
     .insert(organizationMemberships)
     .values({
-      id: randomUUID(),
+      id: createId(),
       organizationId: invitation.organizationId,
       userId: input.userId,
       role: invitation.role,

@@ -262,6 +262,7 @@ const inspectSource = async (apiUrl: string, credentialsPath: string, sourcePath
     "e2e-source-av1",
   ]);
   const source = decodePreparedSource(JSON.parse(inspected.stdout)).data;
+  expect(source.sourceId).toMatch(/^[A-Za-z0-9]{21}$/);
   expect(source.state).toBe("ready");
   if (source.state !== "ready") throw new Error(`Source inspection ended in ${source.state}.`);
   expect(source.inspection).toMatchObject({
@@ -378,6 +379,7 @@ const createCompressionPlan = async (apiUrl: string, credentialsPath: string, so
     "e2e-plan-av1",
   ]);
   const response = decodeExecutionPlanCreated(JSON.parse(created.stdout)).data;
+  expect(response.plan.planId).toMatch(/^[A-Za-z0-9]{21}$/);
   expect(response.replayed).toBe(false);
   expect(response.plan.state).toBe("ready");
   if (response.plan.state !== "ready") throw new Error("AV1 plan requires an unexpected decision.");
@@ -432,6 +434,7 @@ const executePlan = async (
     ),
   ).data;
   expect(recovered.id).toBe(executed.jobId);
+  expect(recovered.id).toMatch(/^[A-Za-z0-9]{21}$/);
   return executed.jobId;
 };
 
@@ -464,6 +467,7 @@ const watchJob = async (apiUrl: string, credentialsPath: string, jobId: string) 
   expect(watched.stdout.trim().split("\n")).toHaveLength(1);
   const status = decodeJobStatus(JSON.parse(watched.stdout)).data;
   if (status.state !== "succeeded") throw new Error(`Job ${jobId} ended in ${status.state}.`);
+  status.artifacts.forEach(({ id }) => expect(id).toMatch(/^[A-Za-z0-9]{21}$/));
   expect(status).toMatchObject({
     clientReference: "e2e/golden-av1",
     id: jobId,

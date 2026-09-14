@@ -1,6 +1,6 @@
 import { transitionVideo } from "../../videos/video-lifecycle.ts";
 import { storagePurgeCandidates } from "./storage-purge-candidates.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import { and, asc, eq, gt, inArray, ne } from "drizzle-orm";
 import { Schema } from "effect";
 import type { Database, DatabaseTransaction } from "../../database/database.ts";
@@ -116,7 +116,7 @@ export const queueStorageDeletion = (
   reason: { policyRevision?: number; graceDeadline?: number; cleanup?: boolean; closure?: boolean },
 ) => {
   if (video.state === "deleting" || video.state === "deleted") return;
-  const id = randomUUID();
+  const id = createId();
   const revision = video.visibilityRevision + 1;
   transaction
     .update(storageTransfers)
@@ -186,7 +186,7 @@ const queueRetentionNotices = (
       transaction
         .insert(emailOutbox)
         .values({
-          id: randomUUID(),
+          id: createId(),
           resourceKey: `storage-grace:${organization.id}:${revision}:${phase}`,
           recipient: organization.billingEmail,
           payloadJson: JSON.stringify({

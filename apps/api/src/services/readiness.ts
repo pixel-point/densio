@@ -1,5 +1,5 @@
 import type { LifecycleSupervisor } from "./lifecycle-supervisor.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -23,7 +23,7 @@ export const checkReadiness = Effect.fn("Readiness.check")(function* (
     try: () => database.sqlite.prepare("select 1 as ready").get(),
   });
   yield* checkLifecycleReadiness(supervisors);
-  const probePath = join(mediaRoot, `.readiness-${randomUUID()}`);
+  const probePath = join(mediaRoot, `.readiness-${createId()}`);
   yield* Effect.tryPromise({
     catch: (cause) => new ReadinessError({ cause, check: "storage" }),
     try: async () => {

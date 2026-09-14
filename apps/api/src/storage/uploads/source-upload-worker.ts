@@ -5,7 +5,7 @@ import {
   finishUnusableSource,
   failSourceUpload,
 } from "../../sources/source-ingestion-state.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import { Readable } from "node:stream";
 import { and, eq, lte, ne } from "drizzle-orm";
 import { Effect } from "effect";
@@ -146,7 +146,7 @@ const claimUpload = (database: Database, config: SourceUploadConfig, id: string)
         .set({
           workerPid: process.pid,
           workerIdentity: config.writerIdentity ?? writerProcessIdentity(process.pid),
-          leaseOwner: randomUUID(),
+          leaseOwner: createId(),
         })
         .where(eq(sourceObjectUploads.sourceId, id))
         .returning()

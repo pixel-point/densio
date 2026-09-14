@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { ResolvedHlsOptionsSchema, SourceInspectionSchema } from "@densio/shared";
 import { Effect, Schema } from "effect";
 import { compressionCreditUnits } from "../billing/compression-credit-cost.ts";
@@ -103,7 +103,7 @@ const process = Effect.fn("HlsJobHandler.process")(function* (
     options,
     source: analysis.inspection,
     audioAnalysis: analysis.audioAnalysis,
-    packageId: randomUUID(),
+    packageId: createId(),
     ...(context.config.hlsMaxScratchBytes === undefined
       ? {}
       : { maxScratchBytes: context.config.hlsMaxScratchBytes }),

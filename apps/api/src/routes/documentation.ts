@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 
 import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
@@ -32,7 +32,7 @@ export const registerDocumentationRoutes = (app: Hono) => {
   app.get(
     "/docs",
     Scalar((context) => {
-      const nonce = randomUUID();
+      const nonce = createId();
       context.header("content-security-policy", documentationPolicy(nonce));
       return {
         agent: { disabled: true },

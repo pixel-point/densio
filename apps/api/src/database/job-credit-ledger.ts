@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 
 import { eq, sql } from "drizzle-orm";
 
@@ -78,7 +78,7 @@ const insertEntry = (
     .insert(jobCreditEntries)
     .values({
       createdAt,
-      id: randomUUID(),
+      id: createId(),
       jobId: job.id,
       kind,
       periodStart,

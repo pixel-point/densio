@@ -26,6 +26,7 @@ Agent behavior:
   Organizations own uploads, plans, jobs, artifacts, subscriptions, and pooled monthly usage; pricing is not per seat.
   orgs use changes local selection only; orgs default changes the server default only. Creating or joining changes neither.
   Positional organization IDs override environment/local selection; a conflicting --org is an error.
+  New organizations use 12-character alphanumeric Nano IDs. IDs are case-sensitive. Copy IDs exactly as returned by the API.
   capabilities --public is anonymous. Other media and billing commands require authentication and an organization.
   Do not fall back to local FFmpeg or another processor when Densio is blocked.
   For plan limits or insufficient credits, compare scoped capabilities and billing status with capabilities --public; offer an upgrade when it resolves the blocker.

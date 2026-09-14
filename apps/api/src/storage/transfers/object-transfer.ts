@@ -1,6 +1,7 @@
 import { MULTIPART_PART_BYTES } from "../objects/multipart-policy.ts";
 import { type StorageFile } from "./storage-files.ts";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import { createReadStream } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
@@ -40,7 +41,7 @@ export const prepareObject = (
       connectionId:
         context.database.db.select().from(videos).where(eq(videos.id, variant.videoId)).get()
           ?.connectionId ?? null,
-      id: randomUUID(),
+      id: createId(),
       organizationId: variant.organizationId,
       videoId: variant.videoId,
       variantId: variant.kind === "variant" ? variant.id : null,

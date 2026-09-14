@@ -68,6 +68,7 @@ const setup = async () => {
 it("shares one upload identity with teammates and keeps creator provenance", async () => {
   const fixture = await setup();
   const first = await Effect.runPromise(fixture.service.create(fixture.input));
+  expect(first.source.sourceId).toMatch(/^[A-Za-z0-9]{21}$/);
   const replay = await Effect.runPromise(
     fixture.service.create({ ...fixture.input, ...fixture.member }),
   );

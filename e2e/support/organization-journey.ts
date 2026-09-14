@@ -41,6 +41,7 @@ export const joinOrganization = async (
   await (invitationEmail === undefined
     ? acceptInvitationWithCli(apiUrl, memberCredentials, invitation.invitationId)
     : acceptInvitationFromEmail(apiUrl, invitationEmail));
+  expect(invitation.invitationId).toMatch(/^[A-Za-z0-9]{21}$/);
   const joined = decodeOrganization(
     JSON.parse((await runCli(apiUrl, memberCredentials, ["orgs", "get", organizationId])).stdout),
   ).data;
@@ -98,6 +99,8 @@ export const createTeamOrganization = async (apiUrl: string, credentials: string
     JSON.parse((await runCli(apiUrl, credentials, ["auth", "status"])).stdout),
   ).data;
   if (!before.authenticated) throw new Error("Expected authenticated owner.");
+  expect(before.user.id).toMatch(/^[A-Za-z0-9]{21}$/);
+  expect(before.defaultOrganizationId).toMatch(/^[A-Za-z0-9]{12}$/);
   const created = decodeOrganization(
     JSON.parse(
       (
@@ -116,6 +119,7 @@ export const createTeamOrganization = async (apiUrl: string, credentials: string
   ).data;
   expect(after).toMatchObject({ defaultOrganizationId: before.defaultOrganizationId });
   await runCli(apiUrl, credentials, ["orgs", "use", created.organization.organizationId]);
+  expect(created.organization.organizationId).toMatch(/^[A-Za-z0-9]{12}$/);
   return {
     organizationId: created.organization.organizationId,
     defaultOrganizationId: before.defaultOrganizationId,

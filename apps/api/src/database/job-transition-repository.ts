@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { recordAutomaticVideo } from "../videos/automatic-video.ts";
 import { JobProgressSchema, type JobProgress } from "@densio/shared";
 import { and, asc, desc, eq } from "drizzle-orm";
@@ -154,7 +154,7 @@ const recordAttempt = (
     transaction
       .insert(jobAttempts)
       .values({
-        id: randomUUID(),
+        id: createId(),
         jobId: current.id,
         attempt: transition.next.attemptCount,
         workerId: transition.next.leaseOwner,

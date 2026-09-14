@@ -1,5 +1,5 @@
 import { findJobHlsPackage, recordHlsMembers } from "./hls-video-intent.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, inArray, lt } from "drizzle-orm";
 import { MediaCodecSchema, type StoredVideoPlan } from "@densio/shared";
 import { Schema } from "effect";
@@ -33,8 +33,8 @@ export const recordVideoIntent = (
       "The complete requested variant set is required.",
     );
   const hlsPackage = findJobHlsPackage(transaction, input.jobId);
-  const id = randomUUID();
-  const transferId = randomUUID();
+  const id = createId();
+  const transferId = createId();
   const storage = input.storage;
   const recoveryDeadline = input.now + 86_400_000;
   transaction
@@ -121,7 +121,7 @@ const variantIntent = (
   const filename = storage.files.find((file) => file.codec === codec)?.filename;
   if (!filename) throw storageFailure("STORAGE_OBJECT_CHANGED");
   return {
-    id: randomUUID(),
+    id: createId(),
     organizationId: organizationId,
     videoId: id,
     artifactId: artifact.id,

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 
 import { PAID_PLANS, PLAN_CATALOG, type PaidPlan } from "@densio/shared";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
@@ -147,7 +147,7 @@ export const grantAdminPro = (
         .values({
           grantedAt: input.now,
           grantedBy: input.grantedBy,
-          id: randomUUID(),
+          id: createId(),
           organizationId: input.organizationId,
         })
         .run();
@@ -157,7 +157,7 @@ export const grantAdminPro = (
         actor: { kind: "platform-operator", name: input.grantedBy },
         targetId: input.organizationId,
         now: input.now,
-        correlationId: randomUUID(),
+        correlationId: createId(),
       });
       return { created: true, kind: "granted" };
     },
@@ -192,7 +192,7 @@ export const revokeAdminPro = (
           actor: { kind: "platform-operator", name: input.revokedBy },
           targetId: input.organizationId,
           now: input.now,
-          correlationId: randomUUID(),
+          correlationId: createId(),
         });
       return revoked;
     },

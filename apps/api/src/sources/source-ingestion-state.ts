@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { and, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Database, DatabaseTransaction } from "../database/database.ts";
@@ -54,8 +54,8 @@ export const createStoredSource = (
       const definition = decodeConnectionConfig(connection.configJson);
       if (connection.state !== "active") throw storageFailure("STORAGE_CONNECTION_UNAVAILABLE");
       if (!definition.staging) throw storageFailure("STORAGE_PRIVATE_STAGING_REQUIRED");
-      const id = randomUUID();
-      const objectId = randomUUID();
+      const id = createId();
+      const objectId = createId();
       const now = config.now();
       const expiresAt = Math.min(now + config.uploadTtlMs, now + config.sourceTtlMs);
       transaction
@@ -92,7 +92,7 @@ export const createStoredSource = (
             connection.id,
             "uploads",
             id,
-            `${randomUUID()}-source`,
+            `${createId()}-source`,
           ]
             .filter(Boolean)
             .join("/"),

@@ -1,5 +1,5 @@
 import { replayVideoCreation } from "./video-receipts.ts";
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import type { StorageVisibility } from "@densio/shared";
 import { and, eq } from "drizzle-orm";
 import type { Database, DatabaseTransaction } from "../database/database.ts";
@@ -62,8 +62,8 @@ export const exportVideo = (
         destination,
         visibility,
       );
-      const id = randomUUID();
-      const transferId = randomUUID();
+      const id = createId();
+      const transferId = createId();
       const now = config.now();
       transaction
         .insert(videos)
@@ -131,7 +131,7 @@ const copyVariantIntent = (
           if (!variant.activeObjectId) throw storageFailure("STORAGE_OBJECT_CHANGED");
           return {
             ...variant,
-            id: randomUUID(),
+            id: createId(),
             videoId: id,
             artifactId: null,
             inputPath: null,

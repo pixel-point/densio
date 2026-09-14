@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../../identifiers.ts";
 import { eq } from "drizzle-orm";
 import type { Database, DatabaseTransaction } from "../../database/database.ts";
 import {
@@ -47,8 +47,8 @@ export const activateStorageFile = (
 
 export const privateFileKey = (file: StorageFile) =>
   file.kind === "hls"
-    ? `orgs/${file.organizationId}/videos/${file.videoId}/private/${randomUUID()}/${file.filename}`
-    : managedObjectKey(file.organizationId, file.videoId, file.filename, randomUUID());
+    ? `orgs/${file.organizationId}/videos/${file.videoId}/private/${createId()}/${file.filename}`
+    : managedObjectKey(file.organizationId, file.videoId, file.filename, createId());
 
 const publicationOrder = (role: typeof videoPackageMembers.$inferSelect.role) =>
   role === "master" ? 2 : role === "playlist" ? 1 : 0;

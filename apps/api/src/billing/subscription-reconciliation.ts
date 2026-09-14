@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createId } from "../identifiers.ts";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Database, DatabaseTransaction } from "../database/database.ts";
@@ -31,7 +31,7 @@ export const loadSubscriptionEvidence = Effect.fn("Billing.loadSubscriptionEvide
   gateway: StripeGateway["Service"],
   input: { subscriptionId: string; eventId: string; now: number },
 ) {
-  const claimId = randomUUID();
+  const claimId = createId();
   yield* organizationStorage("claim-subscription-reconciliation", () =>
     database.db
       .insert(billingReconciliations)
