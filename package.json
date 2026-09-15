@@ -27,6 +27,7 @@
     "test:media": "turbo run test:media"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/archiver": "^8.0.0",
     "@types/node": "^22.18.0",
     "@typescript/native-preview": "^7.0.0-dev.20260703.1",
