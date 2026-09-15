@@ -131,3 +131,55 @@ overlapping runs and alert on a non-zero exit code. Each runner writes one JSON 
 one safe error message to stderr; credentials and login tokens are never emitted.
 
 Website confirmation links require `DENSIO_SYNTHETIC_WEBSITE_URL` alongside `DENSIO_SYNTHETIC_API_URL` for opt-in deployed synthetics. The harness validates the email origin and submits confirmation JSON to the configured API; it never follows an arbitrary email destination.
+
+## SiteOS Pulse monitoring
+
+The `pulse/*.spec.ts` checks monitor public journeys on `https://densio.sh` and the agent API at
+`https://api.densio.sh`. The root `siteos.config.json` owns their schedules and
+`siteos.playwright.config.ts` owns browser settings. These production checks run only through
+explicit Pulse or Playwright commands; Vitest continues to discover `*.test.ts` only.
+The existing `pnpm typecheck:e2e` and root `pnpm check` include their static checks.
+
+| Check                       | Schedule         | Coverage                                                                                                                          |
+| --------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Agent onboarding            | Every 15 minutes | Homepage, copied installation prompt, Get Started, and return home.                                                               |
+| Sign-in and account entry   | Every 15 minutes | Invalid-email validation without writes, anonymous account redirects, safe return destinations, and canceled-checkout navigation. |
+| Agent API and runtime skill | Every 15 minutes | Media-tool readiness and anonymous runtime-skill retrieval with version and checksum metadata.                                    |
+| Mobile sign-in journey      | Hourly           | Homepage viewport fit, menu navigation, and usable sign-in form at 390 × 844.                                                     |
+| Legal page navigation       | Daily            | Footer links reach readable privacy and terms pages.                                                                              |
+
+The five checks contain 11 tests and total 313 scheduled check runs per day when active. This is
+a run count, not a billing estimate. They require no credentials or stateful production actions;
+email delivery, authenticated processing, storage, and payments remain outside this coverage.
+Legal-page checks verify navigation and rendering; the current content contains placeholders.
+Authoring and production rules live in [pulse/AGENTS.md](pulse/AGENTS.md).
+
+Run these commands from the repository root, using Node.js 22.18+ and pnpm 11.7.0 through Corepack:
+
+```sh
+corepack pnpm install --frozen-lockfile
+corepack pnpm exec playwright install chromium
+corepack pnpm typecheck:e2e
+SITEOS_AUTH_BASE_URL=https://app.siteos.sh npx @siteoshq/cli project use PROJECT_ID --organization ORGANIZATION_ID --environment production --json
+SITEOS_AUTH_BASE_URL=https://app.siteos.sh npx @siteoshq/cli project status --json
+SITEOS_AUTH_BASE_URL=https://app.siteos.sh npx @siteoshq/cli pulse validate --json
+SITEOS_AUTH_BASE_URL=https://app.siteos.sh npx @siteoshq/cli pulse sync --check --json
+SITEOS_AUTH_BASE_URL=https://app.siteos.sh npx @siteoshq/cli pulse test
+SITEOS_AUTH_BASE_URL=https://app.siteos.sh npx @siteoshq/cli pulse deploy --dry-run --json
+```
+
+Use the exact IDs from the approved task or SiteOS. Confirm the selected Densio production URL
+and Pulse attachment in the safe status output. To run one spec through the pinned local runner:
+
+```sh
+PLAYWRIGHT_BASE_URL=https://densio.sh corepack pnpm exec playwright test --config siteos.playwright.config.ts e2e/pulse/onboarding.spec.ts
+```
+
+The API spec always targets `https://api.densio.sh`, including when the website base URL is
+overridden. Run only the intended browser specs for local website checks.
+
+After explicit publication approval, use `pulse deploy --json`. CLI 2.13.0+ supports
+`pulse run --check CHECK_ID --request-id REQUEST_ID --json`; take Check IDs from the deployment
+result and read terminal Run results through SiteOS MCP. Scheduling and remote health remain
+unverified until deployment and subsequent scheduled results; a local pass or dry run does not
+establish either. Local failure artifacts and deployment archives are ignored under `.siteos/pulse/`.

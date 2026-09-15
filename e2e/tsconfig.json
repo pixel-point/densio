@@ -3,5 +3,6 @@
   "compilerOptions": {
     "types": ["node", "vitest/globals"]
   },
-  "include": ["**/*.ts", "../apps/api/src/markdown.d.ts"]
+  "include": ["**/*.ts", "../apps/api/src/markdown.d.ts"],
+  "exclude": ["pulse"]
 }

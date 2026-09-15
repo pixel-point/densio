@@ -1,0 +1,54 @@
+{
+  "version": 2,
+  "project": {
+    "slug": "densio",
+    "name": "Densio",
+    "baseUrl": "https://densio.sh",
+    "monitoringEnabled": true
+  },
+  "testsDir": "e2e/pulse",
+  "playwrightConfig": "siteos.playwright.config.ts",
+  "checks": [
+    {
+      "slug": "onboarding",
+      "name": "Agent onboarding",
+      "include": ["e2e/pulse/onboarding.spec.ts"],
+      "active": true,
+      "schedule": {
+        "mode": "scheduled",
+        "cadenceSeconds": 900
+      }
+    },
+    {
+      "slug": "authentication",
+      "name": "Sign-in and account entry",
+      "include": ["e2e/pulse/authentication.spec.ts"],
+      "active": true,
+      "schedule": { "mode": "scheduled", "cadenceSeconds": 900 }
+    },
+    {
+      "slug": "agent-service",
+      "name": "Agent API and runtime skill",
+      "include": ["e2e/pulse/agent-service.spec.ts"],
+      "active": true,
+      "schedule": { "mode": "scheduled", "cadenceSeconds": 900 }
+    },
+    {
+      "slug": "mobile",
+      "name": "Mobile sign-in journey",
+      "include": ["e2e/pulse/mobile.spec.ts"],
+      "active": true,
+      "schedule": { "mode": "scheduled", "cadenceSeconds": 3600 }
+    },
+    {
+      "slug": "legal",
+      "name": "Legal page navigation",
+      "include": ["e2e/pulse/legal.spec.ts"],
+      "active": true,
+      "schedule": {
+        "mode": "scheduled",
+        "cadenceSeconds": 86400
+      }
+    }
+  ]
+}

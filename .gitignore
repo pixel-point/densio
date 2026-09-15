@@ -23,3 +23,4 @@ pnpm-debug.log*
 *.sqlite-journal
 *.tsbuildinfo
 *.swp
+.siteos/pulse/
